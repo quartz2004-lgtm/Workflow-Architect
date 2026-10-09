@@ -123,3 +123,11 @@ Exporters потребляют только domain model. Вложенные г�
 Метасхемы и отдельные экземпляры валидатора для dialects — [Ajv JSON Schema](https://ajv.js.org/json-schema.html). Совместимость портов проверяется одним domain helper в команде и в [React Flow isValidConnection](https://reactflow.dev/api-reference/types/is-valid-connection).
 
 Архивы используют [fflate](https://github.com/101arrowz/fflate), включая streaming Unzip и async compression. YAML работает через [yaml parseDocument/stringify](https://eemeli.org/yaml/).
+
+## Развитие 0.2.0-alpha.1
+
+Чтение IndexedDB отделено от квот внешнего импорта, при общей runtime-валидации: [ADR 0006](decisions/0006-local-snapshots-and-keyboard-scopes.md). Boot, список и выбор проектов используют deserializeStoredProject. Физические клавиши работают независимо от раскладки; Ctrl+F/K доступны из текстовых полей. Duplicate использует только текущее выделение и сохраняет clipboard.
+
+Каталог field-help.ts связывает устойчивые ключи UI с текстом и главой справки. FieldHeading/FieldHelp общие для всех Inspector-контролов; popover находится в native top layer. uiStore.helpChapter содержит только временную навигацию. Подробности и coverage — [ADR 0007](decisions/0007-contextual-field-help.md). Domain schema остаётся 0.1.
+
+Порядок веток, выпусков, CI и следующая очередь — [DEVELOPMENT.md](DEVELOPMENT.md). Существующий ALPHA_AUDIT описывает историческое состояние v0.1, текущие изменения — CHANGELOG.
