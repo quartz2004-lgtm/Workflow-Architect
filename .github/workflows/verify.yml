@@ -27,6 +27,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run notices:check
       - run: npm run check
       - run: npm run docs:almanac
       - run: git diff --exit-code -- docs/Workflow_Architect_Almanac.html
@@ -51,6 +52,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run notices:check
       - run: npm run desktop:build -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

@@ -1,0 +1,31 @@
+name: Bug report
+description: Воспроизводимая ошибка редактора или сохранения
+body:
+  - type: markdown
+    attributes:
+      value: Не публикуйте секреты и личные проекты. Для уязвимостей используйте SECURITY.md.
+  - type: input
+    id: environment
+    attributes:
+      label: Версия и окружение
+      description: Версия Workflow Architect, Windows/браузер, установка или dev-сборка.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Как воспроизвести
+      description: Шаги от запуска приложения; по возможности минимальный пример с вымышленными данными.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Ожидаемый и фактический результат
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Дополнительные сведения
+      description: Текст ошибки, изображение, воспроизводимость, последняя работающая версия. Удалите личные данные.

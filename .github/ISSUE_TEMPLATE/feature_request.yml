@@ -1,0 +1,24 @@
+name: Feature request
+description: Предложение, связанное с roadmap
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу нужно решить?
+      description: Опишите реальную ситуацию и текущие ограничения.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Желаемое поведение и критерий готовности
+    validations:
+      required: true
+  - type: input
+    id: milestone
+    attributes:
+      label: Этап roadmap, если известен
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы и ограничения
