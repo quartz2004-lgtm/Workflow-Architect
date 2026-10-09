@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { readFile } from 'node:fs/promises'
 
 test('create and open local projects, reject invalid input, import collisions as independent copies', async ({ page }) => {

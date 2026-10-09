@@ -4,15 +4,39 @@ import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { unzipSync, strFromU8 } from 'fflate'
 
-async function launch(profile: string) {
+async function launch(profile: string, skipSetup = true) {
   const environment: Record<string, string> = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
   delete environment.ELECTRON_RUN_AS_NODE
-  return electron.launch({
+  const application = await electron.launch({
     ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}),
     args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${profile}`],
     env: environment,
   })
+  const page = await application.firstWindow()
+  await expect(page.getByRole('application').or(page.getByRole('button', { name: 'Пропустить настройку' }))).toBeVisible()
+  if (skipSetup && await page.getByRole('button', { name: 'Пропустить настройку' }).isVisible()) await page.getByRole('button', { name: 'Пропустить настройку' }).click()
+  return application
 }
+
+test('desktop first setup persists personal settings across native restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workflow-desktop-setup-'))
+  let application = await launch(directory, false)
+  try {
+    let page = await application.firstWindow()
+    await page.getByLabel('Имя профиля', { exact: true }).fill('Desktop profile')
+    await page.getByRole('button', { name: 'Далее', exact: true }).click()
+    await page.getByRole('button', { name: 'К рекомендациям' }).click()
+    await page.getByLabel('Движение интерфейса').selectOption('reduced')
+    await page.getByRole('button', { name: 'Сохранить и открыть редактор' }).click()
+    await expect(page.getByRole('button', { name: 'Профили: Desktop profile' })).toBeVisible()
+    await expect(page.locator('.save-status')).toContainText('Сохранено')
+    await application.close()
+    application = await launch(directory, false)
+    page = await application.firstWindow()
+    await expect(page.getByRole('button', { name: 'Профили: Desktop profile' })).toBeVisible()
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-motion', 'reduced')
+  } finally { await application.close() }
+})
 
 test('desktop shortcuts and contextual field help work without changing the project format', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'workflow-desktop-help-'))

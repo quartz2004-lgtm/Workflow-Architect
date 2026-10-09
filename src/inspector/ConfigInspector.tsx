@@ -1,3 +1,4 @@
+import { useProfile } from '../profiles/context'
 import { useStore } from 'zustand'
 import { useEditor } from '../app/context'
 import { configureNode, readConfig } from '../domain/configuration'
@@ -41,7 +42,8 @@ function ConfigControl({ node, field }: { node: WorkflowNode; field: ConfigField
 
 export function ConfigInspector({ node }: { node: WorkflowNode }) {
   const editor = useEditor()
-  return <>{inspectorSections[node.type].map(section => <details className="inspector-section" key={section.title} open><summary>{section.title}</summary>
+  const detail = useProfile()?.profile.preferences.detail ?? 'technical'
+  return <>{inspectorSections[node.type].map((section, index) => <details className="inspector-section" key={`${node.id}:${detail}:${section.title}`} open={detail === 'technical' || index === 0}><summary>{section.title}</summary>
     {section.fields.map(field => <ConfigControl key={`${node.id}:${field.path}`} node={node} field={field} />)}
   </details>)}
     {node.type === 'logic' && <details className="inspector-section" open><summary>Ветви</summary>{(node.config.branches ?? []).map(branch => <div className="resource-card" key={branch.id}>

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('field help supports hover, focus, Escape and contextual almanac without editing the graph', async ({ page }) => {
   const errors: string[] = []

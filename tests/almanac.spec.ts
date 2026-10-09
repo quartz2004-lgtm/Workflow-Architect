@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { readFile } from 'node:fs/promises'
 
 test('almanac: browse, search body text, empty state, export entire offline book and return to editor', async ({ page, context }) => {

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '../fixtures'
 import { writeFile } from 'node:fs/promises'
 import { createEdge, createNode, createProject } from '../../src/domain/factories'
 

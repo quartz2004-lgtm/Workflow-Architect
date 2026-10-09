@@ -1,3 +1,5 @@
+import { useProfile } from '../profiles/context'
+import { ProfileMenu } from '../profiles/ProfileMenu'
 import { runUiCommand } from '../editor/ui-commands'
 import { lazy, Suspense, useEffect } from 'react'
 import { useStore } from 'zustand'
@@ -24,6 +26,7 @@ const Almanac = lazy(() => import('../help/Almanac').then(module => ({ default: 
 
 function Workspace({ autosave, repository }: { autosave: Autosave; repository: ManagedProjectRepository }) {
   const editor = useEditor()
+  const profile = useProfile()?.profile
   const name = useStore(editor.projectStore, s => s.project.project.name)
   const projectId = useStore(editor.projectStore, s => s.project.project.id)
   const graphId = useStore(editor.navigationStore, s => s.graphId)
@@ -43,7 +46,8 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
   const recovery = useStore(editor.recoveryStore)
   const previewOpen = useStore(editor.preview.store, s => s.open)
   const mode = useStore(editor.projectStore, s => s.project.settings.defaultMode)
-  const motion = useStore(editor.projectStore, s => s.project.settings.motion)
+  const projectMotion = useStore(editor.projectStore, s => s.project.settings.motion)
+  const motion = profile?.preferences.motion === 'reduced' ? 'reduced' : projectMotion
   useShortcuts(editor)
   useEffect(() => {
     const flushOnHidden = () => { if (document.visibilityState === 'hidden') void autosave.flush() }
@@ -51,7 +55,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
     return () => { document.removeEventListener('visibilitychange', flushOnHidden); editor.preview.stop() }
   }, [editor, autosave])
   const saveLabel = { saved: 'Сохранено', saving: 'Сохранение…', unsaved: 'Есть изменения', error: 'Ошибка сохранения' }[save.status]
-  return <div className="app-shell" data-motion={motion}>
+  return <div className="app-shell" data-motion={motion} data-density={profile?.preferences.density}>
     <header className="topbar"><div className="brand" aria-label="Workflow Architect">W<span>Λ</span></div><button className="project-heading" aria-label="Открыть проекты" onClick={() => editor.uiStore.setState({ projects: true })}><span>WORKFLOW ARCHITECT</span><strong>{name} ▾</strong></button><button className="mode-badge" aria-label="Режим редактора" onClick={() => editor.execute({ type: 'edit-settings', changes: { defaultMode: mode === 'concept' ? 'engineering' : 'concept' } })}>{mode === 'concept' ? 'Concept' : 'Engineering'}</button>
       <div className="history-actions"><button aria-label="Отменить" title="Отменить · Ctrl+Z" disabled={!history.past.length} onClick={() => runUiCommand(editor, 'undo')}>↶</button><button aria-label="Повторить" title="Повторить · Ctrl+Shift+Z" disabled={!history.future.length} onClick={() => runUiCommand(editor, 'redo')}>↷</button></div>
       <span className={`save-status ${save.status}`} role="status">{save.status === 'saved' ? '✓' : '○'} {saveLabel}</span>
@@ -74,7 +78,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
       {help && <Almanac />}
     </Suspense>
     {palette && <CommandPalette />}{search && <SearchDialog />}
-    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => runUiCommand(editor, 'palette')}>Команды</button><button onClick={() => runUiCommand(editor, 'search')}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => runUiCommand(editor, 'help')}>Альманах</button><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
+    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => runUiCommand(editor, 'palette')}>Команды</button><button onClick={() => runUiCommand(editor, 'search')}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => runUiCommand(editor, 'help')}>Альманах</button><ProfileMenu autosave={autosave} /><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
   </div>
 }
 export function App({ editor, autosave, repository }: { editor: Editor; autosave: Autosave; repository: ManagedProjectRepository }) { return <EditorContext.Provider value={editor}><Workspace autosave={autosave} repository={repository} /></EditorContext.Provider> }

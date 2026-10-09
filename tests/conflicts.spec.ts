@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('two windows preserve both edits and let the stale writer continue in a separate project', async ({ page, context }) => {
   await page.goto('/')

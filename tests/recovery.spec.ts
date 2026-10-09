@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { createNode, createProject } from '../src/domain/factories'
 
 test('damaged config boots into explicit recovery, opens the repaired node and preserves the original record', async ({ page }) => {
@@ -11,7 +11,7 @@ test('damaged config boots into explicit recovery, opens the repaired node and p
       const request = indexedDB.open('workflow-architect', 1)
       request.onsuccess = () => {
         const db = request.result, tx = db.transaction(['projects', 'preferences'], 'readwrite')
-        tx.objectStore('projects').put(raw, id); tx.objectStore('preferences').put(id, 'active-project')
+        tx.objectStore('projects').put(raw, id); tx.objectStore('preferences').put(id, 'active-project:00000000-0000-4000-8000-000000000001')
         tx.oncomplete = () => { db.close(); resolve() }; tx.onerror = () => reject(tx.error)
       }
       request.onerror = () => reject(request.error)

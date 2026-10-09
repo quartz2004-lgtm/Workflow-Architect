@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('automatic height, compatible ports and palette conversion keep edits undoable', async ({ page }) => {
   await page.goto('/')

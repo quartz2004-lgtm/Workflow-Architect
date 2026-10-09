@@ -19,7 +19,8 @@ export interface ManagedProjectRepository extends ProjectRepository {
   list(): Promise<ProjectSummary[]>
   load(id: string): Promise<string | undefined>
 }
-export function createRepository(name = 'workflow-architect'): ManagedProjectRepository {
+export function createRepository(name = 'workflow-architect', profile?: { id: string; adoptLegacy: boolean }): ManagedProjectRepository {
+  const activeKey = profile ? `active-project:${profile.id}` : 'active-project'
   const bases = new Map<string, string | undefined>()
   const database = openDB<WorkflowDB>(name, 1, { upgrade(db) {
     db.createObjectStore('projects')
@@ -56,7 +57,7 @@ export function createRepository(name = 'workflow-architect'): ManagedProjectRep
     },
     async loadActive() {
       const db = await database
-      const id = await db.get('preferences', 'active-project')
+      const id = await db.get('preferences', activeKey) ?? (profile?.adoptLegacy ? await db.get('preferences', 'active-project') : undefined)
       if (!id) return undefined
       const raw = await db.get('projects', id)
       if (!bases.has(id)) bases.set(id, raw)
@@ -73,7 +74,7 @@ export function createRepository(name = 'workflow-architect'): ManagedProjectRep
         throw new ProjectConflictError()
       }
       await tx.objectStore('projects').put(raw, project.project.id)
-      await tx.objectStore('preferences').put(project.project.id, 'active-project')
+      await tx.objectStore('preferences').put(project.project.id, activeKey)
       await tx.done
       bases.set(project.project.id, raw)
     },

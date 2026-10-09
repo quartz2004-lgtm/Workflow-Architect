@@ -1,3 +1,4 @@
+import { useProfile } from '../profiles/context'
 import { useEffect, useState } from 'react'
 import { portableSnapshotBytes } from '../domain/limits'
 import { useEditor } from './context'
@@ -18,6 +19,9 @@ import { RecoveryDetails } from '../persistence/RecoveryDetails'
 
 export function ProjectsDialog({ repository, autosave }: { repository: ManagedProjectRepository; autosave: Autosave }) {
   const editor = useEditor()
+  const profile = useProfile()?.profile
+  const orderedTemplates = [...templates].sort((a, b) => Number(profile?.preferences.favoriteTemplates.includes(b.id)) - Number(profile?.preferences.favoriteTemplates.includes(a.id)))
+  const newProject = () => { const project = createProject(name.trim() || 'Новый workflow'); project.settings.defaultMode = profile?.preferences.defaultMode ?? 'concept'; return project }
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [backups, setBackups] = useState<SnapshotBackup[]>([])
   const [name, setName] = useState('Новый workflow')
@@ -73,13 +77,13 @@ export function ProjectsDialog({ repository, autosave }: { repository: ManagedPr
     {recovery && <section className="recovery-offer"><RecoveryDetails report={recovery} />{recovery.project && <button className="primary" disabled={busy} onClick={() => { void open(recovery.project!, recovery) }}>Открыть восстановленную копию</button>}</section>}
     <div className="project-manager"><section><h3>Открыть проект</h3><div className="project-list">
       {projects.length ? projects.map(project => <button disabled={busy} key={project.id} onClick={() => { void load(project.id) }}><strong>{project.name}</strong><span>{project.damaged ? 'Требуется восстановление' : new Date(project.updatedAt).toLocaleDateString('ru-RU')}</span></button>) : <p className="muted">Сохранённые проекты появятся здесь.</p>}
-    </div></section><section><h3>Новый проект</h3><form onSubmit={event => { event.preventDefault(); void open(createProject(name.trim() || 'Новый workflow')) }}><label className="field"><span>Название нового проекта</span><input maxLength={300} value={name} onChange={e => setName(e.target.value)} /></label><button className="primary" disabled={busy}>Создать пустой проект</button></form>
+    </div></section><section><h3>Новый проект</h3><form onSubmit={event => { event.preventDefault(); void open(newProject()) }}><label className="field"><span>Название нового проекта</span><input maxLength={300} value={name} onChange={e => setName(e.target.value)} /></label><button className="primary" disabled={busy}>Создать пустой проект</button></form>
       <h3>Импорт проекта</h3><label className="field"><span>Файл проекта</span><input type="file" multiple accept=".json,.yaml,.yml,.zip,application/json,application/zip" disabled={busy} onChange={e => { void importFiles(Array.from(e.target.files ?? [])); e.target.value = '' }} /></label>
       <p className="muted">ZIP, JSON/YAML snapshot — до 64 MiB. Пара project.json + workflow.json и распакованный ZIP — до 128 MiB.</p>
       <p className="muted">При совпадении ID импортируется отдельная копия. Существующий проект сохраняется.</p>
       {pending && <div className="import-preview"><strong>{pending.project.name}</strong><p>{pending.nodes.length} узлов · {pending.edges.length} связей</p><p>{validateProject(pending).filter(i => i.severity === 'error').length} Errors · {validateProject(pending).filter(i => i.severity === 'warning').length} Warnings</p><button disabled={busy} onClick={() => { void importProject() }}>Открыть импорт</button></div>}
     </section></div>
-    <section className="templates-section"><h3>Начать с примера</h3><p className="muted">Готовые структуры для изучения редактора. Модели и внешние сервисы настраиваются при реализации.</p><div className="template-list">{templates.map(template => <button key={template.id} disabled={busy} onClick={() => { void open(createTemplate(template.id)) }}><span className="template-icon" aria-hidden="true">{template.icon}</span><strong>{template.title}</strong><span>{template.description}</span></button>)}</div></section>
+    <section className="templates-section"><h3>Начать с примера</h3><p className="muted">Готовые структуры для изучения редактора. Модели и внешние сервисы настраиваются при реализации.</p><div className="template-list">{orderedTemplates.map(template => <button key={template.id} disabled={busy} onClick={() => { void open(createTemplate(template.id)) }}><span className="template-icon" aria-hidden="true">{template.icon}</span><strong>{template.title}</strong><span>{template.description}</span></button>)}</div></section>
     {!!backups.length && <details><summary>Резервные копии до изменения формата · {backups.length}</summary>{backups.map(backup => <div className="inline-actions" key={backup.id}><span>{new Date(backup.createdAt).toLocaleString('ru-RU')} · формат {backup.sourceVersion}</span><button onClick={() => downloadText(`project-before-migration-${backup.id}.json`, backup.raw)}>Скачать исходную копию</button></div>)}</details>}
   </Modal>
 }

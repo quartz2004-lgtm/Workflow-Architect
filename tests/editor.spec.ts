@@ -1,4 +1,4 @@
-﻿import { expect, test } from '@playwright/test'
+﻿import { expect, test } from './fixtures'
 
 test('create, rename, connect, move, undo, resize and recover after reload', async ({ page }) => {
   const errors: string[] = []
@@ -67,7 +67,7 @@ test('damaged local data is recoverable and never overwritten during boot', asyn
         const db = request.result
         const tx = db.transaction(['projects', 'preferences'], 'readwrite')
         tx.objectStore('projects').put('{broken', 'damaged')
-        tx.objectStore('preferences').put('damaged', 'active-project')
+        tx.objectStore('preferences').put('damaged', 'active-project:00000000-0000-4000-8000-000000000001')
         tx.oncomplete = () => { db.close(); resolve() }
         tx.onerror = () => reject(tx.error)
       }

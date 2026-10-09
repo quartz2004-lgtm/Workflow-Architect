@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 
 async function node(page: Page, title: string) {
   await page.getByRole('button', { name: '◇ Concept Node' }).click()

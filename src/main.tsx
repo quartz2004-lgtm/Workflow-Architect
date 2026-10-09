@@ -1,3 +1,8 @@
+import { createProfileRepository } from './profiles/repository'
+import { profileIds, type Profile } from './profiles/schema'
+import { ProfileProvider } from './profiles/context'
+import { Setup } from './profiles/Setup'
+import './profiles/profiles.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
@@ -17,22 +22,35 @@ const element = document.getElementById('root')
 if (!element) throw new Error('Root element is missing')
 const root = createRoot(element)
 root.render(<div className="boot-screen" role="status">Открываем рабочее пространство…</div>)
-async function boot() {
+const profiles = createProfileRepository()
+async function boot(profile: Profile) {
   let raw: string | undefined
-  const repository = createRepository()
+  const repository = createRepository('workflow-architect', { id: profile.id, adoptLegacy: profile.id === profileIds[0] })
   const launch = (project: Project, report: RecoveryReport | null = null) => {
     const editor = createEditor(project)
     editor.recoveryStore.setState({ report })
     const autosave = startAutosave(editor, repository)
     attachDesktopAutosave(autosave)
     if (import.meta.hot) import.meta.hot.dispose(() => autosave.stop())
-    root.render(<StrictMode><App editor={editor} autosave={autosave} repository={repository} /></StrictMode>)
+    root.render(<StrictMode><ProfileProvider initial={profile} repository={profiles}><App editor={editor} autosave={autosave} repository={repository} /></ProfileProvider></StrictMode>)
   }
   try {
     raw = await repository.loadActive()
-    launch(raw === undefined ? createProject() : await openStoredProject(raw))
+    const project = raw === undefined ? createProject() : await openStoredProject(raw)
+    if (raw === undefined) project.settings.defaultMode = profile.preferences.defaultMode
+    launch(project)
   } catch (error) {
     root.render(<RecoveryScreen raw={raw} error={error instanceof Error ? error.message : 'Хранилище недоступно.'} open={launch} blank={() => launch(createProject())} />)
   }
 }
-void boot()
+async function start() {
+  try {
+    await profiles.initialize()
+    const profile = await profiles.loadActive()
+    if (profile.onboarding === 'new') root.render(<Setup initial={profile} complete={async next => { await boot(await profiles.save(next)) }} />)
+    else await boot(profile)
+  } catch (error) {
+    root.render(<div className="profile-setup" role="alert"><h1>Не удалось открыть настройки профиля</h1><p>{error instanceof Error ? error.message : String(error)}</p><p>Исходные настройки и проекты сохранены без изменений.</p><button onClick={() => { void start() }}>Повторить открытие</button></div>)
+  }
+}
+void start()

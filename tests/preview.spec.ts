@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('preview is a transient, accessible graph overlay with pause, steps and reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
