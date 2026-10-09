@@ -1,5 +1,7 @@
 # Workflow Architect v0.2 Alpha 1
 
+[Глобальный roadmap: Beta → Pre-release → Release 1.0](docs/ROADMAP.md) — предлагаемый план развития по уточнённой цели продукта: реальные агенты, автоматизация, Telegram, Codex/VS Code и индивидуальные настройки.
+
 Локальный визуальный редактор для проектирования AI-workflow. Источник требований — [продуктовая спецификация](docs/Workflow_Architect_v0.1_Specification.md).
 
 Статус: **0.2.0-alpha.1 — первая итерация развития**. Исправления Alpha и контекстная справка; формат проектов остаётся 0.1. [Изменения](CHANGELOG.md), [порядок разработки](docs/DEVELOPMENT.md), [исторический аудит v0.1](docs/ALPHA_AUDIT.md).
