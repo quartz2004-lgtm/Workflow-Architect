@@ -1,0 +1,13 @@
+node_modules/
+dist/
+desktop-dist/
+.desktop-app/
+release/
+desktop-results/
+coverage/
+playwright-report/
+test-results/
+performance-results/
+*.local
+.env*
+!.env.example

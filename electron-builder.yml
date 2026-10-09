@@ -1,0 +1,31 @@
+appId: com.workflowarchitect.desktop
+productName: Workflow Architect
+directories:
+  app: .desktop-app
+  output: release
+files:
+  - dist/**/*
+  - desktop-dist/**/*
+  - desktop/assets/icon.ico
+  - package.json
+  - '!node_modules/**/*'
+asar: true
+electronDist: node_modules/electron/dist
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: desktop/assets/icon.ico
+  artifactName: Workflow-Architect-${version}-Setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Workflow Architect
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  installerLanguages: [ru_RU, en_US]

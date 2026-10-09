@@ -1,0 +1,60 @@
+{
+  "name": "workflow-architect",
+  "private": true,
+  "version": "0.1.1",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit && tsc -p desktop/tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:performance": "npm run build && playwright test --config playwright.performance.config.ts",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "desktop:prepare": "npm run docs:almanac && npm run build && tsc -p desktop/tsconfig.json && node scripts/stage-desktop.mjs",
+    "desktop:start": "electron .desktop-app",
+    "docs:almanac": "node scripts/build-almanac.mjs",
+    "schemas:generate": "node scripts/generate-metaschemas.mjs",
+    "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.yml --win --x64",
+    "test:desktop": "playwright test --config playwright.desktop.config.ts"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
+    "@uiw/react-codemirror": "^4.25.12",
+    "@xyflow/react": "^12.12.0",
+    "ajv": "^8.20.0",
+    "fflate": "^0.8.3",
+    "idb": "^8.0.4",
+    "immer": "^11.1.21",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  }
+}
