@@ -24,6 +24,7 @@ test('setup, manual preferences and two profiles survive reload without altering
   await page.keyboard.press('a')
   await page.getByRole('textbox', { name: 'Название', exact: true }).fill('Мой агент')
   await page.getByRole('button', { name: 'Профили: Михаил' }).click()
+  expect(await page.getByRole('dialog', { name: 'Локальные профили' }).evaluate(dialog => getComputedStyle(dialog).animationName)).toBe('none')
   await page.getByRole('button', { name: 'Профиль 2 · переключиться' }).click()
   await expect(page.getByRole('heading', { name: 'Настроим приложение под вас' })).toBeVisible()
   await page.getByRole('button', { name: 'Пропустить настройку' }).click()

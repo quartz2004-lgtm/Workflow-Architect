@@ -15,7 +15,7 @@
 .setup-recommendations button { display: grid; gap: 10px; text-align: left; padding: 18px; white-space: normal; }
 .setup-recommendations span { color: var(--muted); font-weight: 400; }
 .profile-button { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-reduced-motion[open], .profile-reduced-motion * { animation: none; transition: none; }
+.modal.profile-reduced-motion[open], .profile-reduced-motion * { animation: none; transition: none; }
 .app-shell[data-density="compact"] .inspector .field { margin-top: 12px; }
 .app-shell[data-density="compact"] .inspector-section { padding-top: 8px; padding-bottom: 8px; }
 .app-shell[data-density="compact"] .library-item { padding-top: 6px; padding-bottom: 6px; }
