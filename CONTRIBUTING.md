@@ -2,7 +2,7 @@
 
 Workflow Architect развивается небольшими проверяемыми этапами. Текущая область работ — [план 0.2.0](docs/V0.2.0_PLAN.md); будущие возможности определяет [roadmap](docs/ROADMAP.md).
 
-Публичный upstream и лицензия исходников ещё выбираются владельцем. До появления LICENSE и адреса upstream не считайте этот checkout опубликованным open-source релизом. Лицензии сторонних компонентов приведены отдельно в THIRD_PARTY_NOTICES.md.
+Upstream: https://github.com/quartz2004-lgtm/Workflow-Architect. Исходники распространяются на условиях GPL-3.0-or-later; полный текст — [LICENSE.txt](LICENSE.txt). Сторонние компоненты сохраняют собственные лицензии в THIRD_PARTY_NOTICES.md.
 
 ## Перед изменением
 
@@ -20,6 +20,8 @@ npm run check
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Каждый новый скрипт должен начинаться с уведомления из docs/COPYRIGHT_NOTICE.txt. npm run copyright:fix добавляет комментарии, npm run copyright:check проверяет их, включая новые неотслеживаемые файлы. Генераторы сохраняют уведомление; сторонние файлы не перелицензируются.
 
 После изменения справки выполните `npm run docs:almanac`. После изменения зависимостей — `npm run notices:generate`; проверьте изменения лицензий и тексты уведомлений. На Windows дополнительно выполните `npm run desktop:prepare` и `npm run test:desktop`. Изменения установщика проверяйте командами из [DESKTOP.md](docs/DESKTOP.md). Performance-проверки запускайте отдельно, без параллельной нагрузки.
 

@@ -927,3 +927,11 @@ When implementation convenience conflicts with the long-term integrity of the pr
 > **The same workflow can be understood visually by a human, structurally by the editor, and mechanically by another system.**
 
 That is the core design constraint of Workflow Architect.
+
+---
+
+# 41. Copyright notice in every script
+
+Every new or changed project-owned script/source file must begin with the exact copyright and GPL-3.0-or-later notice in `docs/COPYRIGHT_NOTICE.txt`, formatted as a comment for its language. Keep a required shebang or HTML doctype first, then the notice. This applies to TypeScript/JavaScript, tests, build scripts, CSS, HTML and executable automation/configuration YAML, PowerShell, Python and shell scripts. JSON cannot contain comments; use package metadata and LICENSE.txt instead.
+
+Run `npm run copyright:check` before declaring a change complete. `npm run copyright:fix` adds missing headers to project-owned files, including new untracked files outside ignored output directories. Generators must preserve the header on their generated project code. Do not replace third-party copyright notices or attribute vendored third-party code to quartz2004. Dependency licenses remain in THIRD_PARTY_NOTICES.md and their original license files.

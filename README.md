@@ -10,7 +10,7 @@
 
 В ветке development/0.2.0 добавлены защита от конфликтов сохранения, единые команды, два локальных профиля и мастер первой настройки. Последний опубликованный локальный установщик ниже относится к alpha.1; новые исходники ещё не означают готовый релиз 0.2.0. [Критерии приёмки](docs/V0.2.0_PLAN.md).
 
-[Участие в разработке](CONTRIBUTING.md), [сообщения о безопасности](SECURITY.md), [зависимости](docs/DEPENDENCIES.md), [сторонние лицензии](THIRD_PARTY_NOTICES.md). Лицензия самого проекта и публичный upstream ещё не выбраны.
+[Участие в разработке](CONTRIBUTING.md), [сообщения о безопасности](SECURITY.md), [зависимости](docs/DEPENDENCIES.md), [сторонние лицензии](THIRD_PARTY_NOTICES.md). Исходники: [quartz2004-lgtm/Workflow-Architect](https://github.com/quartz2004-lgtm/Workflow-Architect). Лицензия — [GPL-3.0-or-later](LICENSE.txt), Copyright (C) 2026 quartz2004.
 
 ## Приложение для Windows 11
 
@@ -71,7 +71,7 @@ npm run test:e2e
 npm run test:performance
 ```
 
-`check` проверяет notices зависимостей, typecheck, lint, unit/integration tests и production build. Playwright проверяет Canvas, engineering, экспорт, восстановление, профили и первую настройку. Desktop suite проверяет закрытие с сохранением, повторный запуск, офлайн-справку и настройки профиля. Результаты и снимки сохраняются в test-results/ и desktop-results/. Performance profile 100/300 nodes запускается отдельно без параллельной нагрузки; [методика](docs/PERFORMANCE.md).
+`check` проверяет copyright-заголовки, notices зависимостей, typecheck, lint, unit/integration tests и production build. Playwright проверяет Canvas, engineering, экспорт, восстановление, профили и первую настройку. Desktop suite проверяет закрытие с сохранением, повторный запуск, офлайн-справку и настройки профиля. Результаты и снимки сохраняются в test-results/ и desktop-results/. Performance profile 100/300 nodes запускается отдельно без параллельной нагрузки; [методика](docs/PERFORMANCE.md).
 
 ## Границы Alpha
 
