@@ -5,13 +5,16 @@ import type { Editor } from '../editor/session'
 export function useShortcuts(editor: Editor) {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey || event.getModifierState('AltGraph')) return
       const target = event.target
       if (event.key === 'F1' && !(target instanceof HTMLElement && target.closest('dialog'))) {
         event.preventDefault(); editor.uiStore.setState({ help: true }); return
       }
-      if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"], dialog')) return
+      if (target instanceof HTMLElement && target.closest('dialog')) return
       const modified = event.ctrlKey || event.metaKey
-      const key = event.key.toLowerCase()
+      const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase()
+      if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]') && !(modified && (key === 'f' || key === 'k'))) return
+      if (event.repeat) return
       let action: (() => void) | undefined
       if (modified) {
         const actions: Record<string, () => void> = { z: event.shiftKey ? editor.redo : editor.undo, c: () => copy(editor), v: () => paste(editor), d: () => duplicate(editor), a: () => selectAll(editor), k: () => editor.uiStore.setState({ palette: true }), f: () => editor.uiStore.setState({ search: true }) }

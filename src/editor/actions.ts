@@ -31,7 +31,15 @@ export function paste(editor: Editor, position?: Position) {
   editor.execute({ type: 'paste', payload })
   editor.select(payload.graph.nodes.map(n => n.id), [], payload.graph.groups.map(g => g.id))
 }
-export function duplicate(editor: Editor) { copy(editor); paste(editor) }
+export function duplicate(editor: Editor) {
+  const { nodeIds, groupIds } = editor.selectionStore.getState()
+  const project = editor.projectStore.getState().project
+  const clipboard = copySelection(project, editor.getActiveGraph(), nodeIds, groupIds)
+  if (!clipboard.graph.nodes.length) return
+  const payload = cloneClipboard(clipboard, project, { x: 40, y: 40 })
+  editor.execute({ type: 'paste', payload })
+  editor.select(payload.graph.nodes.map(n => n.id), [], payload.graph.groups.map(g => g.id))
+}
 export function deleteSelection(editor: Editor) {
   const { nodeIds, edgeIds, groupIds } = editor.selectionStore.getState()
   if (nodeIds.length + edgeIds.length + groupIds.length) editor.execute({ type: 'delete', nodeIds, edgeIds, groupIds })

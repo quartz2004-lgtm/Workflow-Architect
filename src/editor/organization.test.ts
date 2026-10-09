@@ -8,6 +8,7 @@ import { createEditor } from './session'
 import { validateProject } from '../validation/validate-project'
 import { projectToCanvas, domainPosition } from '../canvas/adapter'
 import { alignPosition } from '../canvas/alignment'
+import { copy, duplicate, paste } from './actions'
 
 function fixture() {
   const p = createProject()
@@ -21,6 +22,16 @@ function fixture() {
   return { p, nodes, group, editor: createEditor(p) }
 }
 describe('graph organization', () => {
+  it('duplicates only the current selection without replacing the copy buffer', () => {
+    const { editor, nodes } = fixture()
+    editor.select([nodes[0]!.id]); copy(editor)
+    editor.select(); duplicate(editor)
+    expect(editor.getActiveGraph().nodes).toHaveLength(4)
+    editor.select([nodes[3]!.id]); duplicate(editor)
+    expect(editor.getActiveGraph().nodes).toHaveLength(5)
+    editor.undo(); paste(editor)
+    expect(editor.getActiveGraph().nodes.at(-1)!.position).toEqual({ x: 40, y: 40 })
+  })
   it('converts a group with incoming/outgoing edges without losing any member, contract or label', () => {
     const { p, editor, group, nodes } = fixture()
     editor.execute({ type: 'convert-group', id: group.id })

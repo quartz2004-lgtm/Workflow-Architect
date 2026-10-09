@@ -1,0 +1,43 @@
+import { expect, test, type Page } from '@playwright/test'
+
+async function russian(page: Page, code: string, key: string, ctrlKey = false) {
+  await page.evaluate(({ code, key, ctrlKey }) => {
+    (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { code, key, ctrlKey, bubbles: true, cancelable: true }))
+  }, { code, key, ctrlKey })
+}
+
+test('Russian physical shortcuts edit the graph and preserve input and modal scopes', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('application')).toBeVisible()
+  const nodes = page.locator('.react-flow__node-workflow')
+  await russian(page, 'KeyD', 'в')
+  await expect(nodes).toHaveCount(1)
+  await russian(page, 'KeyC', 'с', true)
+  await russian(page, 'KeyV', 'м', true)
+  await expect(nodes).toHaveCount(2)
+  await russian(page, 'KeyD', 'в', true)
+  await expect(nodes).toHaveCount(3)
+  await russian(page, 'KeyA', 'ф', true)
+  await expect(page.locator('.react-flow__node-workflow.selected')).toHaveCount(3)
+  await page.keyboard.press('Escape')
+  await russian(page, 'KeyD', 'в', true)
+  await expect(nodes).toHaveCount(3)
+  await russian(page, 'KeyZ', 'я', true)
+  await expect(nodes).toHaveCount(2)
+  await page.getByRole('button', { name: 'Fit View', exact: true }).click()
+  await nodes.last().click()
+  const title = page.getByRole('textbox', { name: 'Название', exact: true })
+  await title.focus()
+  await russian(page, 'KeyD', 'в', true)
+  await expect(nodes).toHaveCount(2)
+  await title.press('Control+a'); await title.press('x')
+  await expect(title).toHaveValue('x')
+  await russian(page, 'KeyF', 'а', true)
+  const search = page.getByRole('dialog', { name: 'Поиск по проекту' })
+  await expect(search).toBeVisible()
+  await russian(page, 'KeyD', 'в')
+  await expect(nodes).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await russian(page, 'KeyK', 'л', true)
+  await expect(page.getByRole('dialog', { name: 'Команды и узлы' })).toBeVisible()
+})

@@ -7,6 +7,16 @@ import { createRepository, loadProject, type ProjectRepository } from './reposit
 
 afterEach(() => vi.useRealTimers())
 describe('local persistence', () => {
+  it('reopens and lists a saved snapshot larger than the external import quota', async () => {
+    const name = crypto.randomUUID()
+    const project = createProject('Large local project')
+    project.nodes = Array.from({ length: 115 }, () => ({ ...createNode(), description: 'x'.repeat(95000) }))
+    const repository = createRepository(name)
+    await repository.save(project)
+    expect(new TextEncoder().encode((await repository.loadActive())!).length).toBeGreaterThan(10 * 1024 * 1024)
+    expect(await loadProject(createRepository(name))).toEqual(project)
+    expect(await repository.list()).toEqual([{ id: project.project.id, name: project.project.name, updatedAt: project.project.updatedAt, damaged: false }])
+  })
   it('restores the durable project from a fresh IndexedDB repository instance', async () => {
     const name = crypto.randomUUID()
     const p = createProject()

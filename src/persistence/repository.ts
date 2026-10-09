@@ -1,5 +1,5 @@
 import { openDB, type DBSchema } from 'idb'
-import { assertNoObviousSecrets, deserializeProject, serializeProject } from '../domain/serialization'
+import { assertNoObviousSecrets, deserializeStoredProject, serializeProject } from '../domain/serialization'
 import { projectSchema, type Project } from '../domain/schema'
 
 interface WorkflowDB extends DBSchema {
@@ -28,7 +28,7 @@ export function createRepository(name = 'workflow-architect'): ManagedProjectRep
       const [keys, values] = await Promise.all([tx.store.getAllKeys(), tx.store.getAll()])
       await tx.done
       return values.map((raw, index) => {
-        try { const p = deserializeProject(raw); return { id: keys[index]!, name: p.project.name, updatedAt: p.project.updatedAt, damaged: false } }
+        try { const p = deserializeStoredProject(raw); return { id: keys[index]!, name: p.project.name, updatedAt: p.project.updatedAt, damaged: false } }
         catch {
           let name = 'Повреждённый проект'
           try {
@@ -58,5 +58,5 @@ export function createRepository(name = 'workflow-architect'): ManagedProjectRep
 
 export async function loadProject(repository: ProjectRepository): Promise<Project | undefined> {
   const raw = await repository.loadActive()
-  return raw === undefined ? undefined : deserializeProject(raw)
+  return raw === undefined ? undefined : deserializeStoredProject(raw)
 }

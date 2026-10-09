@@ -23,6 +23,11 @@ export function parseProject(value: unknown): Project {
 
 export function deserializeProject(raw: string): Project {
   if (new TextEncoder().encode(raw).length > maxBytes) throw new ProjectFormatError('Проект превышает лимит импорта 10 MiB.')
+  return deserializeStoredProject(raw)
+}
+
+/** Local snapshots have no import byte quota; every read still validates the full schema. */
+export function deserializeStoredProject(raw: string): Project {
   let value: unknown
   try { value = JSON.parse(raw) } catch { throw new ProjectFormatError('Некорректный JSON. Исходный файл не изменён.') }
   return parseProject(value)

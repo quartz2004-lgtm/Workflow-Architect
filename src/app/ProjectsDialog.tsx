@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useEditor } from './context'
 import { createId, createProject } from '../domain/factories'
-import { deserializeProject } from '../domain/serialization'
+import { deserializeStoredProject } from '../domain/serialization'
 import type { Project } from '../domain/schema'
 import type { Autosave } from '../persistence/autosave'
 import type { ManagedProjectRepository, ProjectSummary } from '../persistence/repository'
@@ -40,7 +40,7 @@ export function ProjectsDialog({ repository, autosave }: { repository: ManagedPr
       const text = await repository.load(id)
       if (text === undefined) throw new Error('Проект не найден.')
       setRaw(text)
-      try { await open(deserializeProject(text)) }
+      try { await open(deserializeStoredProject(text)) }
       catch (error) { setRecovery(recoverProject(text)); throw error }
     } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка загрузки') }
     finally { setBusy(false) }
