@@ -14,6 +14,8 @@ test('automatic height, compatible ports and palette conversion keep edits undoa
   await page.getByRole('button', { name: '◇ Concept Node' }).click()
   const second = page.locator('.react-flow__node-workflow').nth(1)
   await page.getByRole('button', { name: 'Fit View', exact: true }).click()
+  // Locator hover waits for the port to settle after the viewport transform.
+  await first.locator('.source').hover()
   const port = (await first.locator('.source').boundingBox())!
   await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2); await page.mouse.down()
   await page.mouse.move(port.x + 40, port.y + 20, { steps: 5 })

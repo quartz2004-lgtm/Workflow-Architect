@@ -3,8 +3,11 @@ import { deserializeProject, parseProject, ProjectFormatError } from '../domain/
 import type { Project } from '../domain/schema'
 import { importPair, type ExportFiles } from './package-format'
 import { maxImportBytes, readArchive, safeArchivePath } from './archive'
+import { assertPackageLimits, maxExpandedBytes } from './limits'
+import { assertPortableSnapshot } from '../domain/limits'
 
 export function importPackageFiles(files: ExportFiles): Project {
+  assertPackageLimits(files)
   if (Object.keys(files).some(name => !safeArchivePath(name))) throw new ProjectFormatError('Недопустимый путь файла.')
   const candidates = Object.keys(files).filter(name => /(^|\/)project\.json$/.test(name))
   if (candidates.length !== 1) throw new ProjectFormatError('Пакет должен содержать ровно один project.json.')
@@ -17,7 +20,7 @@ export function importPackageFiles(files: ExportFiles): Project {
 }
 
 export function importText(text: string, name: string): Project {
-  if (new TextEncoder().encode(text).length > maxImportBytes) throw new ProjectFormatError('Лимит файла — 10 MiB.')
+  assertPortableSnapshot(text)
   if (/\.ya?ml$/i.test(name)) {
     const doc = parseDocument(text, { uniqueKeys: true })
     if (doc.errors.length || doc.warnings.length) throw new ProjectFormatError('Некорректный YAML или неподдерживаемый YAML tag.')
@@ -29,7 +32,8 @@ export function importText(text: string, name: string): Project {
 
 export async function importProjectFiles(files: readonly File[]): Promise<Project> {
   if (!files.length) throw new ProjectFormatError('Выберите файл проекта.')
-  if (files.reduce((sum, file) => sum + file.size, 0) > maxImportBytes) throw new ProjectFormatError('Лимит импорта — 10 MiB.')
+  const byteLimit = files.length === 1 ? maxImportBytes : maxExpandedBytes
+  if (files.reduce((sum, file) => sum + file.size, 0) > byteLimit) throw new ProjectFormatError(`Лимит импорта — ${byteLimit / 1024 / 1024} MiB.`)
   if (files.length === 1) {
     const file = files[0]!
     if (/\.zip$/i.test(file.name)) return importPackageFiles(await readArchive(new Uint8Array(await file.arrayBuffer())))

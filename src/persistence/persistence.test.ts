@@ -7,7 +7,7 @@ import { createRepository, loadProject, type ProjectRepository } from './reposit
 
 afterEach(() => vi.useRealTimers())
 describe('local persistence', () => {
-  it('reopens and lists a saved snapshot larger than the external import quota', async () => {
+  it('reopens and lists a saved snapshot larger than the legacy 10 MiB quota', async () => {
     const name = crypto.randomUUID()
     const project = createProject('Large local project')
     project.nodes = Array.from({ length: 115 }, () => ({ ...createNode(), description: 'x'.repeat(95000) }))
@@ -62,7 +62,7 @@ describe('local persistence', () => {
     const autosave = startAutosave(editor, repo)
     const before = editor.projectStore.getState().project
     await autosave.flush()
-    expect(autosave.statusStore.getState()).toEqual({ status: 'error', error: 'Quota exceeded' })
+    expect(autosave.statusStore.getState()).toEqual({ status: 'error', error: 'Quota exceeded', conflict: false })
     expect(editor.projectStore.getState().project).toBe(before)
     fail = false; await autosave.flush()
     expect(autosave.statusStore.getState().status).toBe('saved')

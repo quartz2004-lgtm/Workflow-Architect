@@ -5,6 +5,7 @@ import { Modal } from '../shared/Modal'
 import { downloadBlob, downloadText } from '../shared/download'
 import { exportFiles, exportTargets } from './exporters'
 import { createArchive } from './archive'
+import { serializeProject } from '../domain/serialization'
 import type { ExportFiles } from './package-format'
 
 export function ExportDialog() {
@@ -37,6 +38,7 @@ export function ExportDialog() {
       </section></div>
     <div className="export-footer"><div><span>{issues.filter(i => i.severity === 'error').length} Errors · {issues.filter(i => i.severity === 'warning').length} Warnings · {issues.filter(i => i.severity === 'info').length} Notes</span><p className="muted">Warnings не блокируют экспорт. Snapshot сохраняет черновик с диагностикой.</p></div><button className="primary" disabled={busy || !!prepared.error} onClick={() => { void download() }}>{busy ? 'Подготовка…' : 'Скачать экспорт'}</button></div>
     {(prepared.error || error) && <p className="field-error" role="alert">{prepared.error || error}</p>}
+    {(prepared.error || error) && <div className="inline-actions"><button onClick={() => editor.safely(() => downloadText('project-emergency-backup.json', serializeProject(project)))}>Аварийная копия JSON</button><span className="muted">Полный JSON без квоты экспорта. Файлы свыше 64 MiB требуют уменьшения перед импортом.</span></div>}
     {!!issues.length && <button disabled={busy} onClick={() => { close(); editor.validationStore.setState({ open: true }) }}>Открыть диагностику</button>}
   </Modal>
 }

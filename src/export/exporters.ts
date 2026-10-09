@@ -6,6 +6,8 @@ import { architectureMarkdown } from './markdown'
 import { projectPair, type ExportFiles } from './package-format'
 import { resourceFiles } from './resources'
 import { codexFiles } from './codex'
+import { assertPortableSnapshot } from '../domain/limits'
+import { assertPackageLimits } from './limits'
 
 export type ExportTarget = 'json' | 'yaml' | 'archive' | 'markdown' | 'codex'
 export const exportTargets: { id: ExportTarget; label: string; description: string; raw?: boolean }[] = [
@@ -17,13 +19,18 @@ export const exportTargets: { id: ExportTarget; label: string; description: stri
 ]
 export function exportFiles(value: Project, target: ExportTarget): ExportFiles {
   const project = parseProject(value)
-  if (target === 'json') return { 'project-snapshot.json': serializeProject(project) }
-  if (target === 'yaml') return { 'project-snapshot.yaml': stringify(project, { aliasDuplicateObjects: false }) }
+  if (target === 'json' || target === 'yaml') {
+    const raw = target === 'json' ? serializeProject(project) : stringify(project, { aliasDuplicateObjects: false })
+    assertPortableSnapshot(raw)
+    return { [`project-snapshot.${target}`]: raw }
+  }
   const errors = validateProject(project).filter(issue => issue.severity === 'error')
   if (errors.length) throw new Error(`Engineering export недоступен: ${errors.length} Errors. Исправьте диагностику или сохраните raw snapshot.`)
   if (target === 'markdown') return { 'architecture.md': architectureMarkdown(project) }
   const files = { ...projectPair(project), ...resourceFiles(project), 'docs/architecture.md': architectureMarkdown(project),
     'README.md': `# Workflow Architect project\n\nSchema version: 0.1\n\nИмпортируйте этот ZIP либо project.json + workflow.json вместе. Эта пара содержит весь проект и является единственным источником данных при импорте. Остальные файлы сгенерированы из неё для чтения и реализации; их отдельное редактирование не изменяет импортируемый граф.\n\nJSON snapshot — самостоятельный формат с полем project; package project.json содержит только метаданные. Имена файлов ресурсов основаны на стабильных UUID. В agent prompt-файле shared prompt предшествует локальным инструкциям.\n\nГраф является спецификацией. Архив не запускает инструменты и не включает production runtime. Незавершённые поля перечислены в docs/architecture.md.\n`,
   }
-  return target === 'codex' ? { ...files, ...codexFiles(project) } : files
+  const result = target === 'codex' ? { ...files, ...codexFiles(project) } : files
+  assertPackageLimits(result)
+  return result
 }

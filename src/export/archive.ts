@@ -1,15 +1,14 @@
 import { AsyncUnzipInflate, strToU8, Unzip, zip, type UnzipFile } from 'fflate'
 import type { ExportFiles } from './package-format'
+import { assertPackageLimits, maxArchiveFiles, maxExpandedBytes, maxImportBytes, safeArchivePath } from './limits'
+export { maxImportBytes, safeArchivePath } from './limits'
 
-export const maxImportBytes = 10 * 1024 * 1024
-const maxExpandedBytes = 32 * 1024 * 1024
-export function safeArchivePath(path: string): boolean {
-  return !!path && !path.startsWith('/') && !/[\\:]/.test(path) && !Array.from(path).some(char => char.charCodeAt(0) < 32) && path.split('/').every(part => part !== '.' && part !== '..' && part !== '')
-}
 export function createArchive(files: ExportFiles): Promise<Uint8Array<ArrayBuffer>> {
   return new Promise((resolve, reject) => {
+    assertPackageLimits(files)
     zip(Object.fromEntries(Object.entries(files).map(([name, text]) => [name, strToU8(text)])), { level: 6 }, (error, data) => {
       if (error) reject(error)
+      else if (data.byteLength > maxImportBytes) reject(new Error('Сжатый архив превышает 64 MiB. Сохраните JSON snapshot или аварийную копию.'))
       else resolve(new Uint8Array(data))
     })
   })
@@ -17,7 +16,7 @@ export function createArchive(files: ExportFiles): Promise<Uint8Array<ArrayBuffe
 
 /** Streaming output limits also apply when ZIP headers lie about expanded size. */
 export function readArchive(data: Uint8Array): Promise<ExportFiles> {
-  if (data.byteLength > maxImportBytes) return Promise.reject(new Error('Лимит архива — 10 MiB.'))
+  if (data.byteLength > maxImportBytes) return Promise.reject(new Error('Лимит архива — 64 MiB.'))
   return new Promise((resolve, reject) => {
     const files: ExportFiles = Object.create(null) as ExportFiles
     const seen = new Set<string>()
@@ -28,10 +27,10 @@ export function readArchive(data: Uint8Array): Promise<ExportFiles> {
     const unzip = new Unzip(file => {
       if (failed) return
       const name = file.name.endsWith('/') ? file.name.slice(0, -1) : file.name
-      if (!safeArchivePath(name) || seen.has(name) || seen.size >= 2000) { fail(new Error('Недопустимый путь, повторяющийся файл или слишком много файлов в ZIP.')); return }
+      if (!safeArchivePath(name) || seen.has(name) || seen.size >= maxArchiveFiles) { fail(new Error('Недопустимый путь, повторяющийся файл или слишком много файлов в ZIP.')); return }
       seen.add(name)
       if (file.name.endsWith('/')) return
-      if ((file.originalSize ?? 0) > maxExpandedBytes) { fail(new Error('Распакованный архив превышает 32 MiB.')); return }
+      if ((file.originalSize ?? 0) > maxExpandedBytes) { fail(new Error('Распакованный архив превышает 128 MiB.')); return }
       const chunks: Uint8Array[] = []
       let size = 0
       active.add(file); pending++
@@ -39,7 +38,7 @@ export function readArchive(data: Uint8Array): Promise<ExportFiles> {
         if (failed) return
         if (error) { fail(error); return }
         size += chunk.byteLength; total += chunk.byteLength
-        if (total > maxExpandedBytes) { fail(new Error('Распакованный архив превышает 32 MiB.')); return }
+        if (total > maxExpandedBytes) { fail(new Error('Распакованный архив превышает 128 MiB.')); return }
         chunks.push(chunk)
         if (final) {
           try {

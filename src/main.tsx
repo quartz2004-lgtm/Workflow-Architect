@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
 import { createProject } from './domain/factories'
-import { deserializeStoredProject } from './domain/serialization'
+import { openStoredProject } from './persistence/open-project'
 import { createEditor } from './editor/session'
 import { startAutosave } from './persistence/autosave'
 import { createRepository } from './persistence/repository'
@@ -30,7 +30,7 @@ async function boot() {
   }
   try {
     raw = await repository.loadActive()
-    launch(raw === undefined ? createProject() : deserializeStoredProject(raw))
+    launch(raw === undefined ? createProject() : await openStoredProject(raw))
   } catch (error) {
     root.render(<RecoveryScreen raw={raw} error={error instanceof Error ? error.message : 'Хранилище недоступно.'} open={launch} blank={() => launch(createProject())} />)
   }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { assertPortableSnapshot } from '../domain/limits'
 import { createId, createNode, createProject } from '../domain/factories'
 import { nodeSchema, projectSchema, type Project } from '../domain/schema'
 import { assertNoObviousSecrets, parseProject } from '../domain/serialization'
@@ -13,7 +14,7 @@ export function recoverProject(raw: string): RecoveryReport {
   const add = (path: string, message: string, entityId?: string, original?: unknown) => report.issues.push({ path, message, entityId, original })
   let value: Record<string, unknown>
   try {
-    if (new TextEncoder().encode(raw).length > 10 * 1024 * 1024) throw new Error('Лимит восстановления — 10 MiB.')
+    assertPortableSnapshot(raw)
     value = record(JSON.parse(raw))
     if (value.schemaVersion !== '0.1') throw new Error('Автоматическое восстановление поддерживает только schemaVersion 0.1.')
   } catch (error) { add('project', error instanceof Error ? error.message : 'Некорректный JSON.'); return report }

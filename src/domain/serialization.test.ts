@@ -35,6 +35,6 @@ describe('project boundary', () => {
   })
   it('rejects executable links and oversized imports', () => {
     expect(() => parseProject({ ...createProject(), nodes: [{ ...createNode(), links: ['javascript:alert(1)'] }] })).toThrow()
-    expect(() => deserializeProject(' '.repeat(10 * 1024 * 1024 + 1))).toThrow('10 MiB')
+    expect(() => deserializeProject(' '.repeat(64 * 1024 * 1024 + 1))).toThrow('64 MiB')
   })
 })

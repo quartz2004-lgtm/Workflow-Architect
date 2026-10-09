@@ -28,6 +28,19 @@ function fixture() {
 }
 
 describe('portable exports', () => {
+  it('round trips a legacy oversized snapshot through portable JSON and ZIP', async () => {
+    const project = createProject('Large portable draft')
+    project.nodes = Array.from({ length: 115 }, () => ({ ...createNode(), description: 'x'.repeat(95000) }))
+    const json = exportFiles(project, 'json')['project-snapshot.json']!
+    expect(new TextEncoder().encode(json).byteLength).toBeGreaterThan(10 * 1024 * 1024)
+    expect(importText(json, 'project.json')).toEqual(project)
+    expect(importPackageFiles(await readArchive(await createArchive(projectPair(project))))).toEqual(project)
+  })
+  it('rejects non-portable archive output before compression', async () => {
+    await expect(createArchive({ '../escape.txt': 'data' })).rejects.toThrow('путь')
+    await expect(createArchive(Object.fromEntries(Array.from({ length: 2001 }, (_, i) => [`${i}.txt`, ''])))).rejects.toThrow('2000')
+    await expect(createArchive({ 'large.txt': 'x'.repeat(128 * 1024 * 1024 + 1) })).rejects.toThrow('128 MiB')
+  })
   it('round trips nested graphs, boundary ports, resources, configs and editor settings through the pair and ZIP', async () => {
     const { project } = fixture()
     const files = exportFiles(project, 'archive')
@@ -82,7 +95,7 @@ describe('portable exports', () => {
     const small = zipSync({ 'one.json': strToU8('{}') })
     const doubled = new Uint8Array(small.length * 2); doubled.set(small); doubled.set(small, small.length)
     await expect(readArchive(doubled)).rejects.toThrow('повторяющийся')
-    await expect(readArchive(zipSync({ 'huge.json': new Uint8Array(33 * 1024 * 1024) }))).rejects.toThrow('32 MiB')
+    await expect(readArchive(zipSync({ 'huge.json': new Uint8Array(129 * 1024 * 1024) }))).rejects.toThrow('128 MiB')
     expect(() => importText('x: &x [1]\ny: *x', 'bad.yaml')).toThrow()
     expect(() => importText('x: 1\nx: 2', 'bad.yaml')).toThrow('YAML')
     const project = createProject(); project.project.description = `sk-${'a'.repeat(24)}`

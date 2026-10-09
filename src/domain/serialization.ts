@@ -1,7 +1,7 @@
 import { projectSchema, type Project } from './schema'
+import { assertPortableSnapshot } from './limits'
 
 export class ProjectFormatError extends Error {}
-const maxBytes = 10 * 1024 * 1024
 
 // Deliberately narrow: detect obvious credentials without claiming arbitrary prose is secret-free.
 export function assertNoObviousSecrets(value: unknown): void {
@@ -22,7 +22,7 @@ export function parseProject(value: unknown): Project {
 }
 
 export function deserializeProject(raw: string): Project {
-  if (new TextEncoder().encode(raw).length > maxBytes) throw new ProjectFormatError('Проект превышает лимит импорта 10 MiB.')
+  assertPortableSnapshot(raw)
   return deserializeStoredProject(raw)
 }
 
