@@ -83,8 +83,10 @@ test('palette, copy/paste, duplicate, alignment, context menu, fit-selection and
   await expect(page.locator('.react-flow__node-workflow')).toHaveCount(3)
   await page.keyboard.press('Control+a')
   await page.getByRole('button', { name: 'По верхнему краю', exact: true }).click()
-  const ys = await page.locator('.react-flow__node-workflow').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().y))
-  expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1)
+  await expect.poll(async () => {
+    const ys = await page.locator('.react-flow__node-workflow').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().y))
+    return Math.max(...ys) - Math.min(...ys)
+  }).toBeLessThan(1)
   await page.keyboard.press('Control+z')
   await page.keyboard.press('Shift+f')
   await page.getByRole('button', { name: 'Fit View', exact: true }).click()
