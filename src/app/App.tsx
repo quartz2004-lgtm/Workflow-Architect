@@ -1,3 +1,4 @@
+import { runUiCommand } from '../editor/ui-commands'
 import { lazy, Suspense, useEffect } from 'react'
 import { useStore } from 'zustand'
 import type { Editor } from '../editor/session'
@@ -52,7 +53,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
   const saveLabel = { saved: 'Сохранено', saving: 'Сохранение…', unsaved: 'Есть изменения', error: 'Ошибка сохранения' }[save.status]
   return <div className="app-shell" data-motion={motion}>
     <header className="topbar"><div className="brand" aria-label="Workflow Architect">W<span>Λ</span></div><button className="project-heading" aria-label="Открыть проекты" onClick={() => editor.uiStore.setState({ projects: true })}><span>WORKFLOW ARCHITECT</span><strong>{name} ▾</strong></button><button className="mode-badge" aria-label="Режим редактора" onClick={() => editor.execute({ type: 'edit-settings', changes: { defaultMode: mode === 'concept' ? 'engineering' : 'concept' } })}>{mode === 'concept' ? 'Concept' : 'Engineering'}</button>
-      <div className="history-actions"><button aria-label="Отменить" title="Отменить · Ctrl+Z" disabled={!history.past.length} onClick={() => editor.safely(editor.undo)}>↶</button><button aria-label="Повторить" title="Повторить · Ctrl+Shift+Z" disabled={!history.future.length} onClick={() => editor.safely(editor.redo)}>↷</button></div>
+      <div className="history-actions"><button aria-label="Отменить" title="Отменить · Ctrl+Z" disabled={!history.past.length} onClick={() => runUiCommand(editor, 'undo')}>↶</button><button aria-label="Повторить" title="Повторить · Ctrl+Shift+Z" disabled={!history.future.length} onClick={() => runUiCommand(editor, 'redo')}>↷</button></div>
       <span className={`save-status ${save.status}`} role="status">{save.status === 'saved' ? '✓' : '○'} {saveLabel}</span>
       <button onClick={() => editor.validationStore.setState(s => ({ open: !s.open }))}>Validate</button>
       <button onClick={() => editor.preview.start(editor.projectStore.getState().project, editor.navigationStore.getState().graphId, motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches)}>Preview</button>
@@ -73,7 +74,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
       {help && <Almanac />}
     </Suspense>
     {palette && <CommandPalette />}{search && <SearchDialog />}
-    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => editor.uiStore.setState({ palette: true })}>Команды</button><button onClick={() => editor.uiStore.setState({ search: true })}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => editor.uiStore.setState({ help: true })}>Альманах</button><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
+    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => runUiCommand(editor, 'palette')}>Команды</button><button onClick={() => runUiCommand(editor, 'search')}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => runUiCommand(editor, 'help')}>Альманах</button><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
   </div>
 }
 export function App({ editor, autosave, repository }: { editor: Editor; autosave: Autosave; repository: ManagedProjectRepository }) { return <EditorContext.Provider value={editor}><Workspace autosave={autosave} repository={repository} /></EditorContext.Provider> }

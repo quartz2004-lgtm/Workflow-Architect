@@ -5,6 +5,7 @@ import { makeGroup } from './organization'
 import type { Editor } from './session'
 
 const clipboards = new WeakMap<Editor, GraphClipboard>()
+export function canPaste(editor: Editor) { return Boolean(clipboards.get(editor)?.graph.nodes.length) }
 export function addNode(editor: Editor, type: NodeType, position?: Position) {
   const node = createNode(type, position ?? editor.canvasStore.getState().center)
   editor.execute({ type: 'create-node', node })
