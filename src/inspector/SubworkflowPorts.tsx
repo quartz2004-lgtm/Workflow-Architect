@@ -9,7 +9,7 @@ export function SubworkflowPorts({ node }: { node: Extract<WorkflowNode, { type:
   if (!graph) return null
   return <details className="inspector-section" open><summary>Открытые входы и выходы</summary>
     <button onClick={() => editor.navigate(graph.id)}>Открыть внутренний Canvas</button>
-    {node.ports.map(port => <SelectField key={port.id} label={`${port.name} · ${port.direction}`} value={port.binding ? `${port.binding.nodeId}:${port.binding.portId ?? ''}` : ''}
+    {node.ports.map(port => <SelectField key={port.id} helpKey="subworkflow.binding" label={`${port.name} · ${port.direction}`} value={port.binding ? `${port.binding.nodeId}:${port.binding.portId ?? ''}` : ''}
       options={graph.nodes.flatMap(n => n.ports.filter(p => p.direction === port.direction && p.kind === port.kind).map(p => ({ value: `${n.id}:${p.id}`, label: `${n.title} → ${p.name}` })))}
       commit={value => editor.safely(() => {
         const [nodeId, portId] = value.split(':')

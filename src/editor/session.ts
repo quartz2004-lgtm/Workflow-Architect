@@ -18,7 +18,7 @@ export function createEditor(initial: Project = createProject()) {
   const selectionStore = createStore(() => ({ nodeIds: [] as string[], edgeIds: [] as string[], groupIds: [] as string[] }))
   const navigationStore = createStore(() => ({ graphId: null as string | null, path: [null] as (string | null)[] }))
   const canvasStore = createStore(() => ({ zoom: 1, minimap: true, focusNodeId: null as string | null, autoHeightId: null as string | null, connectionStart: null as { nodeId: string; portId: string; direction: 'source' | 'target' } | null, center: { x: 100, y: 100 }, action: null as 'fit-project' | 'fit-selection' | 'reset' | 'zoom-in' | 'zoom-out' | null }))
-  const uiStore = createStore(() => ({ error: null as string | null, resources: false, projects: false, palette: false, search: false, help: false, insertion: null as { x: number; y: number } | null }))
+  const uiStore = createStore(() => ({ error: null as string | null, resources: false, projects: false, palette: false, search: false, help: false, helpChapter: null as string | null, insertion: null as { x: number; y: number } | null }))
   const validationStore = createStore(() => ({ open: false, issues: validateProject(initial) }))
   const exportStore = createExportStore()
   const recoveryStore = createStore(() => ({ report: null as RecoveryReport | null, open: false }))

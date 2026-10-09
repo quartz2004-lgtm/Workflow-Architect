@@ -1,6 +1,8 @@
 import type { NodeType } from '../domain/schema'
+import type { FieldHelpKey } from '../help/field-help'
 
 export interface ConfigField {
+  helpKey?: FieldHelpKey
   path: string
   label: string
   kind: 'text' | 'multiline' | 'number' | 'select' | 'list' | 'json' | 'contract' | 'prompt' | 'node-ref' | 'node-list' | 'prompt-ref'

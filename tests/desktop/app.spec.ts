@@ -14,6 +14,30 @@ async function launch(profile: string) {
   })
 }
 
+test('desktop shortcuts and contextual field help work without changing the project format', async () => {
+  const profile = await mkdtemp(join(tmpdir(), 'workflow-desktop-help-'))
+  const application = await launch(profile)
+  try {
+    const page = await application.firstWindow()
+    await expect(page.getByRole('application')).toBeVisible()
+    await page.keyboard.press('a')
+    await page.keyboard.press('Control+c'); await page.keyboard.press('Control+v')
+    await expect(page.locator('.react-flow__node-workflow')).toHaveCount(2)
+    await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', key: 'в', ctrlKey: true, bubbles: true, cancelable: true })))
+    await expect(page.locator('.react-flow__node-workflow')).toHaveCount(3)
+    const help = page.getByRole('button', { name: 'Справка: Роль', exact: true })
+    await help.focus()
+    const panel = page.getByRole('region', { name: 'Подсказка: Роль', exact: true })
+    await expect(panel).toContainText('Кем является агент')
+    await panel.getByRole('button', { name: 'Подробнее в альманахе' }).click()
+    await expect(page.getByRole('heading', { name: 'Agent: роль, модель и инструкции' })).toBeVisible()
+    await page.screenshot({ path: 'desktop-results/contextual-almanac.png' })
+    await page.keyboard.press('Escape')
+    await expect(help).toBeFocused()
+    await expect(page.locator('.react-flow__node-workflow')).toHaveCount(3)
+  } finally { await application.close() }
+})
+
 test('offline desktop: sandbox, edit, close with pending input, restart, native export and ZIP import', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'workflow-desktop-'))
   let application = await launch(profile)
@@ -43,7 +67,7 @@ test('offline desktop: sandbox, edit, close with pending input, restart, native 
     await application.evaluate(({ session }, path) => {
       session.defaultSession.once('will-download', (_event, item) => item.setSavePath(path))
     }, exported)
-    await page.getByRole('button', { name: 'Экспорт', exact: false }).click()
+    await page.getByRole('button', { name: /^Экспорт/ }).click()
     await page.getByRole('button', { name: 'Codex package' }).click()
     await page.getByRole('button', { name: 'Скачать экспорт' }).click()
     await expect.poll(async () => (await readFile(exported).catch(() => Buffer.alloc(0))).length).toBeGreaterThan(100)

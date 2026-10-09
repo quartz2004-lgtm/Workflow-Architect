@@ -1,0 +1,8 @@
+.field > .field-heading, .field-heading { display: flex; align-items: center; gap: 7px; min-height: 20px; }
+.field-heading > label { cursor: text; }
+.field-help { display: inline-flex; }
+.field-help-trigger { display: inline-grid; place-items: center; width: 17px; height: 17px; min-height: 0; padding: 0; border: 1px solid var(--border); border-radius: 50%; font-size: 11px; line-height: 1; color: var(--muted); background: transparent; }
+.field-help-trigger:hover, .field-help-trigger:focus-visible, .field-help-trigger[aria-expanded="true"] { color: var(--text); border-color: var(--muted); }
+.field-help-panel { position: fixed; inset: auto; margin: 0; width: min(310px, calc(100vw - 24px)); padding: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 12px 36px #0006; font-size: 12px; line-height: 1.6; }
+.field-help-panel p { margin: 7px 0 12px; color: var(--muted); }
+.field-help-panel > button { width: 100%; text-align: left; font-size: 11px; }

@@ -66,6 +66,6 @@ test('empty state offers three templates and project export defaults persist wit
   await page.getByRole('button', { name: 'Повторить', exact: true }).click()
   await expect(page.locator('.save-status')).toContainText('Сохранено')
   await page.reload()
-  await page.getByRole('button', { name: 'Экспорт', exact: false }).click()
+  await page.getByRole('button', { name: /^Экспорт/ }).click()
   await expect(page.getByRole('button', { name: 'Codex package' })).toHaveAttribute('aria-pressed', 'true')
 })
