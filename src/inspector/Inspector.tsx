@@ -75,6 +75,6 @@ export function Inspector() {
         </details><button onClick={() => editor.uiStore.setState({ resources: true })}>Общие схемы и prompts</button>
         <div className="property-summary"><span>Узлы</span><strong>{project.nodes.length}</strong><span>Связи</span><strong>{project.edges.length}</strong><span>Хранение</span><span>На этом устройстве</span></div>
       </>}
-    </div><div className="inspector-footer">WORKFLOW ARCHITECT <span>0.2 / ALPHA 1</span></div>
+    </div><div className="inspector-footer">WORKFLOW ARCHITECT <span>0.3 / LOCAL RUN</span></div>
   </aside>
 }

@@ -137,7 +137,7 @@ Unit/integration tests покрывают все типы при round trip, ver
 
 Дополнительно проверены boundary conversion с внешними contracts, scoped undo/navigation, collapse projections, deep duplicate/remapping, references между подсистемами, каскадное удаление exposed ports, alignment и переход к вложенному узлу через поиск. Browser checks охватывают движение группы, сворачивание, конвертацию, reload, palette/clipboard/context menus и клавиатуру.
 
-Exporters потребляют только domain model. Вложенные графы входят во все форматы, а ZIP/pair/YAML round trip проверяется автоматически. Инженерные errors блокируют archive/Markdown/Codex, snapshots допускают semantic diagnostics. Импорт ZIP ограничивает compressed/expanded size, entries и пути; YAML запрещает aliases и неизвестные tags. Подробности — ADR 0003. Экспорт и импорт загружаются по требованию. MCP, живая Codex integration и runtime не реализуются; Codex получает статический implementation package. Полноэкранный редактор prompts использует CodeMirror с Markdown syntax highlighting и загружается по требованию.
+Exporters потребляют только domain model. Вложенные графы входят во все форматы, а ZIP/pair/YAML round trip проверяется автоматически. Инженерные errors блокируют archive/Markdown/Codex, snapshots допускают semantic diagnostics. Импорт ZIP ограничивает compressed/expanded size, entries и пути; YAML запрещает aliases и неизвестные tags. Подробности — ADR 0003. Экспорт и импорт загружаются по требованию. MCP и живая Codex integration пока не реализованы; локальный runtime 0.3 описан выше; Codex получает статический implementation package. Полноэкранный редактор prompts использует CodeMirror с Markdown syntax highlighting и загружается по требованию.
 
 ## Первичные API references
 
