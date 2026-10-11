@@ -56,6 +56,8 @@ app / inspector / canvas UI
 
 ## Desktop shell: реализация
 
+Разрабатываемая 0.3.1: `runtime/atomic-store.ts` предоставляет отдельное файловое хранилище с атомарной заменой и квотами; `execution/checkpoint.ts` и `ExecutionRun` поддерживают проверенные сериализуемые контрольные точки очереди, вложенных вызовов, результатов, Loop и Human. Эти возможности пока не подключены к desktop: текущий пользовательский запуск по-прежнему принадлежит Worker окна. План перехода — [ADR 0008](decisions/0008-background-runtime.md).
+
 Windows-приложение использует тот же production React build внутри изолированного Electron renderer. `desktop/main.cts` обслуживает локальные ресурсы через `workflow://app`, управляет окном и native Save As. `desktop/preload.cts` раскрывает только close/save handshake; `src/platform/desktop.ts` связывает его с существующим autosave. Native типы не попадают в domain/editor/export.
 
 JSON-метасхемы Ajv компилируются заранее в `src/validation/generated`, что позволяет запретить eval в CSP. Протокол закрыт для внешних запросов, навигации и разрешений. NSIS устанавливает приложение для текущего пользователя. Детали и компромиссы: [ADR 0005](decisions/0005-windows-desktop.md), [инструкция Windows](DESKTOP.md).
