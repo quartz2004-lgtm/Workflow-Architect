@@ -60,13 +60,14 @@ export class ExecutionRun {
   private frames: Context[] = []
   private restored: CheckpointFrame[] = []
   private resumed = false
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; save?: (checkpoint: RunCheckpoint) => void } = {}) {
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void } = {}) {
     if (plan.planVersion !== '0.3') throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
     if (!verified.ok) throw new Error(verified.diagnostics.map(issue => issue.message).join('\n'))
     // Recompile at the execution boundary; supplied limits and mutable plan objects are not trusted.
     this.plan = { ...verified.plan, id: plan.id, createdAt: plan.createdAt }
+    if (persistence.deadline !== undefined && (!Number.isSafeInteger(persistence.deadline) || persistence.deadline <= 0)) throw new Error('Некорректный deadline запуска.')
     this.id = createId()
     if (persistence.checkpoint !== undefined) {
       const saved = parseCheckpoint(persistence.checkpoint, this.plan)
@@ -114,7 +115,7 @@ export class ExecutionRun {
   async start(input: unknown): Promise<RunOutcome> {
     if (this.started) throw new Error('Этот запуск уже начат; создайте новый run.')
     this.started = true
-    if (!this.resumed) this.deadline = Date.now() + this.plan.limits.timeoutMs
+    if (!this.resumed) this.deadline = Math.min(Date.now() + this.plan.limits.timeoutMs, this.persistence.deadline ?? Infinity)
     let failure: RunOutcome['error']
     try {
       if (!this.resumed) this.changeStatus('queued')
