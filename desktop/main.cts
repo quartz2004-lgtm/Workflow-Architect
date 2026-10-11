@@ -168,7 +168,12 @@ async function openWindow() {
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
-  app.on('second-instance', () => { void openWindow() })
+  let shellReady = false, openRequested = false
+  app.on('second-instance', () => {
+    // A second launch can arrive while async vault/runtime initialization is still pending.
+    openRequested = true
+    if (shellReady) void openWindow()
+  })
   void app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark'
     Menu.setApplicationMenu(null)
@@ -207,7 +212,8 @@ else {
         if (state === 'interrupted') dialog.showErrorBox('Экспорт не сохранён', 'Не удалось записать файл. Выберите другую папку и повторите экспорт.')
       })
     })
-    if (!process.argv.includes('--background')) await openWindow()
+    shellReady = true
+    if (openRequested || !process.argv.includes('--background')) await openWindow()
   })
   app.on('window-all-closed', () => { /* The tray and allowed runtime jobs outlive the editor window. */ })
   app.on('before-quit', event => { if (!exiting) { event.preventDefault(); requestQuit() } })
