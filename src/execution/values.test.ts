@@ -58,6 +58,8 @@ describe('declarative execution values', () => {
   })
   it('bounds values before cloning or recursive interpretation', () => {
     expect(() => assertValueBudget({ ok: [true, null, 3] })).not.toThrow()
+    const shared = { value: 3 }
+    expect(() => assertValueBudget({ first: shared, second: shared })).not.toThrow()
     expect(() => assertValueBudget({ number: Infinity })).toThrow('нечисловое')
     expect(() => assertValueBudget({ value: undefined })).toThrow('не является JSON')
     expect(() => assertValueBudget('x'.repeat(100), 50)).toThrow('лимит')

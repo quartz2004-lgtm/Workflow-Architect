@@ -101,22 +101,26 @@ export function mapValue(config: Extract<ExecutionConfig, { kind: 'map' }>, inpu
 }
 
 /** Validate once at execution boundaries before recursive operations or structuredClone. */
-export function assertValueBudget(value: unknown, maxBytes = 2 * 1024 * 1024): asserts value is JsonValue {
+export function assertValueBudget(value: unknown, maxBytes = 2 * 1024 * 1024, omitOptionalProperties = false): asserts value is JsonValue {
   let approximateBytes = 0
   const seen = new Set<object>()
-  const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }]
+  const pending: { value: unknown; depth: number; exiting?: boolean }[] = [{ value, depth: 0 }]
   while (pending.length) {
     const item = pending.pop()!
+    if (item.exiting && item.value && typeof item.value === 'object') { seen.delete(item.value); continue }
     if (item.depth > 64) throw new ExecutionValueError('Превышена глубина JSON (64).')
     const current = item.value
     approximateBytes += 8
     if (typeof current === 'string') approximateBytes += current.length * 6
     else if (typeof current === 'number') { if (!Number.isFinite(current)) throw new ExecutionValueError('JSON содержит нечисловое значение.') }
     else if (current !== null && typeof current === 'object') {
-      if (seen.has(current)) throw new ExecutionValueError('JSON содержит циклическую или общую ссылку.')
+      if (seen.has(current)) throw new ExecutionValueError('JSON содержит циклическую ссылку.')
       seen.add(current)
+      pending.push({ value: current, depth: item.depth, exiting: true })
       if (!Array.isArray(current) && Object.getPrototypeOf(current) !== Object.prototype && Object.getPrototypeOf(current) !== null) throw new ExecutionValueError('Ожидаются обычные JSON-объекты.')
       for (const [key, child] of Object.entries(current)) {
+        // Domain drafts may hold absent optional properties; serialization omits them.
+        if (omitOptionalProperties && !Array.isArray(current) && child === undefined) continue
         approximateBytes += key.length * 6
         pending.push({ value: child, depth: item.depth + 1 })
         if (pending.length > 100_000) throw new ExecutionValueError('Слишком много JSON-элементов.')
