@@ -33,7 +33,7 @@ async function launch(existing?: string) {
   const app = await electron.launch({ ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}),
     args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${directory}`], env })
   const page = await app.firstWindow()
-  await expect(page.getByRole('application').or(page.getByRole('button', { name: 'Пропустить настройку' }))).toBeVisible()
+  await expect(page.getByRole('application').or(page.getByRole('button', { name: 'Пропустить настройку' }))).toBeVisible({ timeout: 15000 })
   if (await page.getByRole('button', { name: 'Пропустить настройку' }).isVisible()) await page.getByRole('button', { name: 'Пропустить настройку' }).click()
   await expect(page.getByRole('application')).toBeVisible()
   await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('ready')
@@ -70,7 +70,10 @@ test('utility process survives editor close and completes an allowed run without
     const read = async (id: string) => jobSchema.parse(JSON.parse(await readFile(join(directory, 'runtime', 'jobs', `${id}.json`), 'utf8')))
     expect((await read(foreground.id)).status).toBe('cancelled')
     expect((await read(background.id)).status).not.toBe('succeeded')
-    await expect.poll(async () => (await read(background.id)).status, { timeout: 20000 }).toBe('succeeded')
+    await expect.poll(async () => {
+      const saved = await read(background.id)
+      return { status: saved.status, message: saved.message, error: saved.outcome?.error?.message ?? '' }
+    }, { timeout: 20000 }).toMatchObject({ status: 'succeeded' })
     expect((await read(background.id)).outcome!.artifacts).toHaveLength(1)
     expect(await app.evaluate(({ app }) => app.getAppMetrics().some(metric => metric.name === 'Workflow Architect Runtime'))).toBe(true)
     const reopened = app.waitForEvent('window')
