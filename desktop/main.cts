@@ -120,7 +120,7 @@ ipcMain.on('workflow:close-result', (event, request: unknown, saved: unknown) =>
 })
 
 async function openWindow() {
-  if (window && !window.isDestroyed()) { window.show(); window.focus(); return }
+  if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); return }
   rendererReady = false
   closing = false
   window = new BrowserWindow({
@@ -152,6 +152,8 @@ async function openWindow() {
     closeTimer = setTimeout(() => { void failedSave() }, 10_000)
   })
   current.on('closed', () => {
+    // A new window can already exist when Windows finishes destroying the old one.
+    if (window !== current) return
     clearTimeout(closeTimer); window = null
     // Also covers a renderer crash or a window destroyed before the save handshake.
     void runtime?.closeWindow().catch(() => {})
@@ -166,10 +168,7 @@ async function openWindow() {
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
-  app.on('second-instance', () => {
-    if (window?.isMinimized()) window.restore()
-    if (window) { window.show(); window.focus() } else void openWindow()
-  })
+  app.on('second-instance', () => { void openWindow() })
   void app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark'
     Menu.setApplicationMenu(null)

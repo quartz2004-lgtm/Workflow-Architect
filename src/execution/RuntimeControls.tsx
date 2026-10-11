@@ -39,7 +39,7 @@ export function RuntimeControls({ runtime, native }: { runtime: RunController; n
     </select></label>
     <div className="inline-actions runtime-history-actions">
       <button disabled={busy} onClick={() => { setConfirmDelete(false); native.newRun() }}>Новый запуск</button>
-      {['queued', 'running', 'waiting'].includes(state.status) && <button disabled={!ready || busy} onClick={runtime.cancel}>Остановить запуск</button>}
+      {['queued', 'running', 'waiting', 'interrupted'].includes(state.status) && <button disabled={!ready || busy} onClick={runtime.cancel}>Остановить запуск</button>}
       {state.status === 'interrupted' && <button disabled={!ready || busy} onClick={native.resume}>Продолжить запуск</button>}
       {local.pendingSubmission && state.status === 'unknown' && <button disabled={!ready || busy} onClick={native.retrySubmission}>Повторить отправку с тем же ключом</button>}
       {state.jobId && ['succeeded', 'failed', 'cancelled'].includes(state.status) && <button disabled={!ready || busy} onClick={() => setConfirmDelete(true)}>Удалить запись</button>}

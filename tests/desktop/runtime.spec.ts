@@ -179,3 +179,37 @@ test('Run UI preserves profile history across reconnect, window close and native
     await expect(panel.getByRole('heading', { name: 'История этого профиля · 0' })).toBeVisible()
   } finally { await app.close() }
 })
+
+test('interrupted foreground run can be cancelled without resuming; immediate reopen tolerates destroyed windows', async () => {
+  const started = await launch()
+  const app = started.app
+  let page = started.page
+  try {
+    const job = await submit(page, createExecutionExample(), false)
+    await expect.poll(async () => (await get(page, job.id)).status).toBe('waiting')
+    const pid = await page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { pid: number }).pid)
+    await app.evaluate(({ app }, pid) => {
+      if (!app.getAppMetrics().some(metric => metric.pid === pid && metric.name === 'Workflow Architect Runtime')) throw new Error('Unexpected process')
+      process.kill(pid)
+    }, pid)
+    await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('unavailable')
+    await page.evaluate(() => window.workflowDesktop!.runtime.reconnect())
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    const panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await panel.getByLabel('Сохранённые запуски').selectOption(job.id)
+    await expect(panel.getByRole('button', { name: 'Продолжить запуск' })).toBeVisible()
+    await panel.getByRole('button', { name: 'Остановить запуск' }).click()
+    await expect.poll(async () => (await get(page, job.id)).status).toBe('cancelled')
+    for (let index = 0; index < 3; index++) {
+      const opened = app.waitForEvent('window')
+      await app.evaluate(({ app, BrowserWindow }) => {
+        const current = BrowserWindow.getAllWindows()[0]!
+        current.webContents.once('destroyed', () => { app.emit('second-instance', {}, [], process.cwd()) })
+        current.close()
+      })
+      page = await opened
+      await expect(page.getByRole('application')).toBeVisible()
+    }
+    expect((await get(page, job.id)).status).toBe('cancelled')
+  } finally { await app.close() }
+})
