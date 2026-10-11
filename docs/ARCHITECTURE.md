@@ -2,6 +2,8 @@
 
 ## Состояние
 
+Разработка 0.3.0: [план и приёмка](V0.3.0_PLAN.md), [ADR 0010](decisions/0010-local-execution-boundary.md). Пока добавлен изолированный фундамент: `domain/execution-config.ts` описывает декларативные операции и ссылки на стабильные ID портов; `execution/values.ts` обрабатывает JSON без eval, `execution/contracts.ts` интерпретирует ограниченное подмножество JSON Schema. Неподдержанные ограничения отвергаются, размеры и сложность ограничены. Эти модули ещё не подключены к проекту и UI; текущий сохраняемый формат остаётся 0.1 до следующей итерации миграции. Компилятор, Worker и запуск ещё не реализованы.
+
 Alpha v0.1: Foundation, Engineering semantics, Canvas organization, Export и Alpha polish завершены. Аудит Definition of Done — [ALPHA_AUDIT.md](ALPHA_AUDIT.md). Продуктовые требования находятся в `Workflow_Architect_v0.1_Specification.md` и не изменялись.
 
 ## Зависимости и границы
