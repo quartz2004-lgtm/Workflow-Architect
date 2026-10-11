@@ -44,7 +44,7 @@ async function boot(profile: Profile) {
   let raw: string | undefined
   const repository = createRepository('workflow-architect', { id: profile.id, adoptLegacy: profile.id === profileIds[0] })
   const launch = (project: Project, report: RecoveryReport | null = null) => {
-    const editor = createEditor(project)
+    const editor = createEditor(project, { profileId: profile.id })
     editor.recoveryStore.setState({ report })
     const autosave = startAutosave(editor, repository)
     attachDesktopAutosave(autosave)

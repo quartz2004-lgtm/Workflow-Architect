@@ -27,10 +27,12 @@ import { createExportStore } from '../export/store'
 import type { RecoveryReport } from '../persistence/recovery'
 import { createPreviewController } from '../preview/controller'
 import { createRunController } from '../execution/controller'
+import { createDesktopRunController } from '../execution/desktop-controller'
+import { profileIds } from '../profiles/schema'
 
 enablePatches()
 type HistoryEntry = { label: string; patches: Patch[]; inverse: Patch[]; graphId: string | null }
-export function createEditor(initial: Project = createProject()) {
+export function createEditor(initial: Project = createProject(), options: { profileId?: string } = {}) {
   const projectStore = createStore(() => ({ project: parseProject(initial), revision: 0 }))
   const historyStore = createStore(() => ({ past: [] as HistoryEntry[], future: [] as HistoryEntry[] }))
   const selectionStore = createStore(() => ({ nodeIds: [] as string[], edgeIds: [] as string[], groupIds: [] as string[] }))
@@ -41,7 +43,8 @@ export function createEditor(initial: Project = createProject()) {
   const exportStore = createExportStore()
   const recoveryStore = createStore(() => ({ report: null as RecoveryReport | null, open: false }))
   const preview = createPreviewController()
-  const runtime = createRunController()
+  const runtime = typeof window !== 'undefined' && window.workflowDesktop?.runtime
+    ? createDesktopRunController(window.workflowDesktop.runtime, options.profileId ?? profileIds[0]) : createRunController()
   const pruneSelection = () => {
     const p = projectStore.getState().project
     if (navigationStore.getState().graphId && !p.subworkflows.some(g => g.id === navigationStore.getState().graphId)) navigationStore.setState({ graphId: null, path: [null] })

@@ -35,7 +35,7 @@ async function launch(profile: string, skipSetup = true) {
   return application
 }
 
-test('offline desktop executes the local Worker under CSP and saves actual output', async () => {
+test('offline desktop runs through the background service under CSP and saves actual output', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'workflow-desktop-runtime-'))
   const application = await launch(profile)
   try {

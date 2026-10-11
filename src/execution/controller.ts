@@ -15,11 +15,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { createStore } from 'zustand/vanilla'
 import { createId } from '../domain/factories'
 import type { Project } from '../domain/schema'
-import type { ExecutionDiagnostic } from './compiler'
-import type { HumanRequest, RunArtifact, RunEvent, RunOutcome, RunStatus } from './run-types'
+import { createRunViewStore, type RunController } from './view-state'
 import { parseWorkerCommand, parseWorkerResponse, type WorkerCommand } from './protocol'
 import { assertValueBudget } from './values'
 
@@ -34,13 +32,8 @@ const browserWorker = (): RunWorker => new Worker(new URL('./worker.ts', import.
 const active = (status: string) => ['queued', 'running', 'waiting'].includes(status)
 
 /** Transient run state stays outside project persistence and editor undo history. */
-export function createRunController(makeWorker: () => RunWorker = browserWorker) {
-  const store = createStore(() => ({
-    open: false, status: 'idle' as RunStatus | 'idle' | 'blocked', jobId: null as string | null,
-    runId: null as string | null, planId: null as string | null, snapshot: null as Project | null,
-    diagnostics: [] as ExecutionDiagnostic[], events: [] as RunEvent[], artifacts: [] as RunArtifact[],
-    human: null as HumanRequest | null, outcome: null as RunOutcome | null, message: '', answerError: '',
-  }))
+export function createRunController(makeWorker: () => RunWorker = browserWorker): RunController {
+  const store = createRunViewStore()
   let worker: RunWorker | undefined
   let watchdog: ReturnType<typeof setTimeout> | undefined
   let sequence = 0
@@ -52,7 +45,7 @@ export function createRunController(makeWorker: () => RunWorker = browserWorker)
     store.setState({ status: 'cancelled', human: null, message: 'Запуск отменён. Созданные до отмены артефакты доступны в журнале.' })
   }
   return {
-    store, cancel,
+    store, cancel, connect: () => {},
     dispose: () => { cancel(); release() },
     start: (project: Project, entryNodeId: string, input: unknown) => {
       if (active(store.getState().status)) throw new Error('Сначала завершите или отмените текущий запуск.')

@@ -70,6 +70,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
   const motion = profile?.preferences.motion === 'reduced' ? 'reduced' : projectMotion
   useShortcuts(editor)
   useEffect(() => {
+    editor.runtime.connect()
     const flushOnHidden = () => { if (document.visibilityState === 'hidden') void autosave.flush() }
     document.addEventListener('visibilitychange', flushOnHidden)
     return () => { document.removeEventListener('visibilitychange', flushOnHidden); editor.preview.stop(); editor.runtime.dispose() }

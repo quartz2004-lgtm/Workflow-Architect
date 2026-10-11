@@ -98,6 +98,7 @@ export class RuntimeHost {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId)
+        this.change('unavailable', 'Runtime не отвечает. Переподключитесь, чтобы проверить сохранённое состояние.')
         reject(new Error('Нет подтверждения runtime. Результат команды неизвестен; проверьте сохранённую историю перед повтором.'))
       }, 15000)
       this.pending.set(requestId, { resolve, reject, timer })

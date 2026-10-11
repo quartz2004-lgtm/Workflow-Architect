@@ -26,14 +26,15 @@ import { jobSchema, type RuntimeJob } from '../../src/runtime/job-schema'
 import { profileIds } from '../../src/profiles/schema'
 
 const owner = profileIds[0]
-async function launch() {
-  const directory = await mkdtemp(join(tmpdir(), 'workflow-service-test-'))
+async function launch(existing?: string) {
+  const directory = existing ?? await mkdtemp(join(tmpdir(), 'workflow-service-test-'))
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
   delete env.ELECTRON_RUN_AS_NODE
   const app = await electron.launch({ ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}),
     args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${directory}`], env })
   const page = await app.firstWindow()
-  await page.getByRole('button', { name: 'Пропустить настройку' }).click()
+  await expect(page.getByRole('application').or(page.getByRole('button', { name: 'Пропустить настройку' }))).toBeVisible()
+  if (await page.getByRole('button', { name: 'Пропустить настройку' }).isVisible()) await page.getByRole('button', { name: 'Пропустить настройку' }).click()
   await expect(page.getByRole('application')).toBeVisible()
   await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('ready')
   return { app, page, directory }
@@ -112,5 +113,69 @@ test('killed utility process reconnects to the same checkpoint and rejects unsaf
     expect(answer).toEqual({ ok: true })
     await expect.poll(async () => (await get(page, job.id)).status).toBe('succeeded')
     expect(JSON.parse((await get(page, job.id)).outcome!.artifacts[0]!.content)).toEqual({ result: 'SERVICE' })
+  } finally { await app.close() }
+})
+
+test('Run UI preserves profile history across reconnect, window close and native restart', async () => {
+  const started = await launch(), directory = started.directory
+  let app = started.app, page = started.page
+  try {
+    await page.getByRole('button', { name: 'Открыть проекты' }).click()
+    await page.getByRole('button', { name: /Первый локальный запуск.*Исполнимый пример/ }).click()
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    let panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await expect(panel.getByText('Фоновый сервис подключён', { exact: true })).toBeVisible()
+    await panel.getByLabel('Разрешить этому запуску работать после закрытия окна').check()
+    await panel.getByRole('button', { name: 'Запустить workflow' }).click()
+    await expect(panel.getByRole('heading', { name: 'Нужен ваш ответ', exact: true })).toBeVisible()
+    await expect(panel.getByLabel('Сохранённые запуски').locator('option')).toHaveCount(2)
+    const id = await panel.getByLabel('Сохранённые запуски').inputValue()
+    const before = await get(page, id)
+    const pid = await page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { pid: number }).pid)
+    await app.evaluate(({ app }, pid) => {
+      if (!app.getAppMetrics().some(metric => metric.pid === pid && metric.name === 'Workflow Architect Runtime')) throw new Error('Unexpected process')
+      process.kill(pid)
+    }, pid)
+    await expect(panel.getByText('Связь с сервисом потеряна', { exact: true })).toBeVisible()
+    await expect(panel.getByRole('button', { name: 'Подтвердить', exact: true })).toBeDisabled()
+    await page.screenshot({ path: 'desktop-results/runtime-unavailable.png' })
+    await panel.getByRole('button', { name: 'Переподключить' }).click()
+    await expect(panel.getByRole('button', { name: 'Подтвердить', exact: true })).toBeEnabled()
+    expect((await get(page, id)).checkpoint!.runId).toBe(before.checkpoint!.runId)
+    await panel.getByRole('button', { name: 'Скрыть Run' }).click()
+    await page.getByRole('button', { name: 'Профили: Профиль 1' }).click()
+    await page.getByRole('button', { name: 'Профиль 2 · переключиться' }).click()
+    await page.getByRole('button', { name: 'Пропустить настройку' }).click()
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await expect(panel.getByRole('heading', { name: 'История этого профиля · 0' })).toBeVisible()
+    expect((await get(page, id)).status).toBe('waiting')
+    await panel.getByRole('button', { name: 'Скрыть Run' }).click()
+    await page.getByRole('button', { name: 'Профили: Профиль 2' }).click()
+    await page.getByRole('button', { name: 'Профиль 1 · переключиться' }).click()
+    await expect(page.getByRole('application')).toBeVisible()
+    const closed = page.waitForEvent('close')
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close())
+    await closed
+    const opened = app.waitForEvent('window')
+    await app.evaluate(({ app }) => { app.emit('second-instance', {}, [], process.cwd()) })
+    page = await opened
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await expect(panel.getByRole('button', { name: 'Подтвердить', exact: true })).toBeEnabled()
+    await expect(panel.getByText(/Этот запуск: может работать после закрытия окна/)).toBeVisible()
+    await panel.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+    await expect(panel.getByRole('heading', { name: 'Завершён', exact: true })).toBeVisible()
+    await app.close()
+    const restarted = await launch(directory); app = restarted.app; page = restarted.page
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await expect(panel.getByRole('heading', { name: 'Завершён', exact: true })).toBeVisible()
+    await expect(panel.getByLabel('Сохранённые запуски')).toHaveValue(id)
+    await expect(panel.locator('.run-artifact')).toHaveCount(1)
+    await page.screenshot({ path: 'desktop-results/runtime-history.png' })
+    await panel.getByRole('button', { name: 'Удалить запись', exact: true }).click()
+    await panel.getByRole('button', { name: 'Удалить окончательно', exact: true }).click()
+    await expect(panel.getByRole('heading', { name: 'История этого профиля · 0' })).toBeVisible()
   } finally { await app.close() }
 })
