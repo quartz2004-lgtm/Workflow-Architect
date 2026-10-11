@@ -21,6 +21,7 @@ import { z } from 'zod'
 export const jsonPointerSchema = z.string().max(1000).refine(value => value === '' || (value.startsWith('/') && !/~(?![01])/u.test(value)), 'Ожидается JSON Pointer: /field или пустая строка.')
 export const valueSourceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('input'), pointer: jsonPointerSchema }),
+  z.strictObject({ kind: z.literal('data'), portId: z.uuid(), pointer: jsonPointerSchema }),
   z.strictObject({ kind: z.literal('literal'), value: z.json() }),
 ])
 export const predicateSchema = z.strictObject({

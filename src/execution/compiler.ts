@@ -19,6 +19,7 @@ import { createId } from '../domain/factories'
 import { graphEntries } from '../domain/graphs'
 import { parseProject } from '../domain/serialization'
 import type { Contract, Graph, Project, WorkflowNode } from '../domain/schema'
+import type { ValueSource } from '../domain/execution-config'
 import { validateProject } from '../validation/validate-project'
 import { compileContract } from './contracts'
 import { assertValueBudget, jsonEqual } from './values'
@@ -76,6 +77,11 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
       const kinds: Partial<Record<WorkflowNode['type'], readonly string[]>> = { trigger: ['manual'], data: ['map'], logic: ['if', 'switch', 'loop', 'merge'], human: ['human'], artifact: ['artifact'], subworkflow: ['subworkflow'] }
       if (!kinds[node.type]) { add(id, node.id, 'unsupported-node', `${node.type} пока не исполняется. Завершите формализацию или отключите узел.`); continue }
       if (!operation || !kinds[node.type]!.includes(operation.kind)) { add(id, node.id, 'missing-operation', 'Настройте поддерживаемую операцию этого узла.'); continue }
+      const sources: ValueSource[] = operation.kind === 'map' ? operation.fields.map(field => field.source)
+        : operation.kind === 'if' || operation.kind === 'loop' ? [operation.predicate.source]
+        : operation.kind === 'switch' || operation.kind === 'artifact' ? [operation.source] : []
+      for (const edge of graph.edges.filter(edge => edge.sourceNode === node.id && edge.type === 'flow' && edge.predicate)) sources.push(edge.predicate!.source)
+      for (const source of sources) if (source.kind === 'data' && !node.ports.some(port => port.id === source.portId && port.direction === 'input' && port.kind === 'data')) add(id, node.id, 'data-source-port', 'Операция ссылается на отсутствующий вход Data.')
       if (node.type === 'trigger' && node.config.triggerType !== 'manual') add(id, node.id, 'trigger-type', 'В 0.3.0 исполняется только ручной Trigger.')
       if (node.type === 'data' && node.config.dataType && node.config.dataType !== 'json') add(id, node.id, 'data-type', 'Доступна только обработка JSON; чтение файлов и баз пока не исполняется.')
       if (node.type === 'logic') {
@@ -112,6 +118,8 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
           const bound = nested?.nodes.find(item => item.id === port.binding?.nodeId)
           if (!bound || bound.status === 'disabled' || bound.type === 'note' || !port.binding?.portId) add(id, node.id, 'subworkflow-binding', 'Каждый исполняемый открытый порт должен быть привязан к включённому внутреннему порту.')
         }
+        const destinations = node.ports.filter(port => port.direction === 'input' && port.kind === 'data' && port.binding).map(port => `${port.binding!.nodeId}:${port.binding!.portId}`)
+        if (new Set(destinations).size !== destinations.length) add(id, node.id, 'boundary-data-writers', 'Внутренний вход Data не может иметь два внешних источника.')
       }
     }
     for (const edge of graph.edges) {

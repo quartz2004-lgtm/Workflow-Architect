@@ -37,10 +37,13 @@ export function readPointer(input: JsonValue, pointer: string): JsonValue | unde
   return value
 }
 
-export function sourceValue(source: ValueSource, input: JsonValue): JsonValue {
-  if (source.kind === 'literal') return structuredClone(source.value)
-  const value = readPointer(input, source.pointer)
+export function sourceValue(source: ValueSource, input: JsonValue, data: ReadonlyMap<string, JsonValue> = new Map()): JsonValue {
+  if (source.kind === 'literal') { assertValueBudget(source.value); return structuredClone(source.value) }
+  const root = source.kind === 'data' ? data.get(source.portId) : input
+  if (root === undefined) throw new ExecutionValueError('Результат для входа Data ещё не получен.')
+  const value = readPointer(root, source.pointer)
   if (value === undefined) throw new ExecutionValueError(`Отсутствует входное поле ${source.pointer}.`)
+  assertValueBudget(value)
   return structuredClone(value)
 }
 
@@ -54,9 +57,13 @@ export function jsonEqual(a: JsonValue, b: JsonValue): boolean {
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && jsonEqual(a[key]!, b[key]!))
 }
 
-export function evaluatePredicate(predicate: Predicate, input: JsonValue): boolean {
-  if (predicate.operator === 'exists') return predicate.source.kind === 'literal' || readPointer(input, predicate.source.pointer) !== undefined
-  const value = sourceValue(predicate.source, input)
+export function evaluatePredicate(predicate: Predicate, input: JsonValue, data: ReadonlyMap<string, JsonValue> = new Map()): boolean {
+  if (predicate.operator === 'exists') {
+    if (predicate.source.kind === 'literal') return true
+    const root = predicate.source.kind === 'data' ? data.get(predicate.source.portId) : input
+    return root !== undefined && readPointer(root, predicate.source.pointer) !== undefined
+  }
+  const value = sourceValue(predicate.source, input, data)
   switch (predicate.operator) {
     case 'is-true': return value === true
     case 'equals': return jsonEqual(value, predicate.value!)
@@ -76,12 +83,12 @@ export function evaluatePredicate(predicate: Predicate, input: JsonValue): boole
   }
 }
 
-export function mapValue(config: Extract<ExecutionConfig, { kind: 'map' }>, input: JsonValue): JsonValue {
+export function mapValue(config: Extract<ExecutionConfig, { kind: 'map' }>, input: JsonValue, data: ReadonlyMap<string, JsonValue> = new Map()): JsonValue {
   if (config.keepInput && (input === null || typeof input !== 'object' || Array.isArray(input))) throw new ExecutionValueError('Сохранение исходных полей требует объект.')
   const result: Record<string, JsonValue> = config.keepInput ? structuredClone(input) as Record<string, JsonValue> : {}
   for (const field of config.fields) {
     if (['__proto__', 'prototype', 'constructor'].includes(field.key)) throw new ExecutionValueError('Недопустимое имя поля.')
-    const value = sourceValue(field.source, input)
+    const value = sourceValue(field.source, input, data)
     if (field.transform === 'identity') result[field.key] = value
     else if (field.transform === 'text') result[field.key] = typeof value === 'string' ? value : JSON.stringify(value)
     else if (field.transform === 'add') {
@@ -96,6 +103,7 @@ export function mapValue(config: Extract<ExecutionConfig, { kind: 'map' }>, inpu
       if (typeof value !== 'string') throw new ExecutionValueError(`Поле ${field.key}: требуется строка.`)
       result[field.key] = field.transform === 'trim' ? value.trim() : field.transform === 'uppercase' ? value.toUpperCase() : value.toLowerCase()
     }
+    assertValueBudget(result)
   }
   return result
 }
