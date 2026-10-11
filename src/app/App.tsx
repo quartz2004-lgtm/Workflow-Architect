@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { useProfile } from '../profiles/context'
 import { ProfileMenu } from '../profiles/ProfileMenu'
+import { CredentialsMenu } from '../credentials/CredentialsMenu'
 import { runUiCommand } from '../editor/ui-commands'
 import { lazy, Suspense, useEffect } from 'react'
 import { useStore } from 'zustand'
@@ -101,7 +102,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
       {help && <Almanac />}
     </Suspense>
     {palette && <CommandPalette />}{search && <SearchDialog />}
-    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => runUiCommand(editor, 'palette')}>Команды</button><button onClick={() => runUiCommand(editor, 'search')}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => runUiCommand(editor, 'help')}>Альманах</button><ProfileMenu autosave={autosave} /><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
+    <footer className="statusbar"><span className="status-brand">◇ {mode.toUpperCase()} WORKSPACE</span><span>{Math.round(zoom * 100)}%</span><span>{nodeCount} узлов <span className="divider">/</span> {edgeCount} связей</span><button onClick={() => runUiCommand(editor, 'palette')}>Команды</button><button onClick={() => runUiCommand(editor, 'search')}>Поиск</button><button title="Справка по приложению · F1 / ?" onClick={() => runUiCommand(editor, 'help')}>Альманах</button><ProfileMenu autosave={autosave} /><CredentialsMenu /><span className="local-label">LOCAL FIRST <span>·</span> Только на этом устройстве</span></footer>
   </div>
 }
 export function App({ editor, autosave, repository }: { editor: Editor; autosave: Autosave; repository: ManagedProjectRepository }) { return <EditorContext.Provider value={editor}><Workspace autosave={autosave} repository={repository} /></EditorContext.Provider> }

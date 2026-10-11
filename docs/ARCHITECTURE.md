@@ -133,9 +133,13 @@ Preview строит структурный обход Flow/Data, входит �
 
 Settings поддерживают optional exportDefault; отсутствие поля означает archive. Старые snapshots 0.1 не требуют миграции. Настройка, как и другие persistable значения, проходит commands/history.
 
+## Защищённые подключения 0.3.1
+
+`src/credentials/` отделяет схемы metadata/commands, атомарный vault, redactor и UI. `desktop/credentials-host.cts` загружает фиксированный main-only bundle; renderer имеет только list/create/set-enabled/remove/copy-reference/status. Асинхронный Windows DPAPI защищает ciphertext на диске; чтение секрета не доступно renderer или runtime UtilityProcess. Владение профилем и ревизия permission проверяются при каждом внутреннем resolve. Секреты и история находятся вне экспортируемого проекта. Подробности и границы защиты — [ADR 0011](decisions/0011-profile-credentials.md).
+
 ## Альманах
 
-`src/help/content.ts` — единый источник 28 глав справки. Lazy-loaded `Almanac.tsx` отображает одну главу, оглавление и полнотекстовый поиск; состояние чтения локально компоненту и не попадает в project/history. `html.ts` формирует экранированный автономный HTML без scripts и внешних ресурсов, с оглавлением и стилями печати. `npm run docs:almanac` создаёт `docs/Workflow_Architect_Almanac.html` из тех же данных; desktop-сборка обновляет документ автоматически.
+`src/help/content.ts` — единый источник 31 главы справки. Lazy-loaded `Almanac.tsx` отображает одну главу, оглавление и полнотекстовый поиск; состояние чтения локально компоненту и не попадает в project/history. `html.ts` формирует экранированный автономный HTML без scripts и внешних ресурсов, с оглавлением и стилями печати. `npm run docs:almanac` создаёт `docs/Workflow_Architect_Almanac.html` из тех же данных; desktop-сборка обновляет документ автоматически.
 
 Кнопка «Альманах», `?` и F1 открывают справку. F1 доступен из поля ввода, Canvas-команды не активны внутри диалога. Общий Modal восстанавливает фокус после закрытия, включая вложенные окна. Тесты проверяют полнотекстовый поиск, пустой результат, переходы, HTML-export всего справочника, фокус и компактное окно; отдельный desktop-сценарий проверяет сохранение HTML штатным механизмом Electron.
 

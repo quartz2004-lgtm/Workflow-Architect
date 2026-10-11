@@ -21,6 +21,7 @@ declare global {
   interface Window {
     workflowDesktop?: {
       onBeforeClose: (save: () => Promise<boolean>) => void
+      credentials: { request(command: unknown): Promise<unknown> }
       runtime: {
         request(command: unknown): Promise<unknown>
         state(): Promise<unknown>

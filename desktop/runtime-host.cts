@@ -28,17 +28,19 @@ export class RuntimeHost {
   private state: RuntimeState = { status: 'stopped', message: '', damaged: [] }
   private pending = new Map<string, Pending>()
   private startup?: Promise<void>
-  constructor(private readonly script: string, private readonly directory: string, private readonly notify: (message: unknown) => void) {}
+  constructor(private readonly script: string, private readonly directory: string, private readonly notify: (message: unknown) => void, private readonly redact: (message: string) => string = value => value) {}
   snapshot(): RuntimeState { return structuredClone(this.state) }
   private change(status: RuntimeState['status'], message: string, damaged = this.state.damaged) {
-    this.state = { status, message, damaged, ...(this.child?.pid ? { pid: this.child.pid } : {}) }
+    this.state = { status, message: this.redact(message), damaged: damaged.map(item => ({ ...item, message: this.redact(item.message) })), ...(this.child?.pid ? { pid: this.child.pid } : {}) }
     this.notify({ kind: 'service', ...this.snapshot() })
   }
   async start(): Promise<void> {
     if (this.startup) return this.startup
     if (this.child) throw new Error('Предыдущий runtime ещё не завершился.')
     this.change('starting', 'Запуск фонового сервиса…', [])
-    const child = utilityProcess.fork(this.script, [this.directory], { serviceName: 'Workflow Architect Runtime', stdio: 'ignore' })
+    let child: ReturnType<typeof utilityProcess.fork>
+    try { child = utilityProcess.fork(this.script, [this.directory], { serviceName: 'Workflow Architect Runtime', stdio: 'ignore' }) }
+    catch (error) { this.change('unavailable', 'Не удалось запустить фоновый процесс. Переподключитесь для повторной попытки.'); throw error }
     this.child = child
     const ready = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { reject(new Error('Runtime не подтвердил готовность.')); child.kill() }, 15000)

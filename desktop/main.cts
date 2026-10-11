@@ -20,6 +20,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve, relative, isAbsolute, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { RuntimeHost } from './runtime-host.cjs'
+import { loadCredentials, type CredentialsHost } from './credentials-host.cjs'
 
 const origin = 'workflow://app'
 const entry = `${origin}/index.html`
@@ -33,6 +34,7 @@ let closing = false
 let pending: string | undefined
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 let runtime: RuntimeHost | undefined
+let credentials: CredentialsHost | undefined
 let tray: Tray | undefined
 let quitRequested = false
 let exiting = false
@@ -41,12 +43,24 @@ function trusted(sender: Electron.WebContents, frame: Electron.WebFrameMain | nu
   return !!window && sender === window.webContents && frame === sender.mainFrame && frame.url === entry
 }
 
-for (const channel of ['workflow:runtime-request', 'workflow:runtime-state', 'workflow:runtime-reconnect']) ipcMain.handle(channel, (event, value: unknown) => {
+ipcMain.handle('workflow:credentials-request', (event, value: unknown) => {
+  if (!trusted(event.sender, event.senderFrame)) throw new Error('Недоверенный отправитель credentials.')
+  if (!credentials) return { ok: false, message: 'Защищённое хранилище недоступно. Перезапустите приложение.' }
+  return credentials.handle(value)
+})
+for (const channel of ['workflow:runtime-request', 'workflow:runtime-state', 'workflow:runtime-reconnect']) ipcMain.handle(channel, async (event, value: unknown) => {
   if (!trusted(event.sender, event.senderFrame)) throw new Error('Недоверенный отправитель runtime.')
   if (!runtime) throw new Error('Runtime ещё не готов.')
   if (channel === 'workflow:runtime-state') return runtime.snapshot()
   if (channel === 'workflow:runtime-reconnect') return runtime.reconnect()
-  return runtime.request(value)
+  try {
+    if (value && typeof value === 'object' && 'kind' in value && (value.kind === 'submit' || value.kind === 'answer')) credentials?.assertNoSecrets(value)
+    return await runtime.request(value)
+  } catch (error) {
+    // Do not attach an unredacted native error as cause across the renderer boundary.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error(credentials?.redact(error instanceof Error ? error.message : 'Ошибка runtime.') ?? 'Ошибка runtime.')
+  }
 })
 
 async function finishQuit() {
@@ -159,9 +173,11 @@ else {
   void app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark'
     Menu.setApplicationMenu(null)
+    try { credentials = await loadCredentials(app.getAppPath(), join(app.getPath('userData'), 'credentials')) }
+    catch { /* No plaintext fallback. The editor and non-secret operations remain available. */ }
     runtime = new RuntimeHost(join(app.getAppPath(), 'runtime-dist', 'runtime.cjs'), join(app.getPath('userData'), 'runtime', 'jobs'), message => {
       if (window && !window.isDestroyed()) window.webContents.send('workflow:runtime-event', message)
-    })
+    }, message => credentials?.redact(message) ?? message)
     try { await runtime.start() } catch { /* The editor remains available with a visible service error. */ }
     tray = new Tray(join(app.getAppPath(), 'desktop', 'assets', 'icon.ico'))
     tray.setToolTip('Workflow Architect — фоновое выполнение')
