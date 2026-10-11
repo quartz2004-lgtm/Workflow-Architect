@@ -42,7 +42,7 @@ export function copySelection(project: Project, graph: Graph, nodeIds: string[],
     for (const [key, item] of Object.entries(value)) {
       if (key === 'schemaId' && typeof item === 'string') schemaIds.add(item)
       else if (key === 'promptId' && typeof item === 'string') promptIds.add(item)
-      else if (!['metadata', 'parameters'].includes(key) && !(key === 'schema' && 'kind' in value && value.kind === 'json-schema')) collect(item)
+      else if (!['metadata', 'parameters', 'value'].includes(key) && !(key === 'schema' && 'kind' in value && value.kind === 'json-schema')) collect(item)
     }
   }
   collect({ nodes, edges, subworkflows })
@@ -61,11 +61,11 @@ export function cloneClipboard(clipboard: GraphClipboard, target: Project, offse
   const schemas = clipboard.schemas.filter(s => !target.schemas.some(t => t.id === s.id && JSON.stringify(t) === JSON.stringify(s)))
   const prompts = clipboard.prompts.filter(s => !target.prompts.some(t => t.id === s.id && JSON.stringify(t) === JSON.stringify(s)))
   for (const resource of [...schemas, ...prompts]) register(resource.id)
-  const idKeys = new Set(['id', 'nodeId', 'nodeIds', 'sourceNode', 'targetNode', 'sourcePort', 'targetPort', 'toolIds', 'attachedNodeIds', 'fallbackNodeId', 'subworkflowId', 'portId', 'schemaId', 'promptId'])
+  const idKeys = new Set(['id', 'nodeId', 'nodeIds', 'sourceNode', 'targetNode', 'sourcePort', 'targetPort', 'toolIds', 'attachedNodeIds', 'fallbackNodeId', 'subworkflowId', 'portId', 'schemaId', 'promptId', 'truePortId', 'falsePortId', 'bodyPortId', 'exitPortId', 'defaultPortId'])
   const remap = (value: unknown, key = ''): unknown => {
     if (typeof value === 'string') return idKeys.has(key) ? ids.get(value) ?? value : value
     if (Array.isArray(value)) return value.map(item => remap(item, key))
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, ['definition', 'metadata', 'parameters'].includes(k) || (k === 'schema' && 'kind' in value && value.kind === 'json-schema') ? structuredClone(v) : remap(v, k)]))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, ['definition', 'metadata', 'parameters', 'value'].includes(k) || (k === 'schema' && 'kind' in value && value.kind === 'json-schema') ? structuredClone(v) : remap(v, k)]))
     return value
   }
   // The source was validated on copy; known identity/reference fields are the only rewritten values.

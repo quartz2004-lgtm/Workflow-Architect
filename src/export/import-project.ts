@@ -16,14 +16,15 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { parseDocument } from 'yaml'
-import { deserializeProject, parseProject, ProjectFormatError } from '../domain/serialization'
+import { ProjectFormatError } from '../domain/serialization'
 import type { Project } from '../domain/schema'
-import { importPair, type ExportFiles } from './package-format'
+import { decodePair, type ExportFiles } from './package-format'
+import { openStoredProject } from '../persistence/open-project'
 import { maxImportBytes, readArchive, safeArchivePath } from './archive'
 import { assertPackageLimits, maxExpandedBytes } from './limits'
 import { assertPortableSnapshot } from '../domain/limits'
 
-export function importPackageFiles(files: ExportFiles): Project {
+export async function importPackageFiles(files: ExportFiles): Promise<Project> {
   assertPackageLimits(files)
   if (Object.keys(files).some(name => !safeArchivePath(name))) throw new ProjectFormatError('Недопустимый путь файла.')
   const candidates = Object.keys(files).filter(name => /(^|\/)project\.json$/.test(name))
@@ -33,18 +34,18 @@ export function importPackageFiles(files: ExportFiles): Project {
   const metadata: unknown = JSON.parse(files[metadataPath]!)
   if (!files[workflowPath]) throw new ProjectFormatError('Для метаданных project.json требуется workflow.json из той же папки.')
   const workflow: unknown = JSON.parse(files[workflowPath])
-  return importPair(metadata, workflow)
+  return openStoredProject(JSON.stringify(decodePair(metadata, workflow)))
 }
 
-export function importText(text: string, name: string): Project {
+export async function importText(text: string, name: string): Promise<Project> {
   assertPortableSnapshot(text)
   if (/\.ya?ml$/i.test(name)) {
     const doc = parseDocument(text, { uniqueKeys: true })
     if (doc.errors.length || doc.warnings.length) throw new ProjectFormatError('Некорректный YAML или неподдерживаемый YAML tag.')
     const value: unknown = doc.toJS({ maxAliasCount: 0 })
-    return parseProject(value)
+    return openStoredProject(JSON.stringify(value))
   }
-  return deserializeProject(text)
+  return openStoredProject(text)
 }
 
 export async function importProjectFiles(files: readonly File[]): Promise<Project> {

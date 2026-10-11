@@ -18,28 +18,30 @@ along with this program.  If not, see <https://gnu.org>.
 import { z } from 'zod'
 import { projectSchema, type Project } from '../domain/schema'
 import { parseProject, ProjectFormatError } from '../domain/serialization'
+import { projectSchema as legacyProjectSchema } from '../domain/legacy-schema'
 
 export type ExportFiles = Record<string, string>
 export const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 const metadataSchema = projectSchema.shape.project.extend({
-  schemaVersion: z.literal('0.1'), mode: projectSchema.shape.settings.shape.defaultMode,
+  schemaVersion: z.enum(['0.1', '0.2']), mode: projectSchema.shape.settings.shape.defaultMode,
 })
-const workflowSchema = projectSchema.omit({ project: true })
+const workflowSchema = z.union([projectSchema.omit({ project: true }), legacyProjectSchema.omit({ project: true })])
 
 /** The pair is authoritative; all other package files are generated views. */
 export function projectPair(project: Project): ExportFiles {
   const { project: metadata, ...workflow } = parseProject(project)
   return {
-    'project.json': json({ schemaVersion: '0.1', ...metadata, mode: workflow.settings.defaultMode }),
+    'project.json': json({ schemaVersion: workflow.schemaVersion, ...metadata, mode: workflow.settings.defaultMode }),
     'workflow.json': json(workflow),
   }
 }
 
-export function importPair(metadata: unknown, workflow: unknown): Project {
+export function decodePair(metadata: unknown, workflow: unknown): unknown {
   const meta = metadataSchema.safeParse(metadata)
   const graph = workflowSchema.safeParse(workflow)
-  if (!meta.success || !graph.success) throw new ProjectFormatError('Некорректная пара project.json + workflow.json. Требуется формат Workflow Architect 0.1.')
+  if (!meta.success || !graph.success) throw new ProjectFormatError('Некорректная пара project.json + workflow.json. Поддерживаются форматы 0.1 и 0.2.')
   const { schemaVersion, mode, ...project } = meta.data
+  if (schemaVersion !== graph.data.schemaVersion) throw new ProjectFormatError('Версии project.json и workflow.json не совпадают.')
   if (mode !== graph.data.settings.defaultMode) throw new ProjectFormatError('Режимы project.json и workflow.json не совпадают.')
-  return parseProject({ ...graph.data, schemaVersion, project })
+  return { ...graph.data, schemaVersion, project }
 }

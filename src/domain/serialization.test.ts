@@ -33,7 +33,7 @@ describe('project boundary', () => {
   })
   it('rejects unknown versions, invalid JSON and library-specific fields explicitly', () => {
     expect(() => deserializeProject('{')).toThrow('JSON')
-    expect(() => parseProject({ ...createProject(), schemaVersion: '0.2' })).toThrow('версия')
+    expect(() => parseProject({ ...createProject(), schemaVersion: '9.0' })).toThrow('версия')
     expect(() => parseProject({ ...createProject(), viewport: { x: 0 } })).toThrow()
     const project = createProject()
     expect(() => parseProject({ ...project, nodes: [{ ...createNode(), selected: true }] })).toThrow()

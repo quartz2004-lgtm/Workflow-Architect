@@ -20,6 +20,7 @@ import { assertNoObviousSecrets, deserializeStoredProject, serializeProject } fr
 import { projectSchema, type Project } from '../domain/schema'
 import { ProjectConflictError } from './conflicts'
 import { openStoredProject } from './open-project'
+import { projectSchema as legacyProjectSchema } from '../domain/legacy-schema'
 
 interface WorkflowDB extends DBSchema {
   projects: { key: string; value: string }
@@ -51,7 +52,7 @@ export function createRepository(name = 'workflow-architect', profile?: { id: st
     },
     async adopt(project) {
       const raw = await (await database).get('projects', project.project.id)
-      if (raw !== undefined && serializeProject(deserializeStoredProject(raw)) !== serializeProject(project)) throw new ProjectConflictError()
+      if (raw !== undefined && serializeProject(await openStoredProject(raw)) !== serializeProject(project)) throw new ProjectConflictError()
       bases.set(project.project.id, raw)
     },
     async list() {
@@ -60,7 +61,12 @@ export function createRepository(name = 'workflow-architect', profile?: { id: st
       const [keys, values] = await Promise.all([tx.store.getAllKeys(), tx.store.getAll()])
       await tx.done
       return values.map((raw, index) => {
-        try { const p = deserializeStoredProject(raw); return { id: keys[index]!, name: p.project.name, updatedAt: p.project.updatedAt, damaged: false } }
+        try {
+          const value: unknown = JSON.parse(raw)
+          assertNoObviousSecrets(value)
+          const p = value && typeof value === 'object' && 'schemaVersion' in value && value.schemaVersion === '0.1' ? legacyProjectSchema.parse(value) : deserializeStoredProject(raw)
+          return { id: keys[index]!, name: p.project.name, updatedAt: p.project.updatedAt, damaged: false }
+        }
         catch {
           let name = 'Повреждённый проект'
           try {

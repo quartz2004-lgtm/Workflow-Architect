@@ -2,7 +2,7 @@
 
 ## Состояние
 
-Разработка 0.3.0: [план и приёмка](V0.3.0_PLAN.md), [ADR 0010](decisions/0010-local-execution-boundary.md). Пока добавлен изолированный фундамент: `domain/execution-config.ts` описывает декларативные операции и ссылки на стабильные ID портов; `execution/values.ts` обрабатывает JSON без eval, `execution/contracts.ts` интерпретирует ограниченное подмножество JSON Schema. Неподдержанные ограничения отвергаются, размеры и сложность ограничены. Эти модули ещё не подключены к проекту и UI; текущий сохраняемый формат остаётся 0.1 до следующей итерации миграции. Компилятор, Worker и запуск ещё не реализованы.
+Разработка 0.3.0: [план и приёмка](V0.3.0_PLAN.md), [ADR 0010](decisions/0010-local-execution-boundary.md). `domain/execution-config.ts` описывает декларативные операции и ссылки на стабильные ID портов; `execution/values.ts` обрабатывает JSON без eval, `execution/contracts.ts` интерпретирует ограниченное подмножество JSON Schema. Неподдержанные ограничения отвергаются, размеры и сложность ограничены. Формат проекта 0.2 сохраняет optional node.operation и edge.predicate; команды и copy/paste сохраняют операции и переназначают ссылки на порты, не меняя JSON-литералы. Компилятор, Worker и UI запуска ещё не реализованы.
 
 Alpha v0.1: Foundation, Engineering semantics, Canvas organization, Export и Alpha polish завершены. Аудит Definition of Done — [ALPHA_AUDIT.md](ALPHA_AUDIT.md). Продуктовые требования находятся в `Workflow_Architect_v0.1_Specification.md` и не изменялись.
 
@@ -50,7 +50,9 @@ JSON-метасхемы Ajv компилируются заранее в `src/va
 
 ## Durable model
 
-Самостоятельный JSON-снимок содержит `schemaVersion: "0.1"`, `project`, `nodes`, `edges`, `groups`, `schemas`, `prompts`, `subworkflows`, `settings`.
+Самостоятельный JSON-снимок содержит `schemaVersion: "0.2"`, `project`, `nodes`, `edges`, `groups`, `schemas`, `prompts`, `subworkflows`, `settings`.
+
+`domain/legacy-schema.ts` фиксирует прежнюю strict-схему 0.1. Миграция 0.1 → 0.2 меняет только версию и не назначает исполняемых операций по старым текстовым описаниям. Чтение списка проектов проверяет старую схему без преобразования. Открытие/импорт и adoption записывают исходный snapshot в отдельную backup DB до преобразования; CAS сохранения сравнивает исходную запись, включая гонки во время миграции. Импорт JSON сохраняет исходный текст, YAML и пары/ZIP — собранный JSON snapshot до изменения версии; исходные внешние файлы не перезаписываются. Recovery обоих форматов создаёт отдельный проект, сохраняет исходный raw в отчёте и не принимает новые execution-поля из повреждённого документа, объявленного как 0.1.
 
 Корневой граф и графы Subworkflow имеют одинаковую структуру nodes/edges/groups. Subworkflow node ссылается на вложенный граф по UUID. Вложенность выражена ссылками, не рекурсивными UI-объектами. Циклы вложенности диагностируются; обычные workflow cycles не запрещаются.
 

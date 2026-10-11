@@ -26,9 +26,9 @@ const raw = readFileSync(new URL('./fixtures/project-0.1-agent.json', import.met
 const historical = raw.replace('"schemaVersion": "0.1"', '"schemaVersion": "test-legacy"')
 // Synthetic transition tests the framework; it is intentionally not a production-supported version.
 const step: ProjectMigration = {
-  from: 'test-legacy', to: '0.1',
+  from: 'test-legacy', to: '0.2',
   validateSource(value) { if (!value || typeof value !== 'object' || !('project' in value)) throw new Error('Invalid source') },
-  transform(value) { return { ...value as object, schemaVersion: '0.1' } },
+  transform(value) { return { ...value as object, schemaVersion: '0.2' } },
 }
 
 describe('format evolution', () => {
@@ -36,15 +36,15 @@ describe('format evolution', () => {
     const fixture = readFileSync(new URL(`./fixtures/project-0.1-${name}.json`, import.meta.url), 'utf8')
     const backup = vi.fn()
     const project = await migrateProjectSnapshot(fixture, backup)
-    expect(project).toEqual(JSON.parse(fixture))
-    expect(deserializeStoredProject(serializeProject(project))).toEqual(JSON.parse(fixture))
-    expect(backup).not.toHaveBeenCalled()
+    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.2' })
+    expect(deserializeStoredProject(serializeProject(project))).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.2' })
+    expect(backup).toHaveBeenCalledWith(fixture, '0.1')
   })
   it('durably backs up exact source bytes before any transform', async () => {
     const backups = createBackupRepository(crypto.randomUUID())
     let backupCommitted = false
     const migrated = await migrateProjectSnapshot(historical, async (source, version) => { await backups.save(source, version); backupCommitted = true }, [{ ...step, transform(value) { expect(backupCommitted).toBe(true); return step.transform(value) } }])
-    expect(migrated).toEqual(JSON.parse(raw))
+    expect(migrated).toEqual({ ...JSON.parse(raw), schemaVersion: '0.2' })
     expect((await backups.list())[0]!.raw).toBe(historical)
   })
   it('does not transform when backup fails and keeps backup after an invalid transform', async () => {

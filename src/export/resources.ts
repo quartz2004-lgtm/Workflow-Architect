@@ -27,16 +27,16 @@ export function systemPrompt(project: Project, node: Extract<WorkflowNode, { typ
 }
 
 export function resourceFiles(project: Project): ExportFiles {
-  const files: ExportFiles = { 'schemas/contracts.json': json({ schemaVersion: '0.1', schemas: project.schemas }) }
+  const files: ExportFiles = { 'schemas/contracts.json': json({ schemaVersion: project.schemaVersion, schemas: project.schemas }) }
   for (const prompt of project.prompts) files[promptPath(prompt.id)] = prompt.content
   for (const node of allNodes(project)) {
     if (node.type === 'agent') {
       files[promptPath(node.id)] = systemPrompt(project, node)
-      files[configPath(node)] = json({ schemaVersion: '0.1', id: node.id, name: node.title, description: node.description,
+      files[configPath(node)] = json({ schemaVersion: project.schemaVersion, id: node.id, name: node.title, description: node.description,
         ...node.config, prompt: { system: promptPath(node.id) }, tools: node.config.toolIds ?? [],
       })
     } else if (node.type === 'tool') {
-      files[configPath(node)] = json({ schemaVersion: '0.1', id: node.id, name: node.title, description: node.description, ...node.config })
+      files[configPath(node)] = json({ schemaVersion: project.schemaVersion, id: node.id, name: node.title, description: node.description, ...node.config })
     }
   }
   return files

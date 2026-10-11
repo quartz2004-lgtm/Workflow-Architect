@@ -94,7 +94,7 @@ export function architectureMarkdown(project: Project): string {
 
 ${prose(project.project.description) || 'Описание проекта ещё не задано.'}
 
-Schema version: 0.1. Project ID: ${project.project.id}.
+Schema version: ${project.schemaVersion}. Project ID: ${project.project.id}.
 
 ## System Diagram
 
@@ -119,6 +119,12 @@ ${graphs.flatMap(({ graph }) => graph.edges.map(edge => `- ${edge.sourceNode}${e
 ## Contracts
 
 ${contractDocumentation(project)}
+
+## Execution Configuration
+
+${graphs.flatMap(({ graph }) => graph.nodes.filter(node => node.operation).map(node => `### ${prose(node.title)} (${node.id})\n\n${code(node.operation)}`)).join('\n\n') || 'Операции выполнения не настроены.'}
+
+${graphs.flatMap(({ graph }) => graph.edges.filter(edge => edge.predicate).map(edge => `### Edge predicate ${edge.id}\n\n${code(edge.predicate)}`)).join('\n\n')}
 
 ## Subworkflows
 

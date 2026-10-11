@@ -16,6 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { z } from 'zod'
+import { executionConfigSchema, predicateSchema } from './execution-config'
 
 export const idSchema = z.uuid()
 const text = z.string().max(100_000)
@@ -46,6 +47,7 @@ const base = {
   color: z.enum(['neutral', 'violet', 'cyan', 'emerald', 'amber', 'blue', 'rose', 'indigo', 'slate']).optional(),
   status: z.enum(['draft', 'configured', 'ready', 'disabled']),
   ports: z.array(portSchema),
+  operation: executionConfigSchema.optional(),
 }
 export const nodeSchema = z.discriminatedUnion('type', [
   z.strictObject({ ...base, type: z.literal('concept'), config: z.strictObject({}) }),
@@ -92,6 +94,7 @@ export const edgeSchema = z.strictObject({
   sourcePort: idSchema.optional(), targetPort: idSchema.optional(),
   type: edgeTypeSchema, label: text, contract: contractSchema.optional(), condition: text.optional(),
   metadata: z.record(z.string(), z.string()).default({}),
+  predicate: predicateSchema.optional(),
 })
 export const groupSchema = z.strictObject({
   id: idSchema, title: text, description: text, color: base.color,
@@ -100,7 +103,7 @@ export const groupSchema = z.strictObject({
 })
 const graph = { nodes: z.array(nodeSchema).max(10_000), edges: z.array(edgeSchema).max(50_000), groups: z.array(groupSchema) }
 export const projectSchema = z.strictObject({
-  schemaVersion: z.literal('0.1'),
+  schemaVersion: z.literal('0.2'),
   project: z.strictObject({ id: idSchema, name: z.string().min(1).max(300), description: text, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }),
   ...graph,
   schemas: z.array(z.strictObject({ id: idSchema, name: text, definition: z.union([jsonObject, z.boolean()]) })),
