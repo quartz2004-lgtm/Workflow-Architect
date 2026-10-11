@@ -33,6 +33,7 @@ import { importProjectFiles } from '../export/import-project'
 import { createTemplate, templates } from '../domain/templates'
 import { recoverProject, type RecoveryReport } from '../persistence/recovery'
 import { RecoveryDetails } from '../persistence/RecoveryDetails'
+import { createExecutionExample } from '../execution/example'
 
 export function ProjectsDialog({ repository, autosave }: { repository: ManagedProjectRepository; autosave: Autosave }) {
   const editor = useEditor()
@@ -100,7 +101,7 @@ export function ProjectsDialog({ repository, autosave }: { repository: ManagedPr
       <p className="muted">При совпадении ID импортируется отдельная копия. Существующий проект сохраняется.</p>
       {pending && <div className="import-preview"><strong>{pending.project.name}</strong><p>{pending.nodes.length} узлов · {pending.edges.length} связей</p><p>{validateProject(pending).filter(i => i.severity === 'error').length} Errors · {validateProject(pending).filter(i => i.severity === 'warning').length} Warnings</p><button disabled={busy} onClick={() => { void importProject() }}>Открыть импорт</button></div>}
     </section></div>
-    <section className="templates-section"><h3>Начать с примера</h3><p className="muted">Готовые структуры для изучения редактора. Модели и внешние сервисы настраиваются при реализации.</p><div className="template-list">{orderedTemplates.map(template => <button key={template.id} disabled={busy} onClick={() => { void open(createTemplate(template.id)) }}><span className="template-icon" aria-hidden="true">{template.icon}</span><strong>{template.title}</strong><span>{template.description}</span></button>)}</div></section>
+    <section className="templates-section"><h3>Начать с примера</h3><p className="muted">Готовые структуры для изучения редактора. Модели и внешние сервисы настраиваются при реализации.</p><div className="template-list"><button disabled={busy} onClick={() => { void open(createExecutionExample()) }}><span className="template-icon" aria-hidden="true">▶</span><strong>Первый локальный запуск</strong><span>Исполнимый пример: условие, Subworkflow, Human и файл результата.</span></button>{orderedTemplates.map(template => <button key={template.id} disabled={busy} onClick={() => { void open(createTemplate(template.id)) }}><span className="template-icon" aria-hidden="true">{template.icon}</span><strong>{template.title}</strong><span>{template.description}</span></button>)}</div></section>
     {!!backups.length && <details><summary>Резервные копии до изменения формата · {backups.length}</summary>{backups.map(backup => <div className="inline-actions" key={backup.id}><span>{new Date(backup.createdAt).toLocaleString('ru-RU')} · формат {backup.sourceVersion}</span><button onClick={() => downloadText(`project-before-migration-${backup.id}.json`, backup.raw)}>Скачать исходную копию</button></div>)}</details>}
   </Modal>
 }

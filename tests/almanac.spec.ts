@@ -35,7 +35,8 @@ test('almanac: browse, search body text, empty state, export entire offline book
   await expect(article).toContainText('Connected tools')
   const search = dialog.getByRole('searchbox', { name: 'Поиск по альманаху' })
   await search.fill('additionalProperties')
-  await expect(dialog.getByRole('status')).toHaveText('Найдено глав: 1')
+  await expect(dialog.getByRole('status')).toHaveText('Найдено глав: 2')
+  await dialog.getByRole('button', { name: /Контракты и JSON Schema/ }).click()
   await expect(article.getByRole('heading', { name: 'Контракты и JSON Schema' })).toBeVisible()
   await page.screenshot({ path: 'test-results/almanac-search.png' })
   await search.fill('неттакойглавы987')
@@ -45,7 +46,7 @@ test('almanac: browse, search body text, empty state, export entire offline book
   const pending = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Сохранить альманах' }).click()
   const download = await pending
-  expect(download.suggestedFilename()).toBe('Workflow-Architect-Almanac-0.2.html')
+  expect(download.suggestedFilename()).toBe('Workflow-Architect-Almanac-0.3.html')
   const html = await readFile((await download.path())!, 'utf8')
   expect(html).toContain('Что такое Workflow Architect')
   expect(html).toContain('Границы версии и частые вопросы')

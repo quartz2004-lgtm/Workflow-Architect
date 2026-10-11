@@ -65,11 +65,11 @@ test('damaged config boots into explicit recovery, opens the repaired node and p
   await expect(page.getByRole('button', { name: 'Открыть восстановленную копию' })).toBeVisible()
 })
 
-test('empty state offers three templates and project export defaults persist with undo', async ({ page }) => {
+test('empty state offers design and execution templates and project export defaults persist with undo', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Начать с примера / новый проект' }).click()
   const projects = page.getByRole('dialog', { name: 'Локальные проекты' })
-  await expect(projects.locator('.template-list button')).toHaveCount(3)
+  await expect(projects.locator('.template-list button')).toHaveCount(4)
   await page.screenshot({ path: 'test-results/templates.png' })
   await projects.getByRole('button', { name: 'Multi-agent Research' }).click()
   await expect(page.locator('.react-flow__node-workflow')).toHaveCount(5)

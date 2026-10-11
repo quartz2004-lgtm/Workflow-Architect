@@ -1,0 +1,79 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+import { useEffect, useRef, useState } from 'react'
+import { useStore } from 'zustand'
+import { useEditor } from '../app/context'
+import { graphEntries } from '../domain/graphs'
+import { downloadBlob, downloadText } from '../shared/download'
+import type { RunEvent } from './run-types'
+import './run-panel.css'
+
+export const runStatusLabels = { idle: 'Готов к запуску', queued: 'Подготовка', running: 'Выполняется', waiting: 'Нужен ваш ответ', succeeded: 'Завершён', failed: 'Ошибка', cancelled: 'Отменён', blocked: 'Запуск заблокирован' }
+const eventLabels = { status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
+const stringify = (value: unknown) => JSON.stringify(value, null, 2)
+const preview = (value: unknown) => { const text = stringify(value); return text.length > 20000 ? `${text.slice(0, 20000)}\n… Предпросмотр сокращён. Сохраните журнал для полного значения.` : text }
+function eventContent(event: RunEvent) {
+  if (event.kind === 'step-start') return { input: event.input, data: event.data }
+  if (event.kind === 'step-finish') return { output: event.output, ports: event.ports }
+  if (event.kind === 'status') return runStatusLabels[event.status]
+  if (event.kind === 'failure') return event.message
+  if (event.kind === 'human-answer') return event.value
+  if (event.kind === 'human-request') return event.request
+  return { filename: event.artifact.filename, bytes: new TextEncoder().encode(event.artifact.content).byteLength }
+}
+export function RunPanel() {
+  const editor = useEditor(), state = useStore(editor.runtime.store)
+  const project = useStore(editor.projectStore, state => state.project)
+  const entries = project.nodes.filter(node => node.type === 'trigger' && node.status !== 'disabled')
+  const [entryId, setEntryId] = useState(entries[0]?.id ?? '')
+  const [input, setInput] = useState('{\n  "approved": true,\n  "text": "Workflow Architect"\n}'), [answer, setAnswer] = useState('null'), [error, setError] = useState('')
+  const [page, setPage] = useState<number | null>(null)
+  const close = useRef<HTMLButtonElement>(null)
+  useEffect(() => { close.current?.focus() }, [])
+  const busy = ['queued', 'running', 'waiting'].includes(state.status)
+  const selected = entries.some(node => node.id === entryId) ? entryId : entries[0]?.id ?? ''
+  const nodes = state.snapshot ? graphEntries(state.snapshot).flatMap(entry => entry.graph.nodes) : []
+  const label = (id: string) => nodes.find(node => node.id === id)?.title ?? id
+  const currentProject = state.snapshot?.project.id === project.project.id
+  const lastPage = Math.max(0, Math.ceil(state.events.length / 50) - 1), currentPage = Math.min(page ?? lastPage, lastPage)
+  const parse = (text: string, action: (value: unknown) => void) => { try { action(JSON.parse(text)); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
+  return <section className="run-panel" aria-label="Локальное выполнение">
+    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.3</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
+    <div className="run-body">
+      <p className="muted">Локальные операции без ИИ и сети. Максимум 5 минут / 10 000 шагов. Закрытие приложения прервёт запуск.</p>
+      <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
+        <label>Вход запуска (JSON)<textarea aria-label="Вход запуска (JSON)" className="code-input" disabled={busy} value={input} onChange={event => setInput(event.target.value)} rows={3} spellCheck={false} /></label>
+        <div className="inline-actions"><button className="primary" disabled={busy || !selected} onClick={() => parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) })}>Запустить workflow</button><button disabled={!busy} onClick={editor.runtime.cancel}>Остановить запуск</button></div>
+      </div>
+      {state.snapshot && <p className="muted">Снимок: {state.snapshot.project.name}. Правки Canvas применятся при следующем запуске.{!currentProject && ' В редакторе открыт другой проект.'}</p>}
+      {state.runId && <p className="run-identification muted">Run ID: <code>{state.runId}</code><br />План 0.3: <code>{state.planId}</code></p>}
+      {(error || state.message) && <p className="field-error" role="alert">{error || state.message}</p>}
+      {!!state.diagnostics.length && <details open={state.status === 'blocked'}><summary>Диагностика · {state.diagnostics.length}</summary><ul className="run-diagnostics">{state.diagnostics.map((issue, index) => <li key={index}><strong>{issue.severity === 'error' ? 'Ошибка' : 'Замечание'}</strong> · {issue.message} <button disabled={!currentProject} onClick={() => editor.focusEntity(issue.entityId)}>Показать узел</button></li>)}</ul></details>}
+      {state.human && <section className="run-human" aria-label="Ответ человеку"><h3>{state.human.question}</h3><p className="muted">{label(state.human.activation.nodeId)} · до {new Date(state.human.expiresAt).toLocaleTimeString('ru-RU')}</p>
+        {state.human.mode === 'approval' ? <div className="inline-actions"><button onClick={() => editor.runtime.answer(state.human!.id, true)}>Подтвердить</button><button onClick={() => editor.runtime.answer(state.human!.id, false)}>Отклонить</button></div> : <><label>Ответ (JSON)<textarea aria-label="Ответ (JSON)" className="code-input" value={answer} onChange={event => setAnswer(event.target.value)} rows={3} /></label><button onClick={() => parse(answer, value => editor.runtime.answer(state.human!.id, value))}>Отправить ответ</button></>}
+        {state.answerError && <p className="field-error" role="alert">{state.answerError}</p>}
+      </section>}
+      {!!state.artifacts.length && <section aria-label="Артефакты запуска"><h3>Артефакты · {state.artifacts.length}</h3>{state.artifacts.map(artifact => <details className="run-artifact" key={artifact.id}><summary>{artifact.filename} · {label(artifact.activation.nodeId)}</summary><pre>{artifact.content.slice(0, 20000)}{artifact.content.length > 20000 ? '\n… Предпросмотр сокращён. Файл сохранится полностью.' : ''}</pre><button onClick={() => downloadBlob(artifact.filename, new Blob([artifact.content], { type: artifact.format === 'json' ? 'application/json;charset=utf-8' : 'text/plain;charset=utf-8' }))}>Сохранить {artifact.filename}</button></details>)}</section>}
+      <section aria-label="Журнал запуска"><div className="run-journal-heading"><h3>Журнал · {state.events.length}</h3><button disabled={!state.events.length} onClick={() => downloadText(`run-${state.runId}.json`, stringify({ runId: state.runId, planId: state.planId, status: state.status, message: state.message, events: state.events, outcome: state.outcome }))}>Сохранить журнал</button></div>
+        {!state.events.length && <p className="muted">Здесь появятся входы, результаты и ошибки каждого выполненного шага.</p>}
+        {state.events.slice(currentPage * 50, (currentPage + 1) * 50).map(event => <details className={`run-event run-event-${event.kind}`} key={event.sequence}><summary><span>{event.sequence.toString().padStart(2, '0')}</span> {eventLabels[event.kind]} · {'activation' in event && event.activation ? label(event.activation.nodeId) : event.kind === 'status' ? runStatusLabels[event.status] : ''}</summary><pre>{preview(eventContent(event))}</pre>{'activation' in event && event.activation && <p className="muted">Путь: {event.activation.path.map(label).join(' → ') || 'Корневой граф'} · call {event.activation.callId.slice(0, 8)}</p>}</details>)}
+        {lastPage > 0 && <div className="inline-actions"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Предыдущие</button><span>{currentPage + 1} / {lastPage + 1}</span><button disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Следующие</button><button onClick={() => setPage(null)}>К последним</button></div>}
+      </section>
+    </div>
+  </section>
+}

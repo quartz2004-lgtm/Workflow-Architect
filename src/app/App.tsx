@@ -35,6 +35,7 @@ import { useShortcuts } from './useShortcuts'
 import { Modal } from '../shared/Modal'
 import { RecoveryDetails } from '../persistence/RecoveryDetails'
 import { PreviewPanel } from '../preview/PreviewPanel'
+import { RunPanel, runStatusLabels } from '../execution/RunPanel'
 
 const Canvas = lazy(() => import('../canvas/Canvas').then(module => ({ default: module.Canvas })))
 const ExportDialog = lazy(() => import('../export/ExportDialog').then(module => ({ default: module.ExportDialog })))
@@ -62,6 +63,8 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
   const exporting = useStore(editor.exportStore, s => s.open)
   const recovery = useStore(editor.recoveryStore)
   const previewOpen = useStore(editor.preview.store, s => s.open)
+  const runOpen = useStore(editor.runtime.store, s => s.open)
+  const runStatus = useStore(editor.runtime.store, s => s.status)
   const mode = useStore(editor.projectStore, s => s.project.settings.defaultMode)
   const projectMotion = useStore(editor.projectStore, s => s.project.settings.motion)
   const motion = profile?.preferences.motion === 'reduced' ? 'reduced' : projectMotion
@@ -69,7 +72,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
   useEffect(() => {
     const flushOnHidden = () => { if (document.visibilityState === 'hidden') void autosave.flush() }
     document.addEventListener('visibilitychange', flushOnHidden)
-    return () => { document.removeEventListener('visibilitychange', flushOnHidden); editor.preview.stop() }
+    return () => { document.removeEventListener('visibilitychange', flushOnHidden); editor.preview.stop(); editor.runtime.dispose() }
   }, [editor, autosave])
   const saveLabel = { saved: 'Сохранено', saving: 'Сохранение…', unsaved: 'Есть изменения', error: 'Ошибка сохранения' }[save.status]
   return <div className="app-shell" data-motion={motion} data-density={profile?.preferences.density}>
@@ -78,6 +81,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
       <span className={`save-status ${save.status}`} role="status">{save.status === 'saved' ? '✓' : '○'} {saveLabel}</span>
       <button onClick={() => editor.validationStore.setState(s => ({ open: !s.open }))}>Validate</button>
       <button onClick={() => editor.preview.start(editor.projectStore.getState().project, editor.navigationStore.getState().graphId, motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches)}>Preview</button>
+      <button aria-label={`Run · ${runStatusLabels[runStatus]}`} onClick={() => editor.runtime.store.setState({ open: !runOpen })}>Run{runStatus === 'waiting' ? ' · Ответ' : runStatus === 'running' || runStatus === 'queued' ? ' · ▶' : ''}</button>
       <button aria-label="Настройки проекта" title="Настройки проекта" onClick={() => editor.select()}>⚙</button>
       <button className="export-button" onClick={() => editor.exportStore.setState({ open: true, target: editor.projectStore.getState().project.settings.exportDefault ?? 'archive' })}>Экспорт <span>↗</span></button>
     </header>
@@ -87,6 +91,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
     <main className="workspace"><Library /><Suspense fallback={<div className="boot-screen" role="status">Загрузка Canvas…</div>}><Canvas key={`${projectId}:${graphId}`} /></Suspense><Inspector /></main>
     <ValidationPanel />
     {previewOpen && <PreviewPanel />}
+    {runOpen && <RunPanel key={projectId} />}
     {resources && <ResourcesDialog />}
     {recovery.report && recovery.open && <Modal wide title="Отчёт восстановления" close={() => editor.recoveryStore.setState({ open: false })}><RecoveryDetails report={recovery.report} focus={id => { editor.focusEntity(id); editor.recoveryStore.setState({ open: false }) }} /></Modal>}
     <Suspense fallback={<div className="dialog-loading" role="status">Загрузка…</div>}>

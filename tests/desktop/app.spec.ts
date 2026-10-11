@@ -35,6 +35,32 @@ async function launch(profile: string, skipSetup = true) {
   return application
 }
 
+test('offline desktop executes the local Worker under CSP and saves actual output', async () => {
+  const profile = await mkdtemp(join(tmpdir(), 'workflow-desktop-runtime-'))
+  const application = await launch(profile)
+  try {
+    const page = await application.firstWindow(), errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.context().setOffline(true)
+    await page.getByRole('button', { name: 'Открыть проекты' }).click()
+    await page.getByRole('button', { name: /Первый локальный запуск.*Исполнимый пример/ }).click()
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    const panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    await panel.getByRole('button', { name: 'Запустить workflow' }).click()
+    await expect(panel.getByRole('heading', { name: 'Нужен ваш ответ', exact: true })).toBeVisible()
+    await panel.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+    await expect(panel.getByRole('heading', { name: 'Завершён', exact: true })).toBeVisible()
+    await panel.locator('.run-artifact summary').click()
+    const path = join(profile, 'result.json')
+    await application.evaluate(({ session }, path) => { session.defaultSession.once('will-download', (_event, item) => item.setSavePath(path)) }, path)
+    await panel.getByRole('button', { name: 'Сохранить result.json', exact: true }).click()
+    await expect.poll(async () => readFile(path, 'utf8').catch(() => '')).toContain('WORKFLOW ARCHITECT')
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ result: 'WORKFLOW ARCHITECT' })
+    await page.screenshot({ path: 'desktop-results/local-run.png' })
+    expect(errors).toEqual([])
+  } finally { await application.close() }
+})
+
 test('desktop first setup persists personal settings across native restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workflow-desktop-setup-'))
   let application = await launch(directory, false)
@@ -157,6 +183,7 @@ test('desktop almanac is available offline and saves the complete HTML manual', 
     await page.getByRole('button', { name: 'Альманах', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Альманах Workflow Architect' })
     await dialog.getByRole('searchbox', { name: 'Поиск по альманаху' }).fill('additionalProperties')
+    await dialog.getByRole('button', { name: /Контракты и JSON Schema/ }).click()
     await expect(dialog.getByRole('article')).toContainText('Контракты и JSON Schema')
     const exported = join(profile, 'almanac.html')
     await application.evaluate(({ session }, path) => {

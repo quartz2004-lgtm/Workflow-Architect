@@ -26,6 +26,7 @@ import { applyCommand, type EditorCommand } from './commands'
 import { createExportStore } from '../export/store'
 import type { RecoveryReport } from '../persistence/recovery'
 import { createPreviewController } from '../preview/controller'
+import { createRunController } from '../execution/controller'
 
 enablePatches()
 type HistoryEntry = { label: string; patches: Patch[]; inverse: Patch[]; graphId: string | null }
@@ -40,6 +41,7 @@ export function createEditor(initial: Project = createProject()) {
   const exportStore = createExportStore()
   const recoveryStore = createStore(() => ({ report: null as RecoveryReport | null, open: false }))
   const preview = createPreviewController()
+  const runtime = createRunController()
   const pruneSelection = () => {
     const p = projectStore.getState().project
     if (navigationStore.getState().graphId && !p.subworkflows.some(g => g.id === navigationStore.getState().graphId)) navigationStore.setState({ graphId: null, path: [null] })
@@ -84,7 +86,7 @@ export function createEditor(initial: Project = createProject()) {
     select()
   }
   return {
-    projectStore, historyStore, selectionStore, canvasStore, uiStore, validationStore, navigationStore, exportStore, recoveryStore, preview, execute, select, navigate,
+    projectStore, historyStore, selectionStore, canvasStore, uiStore, validationStore, navigationStore, exportStore, recoveryStore, preview, runtime, execute, select, navigate,
     getActiveGraph: () => getGraph(projectStore.getState().project, navigationStore.getState().graphId),
     focusEntity: (id: string) => {
       const entry = graphEntries(projectStore.getState().project).find(({ graph }) => [...graph.nodes, ...graph.edges, ...graph.groups].some(entity => entity.id === id))

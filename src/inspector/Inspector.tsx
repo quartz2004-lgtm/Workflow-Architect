@@ -27,6 +27,7 @@ import { SelectField, TextField } from './controls'
 import { GroupInspector } from './GroupInspector'
 import { MultiInspector } from './MultiInspector'
 import { SubworkflowPorts } from './SubworkflowPorts'
+import { OperationInspector } from './OperationInspector'
 
 const fields = [
   { key: 'title', label: 'Название', multiline: false },
@@ -55,6 +56,7 @@ export function Inspector() {
           <SelectField label="Статус" helpKey="identity.status" value={node.status} options={['draft', 'configured', 'ready', 'disabled']} empty={false} commit={status => editor.safely(() => editor.execute({ type: 'configure-node', node: nodeSchema.parse({ ...node, status }) }))} />
           <SelectField label="Цвет акцента" helpKey="identity.color" value={node.color ?? ''} options={['neutral', 'violet', 'cyan', 'emerald', 'amber', 'blue', 'rose', 'indigo', 'slate']} commit={color => editor.safely(() => editor.execute({ type: 'configure-node', node: nodeSchema.parse({ ...node, color: color || undefined }) }))} />
         </details>
+        <OperationInspector key={node.id} node={node} />
         <ConfigInspector node={node} />
         {node.type === 'subworkflow' && <SubworkflowPorts node={node} />}
         {node.type !== 'note' && <PortsEditor node={node} />}
