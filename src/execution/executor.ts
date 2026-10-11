@@ -79,6 +79,13 @@ export class ExecutionRun {
     }
   }
   getStatus(): RunStatus { return this.status }
+  checkClock(): void {
+    const waiting = this.pending
+    if (waiting && Date.now() >= Math.min(this.deadline, Date.parse(waiting.request.expiresAt))) {
+      this.pending = undefined; clearTimeout(waiting.timer)
+      waiting.reject(new RunFailure('Истёк timeout ожидания Human, включая время сна ПК.', waiting.request.activation))
+    }
+  }
   cancel(): void {
     if (['succeeded', 'failed', 'cancelled'].includes(this.status)) return
     this.cancelled = true

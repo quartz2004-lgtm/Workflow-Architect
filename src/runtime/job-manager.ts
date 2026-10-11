@@ -24,7 +24,7 @@ import type { RunEvent, RunOutcome } from '../execution/run-types'
 import { assertValueBudget } from '../execution/values'
 import { graphEntries } from '../domain/graphs'
 import { AtomicStore, type StoreLimits } from './atomic-store'
-import { jobSchema, runtimeProfileSchema, submitJobSchema, terminalJob, type RuntimeJob, type SubmitJob } from './job-schema'
+import { jobSchema, runtimeProfileSchema, submitJobSchema, summarizeJob, terminalJob, type JobSummary, type RuntimeJob, type SubmitJob } from './job-schema'
 import { recoveryDecision } from './recovery-policy'
 
 function canonical(value: unknown): string {
@@ -85,9 +85,9 @@ export class JobManager {
   }
   get available() { return !this.stopped && !this.fault }
   get problem() { return this.fault }
-  list(profileId: string): RuntimeJob[] {
+  list(profileId: string): JobSummary[] {
     runtimeProfileSchema.parse(profileId)
-    return [...this.jobs.values()].filter(job => job.profileId === profileId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(job => structuredClone(job))
+    return [...this.jobs.values()].filter(job => job.profileId === profileId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(summarizeJob)
   }
   get(profileId: string, id: string): RuntimeJob { return structuredClone(this.owned(profileId, id)) }
   private owned(profileId: string, id: string) {
@@ -170,6 +170,7 @@ export class JobManager {
     this.disk.remove(id); this.jobs.delete(id)
   }
   closeWindow() { for (const job of [...this.jobs.values()]) if (!job.background && !terminalJob(job)) this.cancel(job.profileId, job.id) }
+  wake() { for (const run of this.running.values()) run.checkClock(); this.schedule() }
   /** Exit keeps resumable records; cancellation is a separate user action. */
   stop() {
     if (this.stopped) return

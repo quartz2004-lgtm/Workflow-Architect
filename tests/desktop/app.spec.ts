@@ -115,15 +115,16 @@ test('offline desktop: sandbox, edit, close with pending input, restart, native 
     page.on('pageerror', error => errors.push(error.message))
     await expect(page.getByRole('heading', { name: 'Сначала замысел.' })).toBeVisible()
     expect(page.url()).toBe('workflow://app/index.html')
-    expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof (globalThis as unknown as { require?: unknown }).require, bridge: Object.keys(window.workflowDesktop ?? {}) }))).toEqual({ secure: true, node: 'undefined', bridge: ['onBeforeClose'] })
+    expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof (globalThis as unknown as { require?: unknown }).require, bridge: Object.keys(window.workflowDesktop ?? {}) }))).toEqual({ secure: true, node: 'undefined', bridge: ['runtime', 'onBeforeClose'] })
     // CDP evaluate bypasses CSP; insertion into the document exercises its policy.
     await expect(page.addScriptTag({ content: 'window.unsafeDesktopScript = true' })).rejects.toThrow()
     await page.getByRole('button', { name: '✦ Agent' }).click()
     await page.getByRole('textbox', { name: 'Название', exact: true }).fill('Desktop researcher')
     // Close immediately, without blur or waiting for the 450 ms autosave debounce.
-    const closed = application.waitForEvent('close')
+    const closed = page.waitForEvent('close')
     await application.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.close() })
     await closed
+    await application.close()
     application = await launch(profile)
     page = await application.firstWindow()
     await page.emulateMedia({ reducedMotion: 'reduce' })

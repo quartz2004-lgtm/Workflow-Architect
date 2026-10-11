@@ -1,6 +1,7 @@
 node_modules/
 dist/
 desktop-dist/
+runtime-dist/
 .desktop-app/
 release/
 desktop-results/

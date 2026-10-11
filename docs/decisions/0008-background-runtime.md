@@ -24,4 +24,6 @@ Credentials хранятся отдельно, шифруются средств
 
 ## Следствия
 
+Native implementation опирается на [Electron utilityProcess](https://www.electronjs.org/docs/latest/api/utility-process) и [parentPort](https://www.electronjs.org/docs/latest/api/parent-port). Runtime bundle поставляется внутри приложения; он не запускает пользовательские скрипты. Канал main ↔ utility process приватный, а renderer ↔ main дополнительно проверяет отправителя. Desktop-тесты используют отдельные временные userData и проверяют реальное закрытие окна, завершение задания без окна, принудительную остановку utility process, reconnect и отказ постороннему webContents.
+
 Браузерная версия сохраняет ограниченный Worker режим и явно показывает, что закрытие вкладки прекращает выполнение. Desktop получает историю, переподключение и независимость от окна. Схема проекта 0.2 не меняется. Проверки должны включать фактическое завершение процесса, повторное открытие хранилища и установленный desktop, а не только mock transport.

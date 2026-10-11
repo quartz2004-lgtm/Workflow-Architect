@@ -25,7 +25,7 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 if (resolve(fileURLToPath(target)) !== resolve(repository, '.desktop-app')) throw new Error('Unsafe staging directory')
 await rm(target, { recursive: true, force: true })
 await mkdir(target, { recursive: true })
-for (const folder of ['dist', 'desktop-dist', 'desktop/assets']) {
+for (const folder of ['dist', 'desktop-dist', 'runtime-dist', 'desktop/assets']) {
   await cp(new URL(`../${folder}`, import.meta.url), new URL(folder, target), { recursive: true })
 }
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
