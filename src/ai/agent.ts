@@ -109,7 +109,10 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
           const issues = validateOutput(output)
           if (issues.length) throw new Error(`Результат модели не соответствует схеме: ${issues.map(issue => `${issue.path}: ${issue.message}`).join('; ')}`)
         }
-        if (minimumWords && (typeof output !== 'string' || countWords(output) < minimumWords)) throw new Error(`Результат должен содержать не менее ${minimumWords} слов.`)
+        if (minimumWords) {
+          const words = typeof output === 'string' ? countWords(output) : 0
+          if (words < minimumWords) throw new Error(`Получено ${words} слов; результат должен содержать не менее ${minimumWords}. Уточните желаемый объём в prompt и запустите снова.`)
+        }
         return { output, inputTokens, outputTokens, costUsd, calls: call, toolCalls }
       }
       if (call === limits.maxCalls) throw new Error('Исчерпан лимит вызовов модели; новый инструмент не запущен.')
