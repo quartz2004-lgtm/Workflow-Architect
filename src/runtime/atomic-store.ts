@@ -15,10 +15,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { replaceFile } from './replace-file'
 
 export interface StoreLimits { maxRecordBytes: number; maxTotalBytes: number; maxRecords: number }
 const defaults: StoreLimits = { maxRecordBytes: 32 * 1024 * 1024, maxTotalBytes: 256 * 1024 * 1024, maxRecords: 500 }
@@ -63,7 +64,7 @@ export class AtomicStore<T> {
       writeFileSync(descriptor, encoded, 'utf8')
       fsyncSync(descriptor)
       closeSync(descriptor); descriptor = undefined
-      renameSync(temporary, path)
+      replaceFile(temporary, path)
     } finally {
       if (descriptor !== undefined) closeSync(descriptor)
       if (existsSync(temporary)) unlinkSync(temporary)
