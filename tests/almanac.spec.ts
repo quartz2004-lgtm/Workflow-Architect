@@ -46,7 +46,7 @@ test('almanac: browse, search body text, empty state, export entire offline book
   const pending = page.waitForEvent('download')
   await dialog.getByRole('button', { name: 'Сохранить альманах' }).click()
   const download = await pending
-  expect(download.suggestedFilename()).toBe('Workflow-Architect-Almanac-0.3.1.html')
+  expect(download.suggestedFilename()).toBe('Workflow-Architect-Almanac-0.4.0.html')
   const html = await readFile((await download.path())!, 'utf8')
   expect(html).toContain('Что такое Workflow Architect')
   expect(html).toContain('Границы версии и частые вопросы')

@@ -42,9 +42,10 @@ export async function executeAgentOperation(options: {
   const previous = config.context?.memory === 'run' ? outputs.get(node.id)?.values().next().value : undefined
   const prompt = [config.promptId ? project.prompts.find(prompt => prompt.id === config.promptId)?.content : '', config.systemPrompt].filter(Boolean).join('\n\n')
   const system = [config.role, prompt, ...(config.behavioralRules ?? []), config.context?.knowledge, config.context?.policy].filter(Boolean).join('\n\n')
-  const tools = agentTools(graph, node).map(tool => {
+  const tools = agentTools(graph, node).map((tool, index) => {
     if (tool.operation?.kind !== 'text-statistics') throw new Error('Недоступный инструмент.')
-    const name = `tool_${tool.id.replaceAll('-', '_')}`
+    // Provider-facing names are short semantic aliases; durable permissions still use node UUIDs.
+    const name = `text_statistics_${index + 1}`
     const builtIn = createTextTool(name, typeof input === 'string' ? input : JSON.stringify(input), tool.operation.minimumWords)
     if (tool.type !== 'tool') throw new Error('Ожидался Tool.')
     const links = graph.edges.filter(edge => edge.type === 'tool-access' && edge.sourceNode === node.id && edge.targetNode === tool.id)

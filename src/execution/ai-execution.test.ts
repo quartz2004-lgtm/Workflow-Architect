@@ -71,7 +71,7 @@ describe('AI graph execution', () => {
     f.project.nodes.push(tool); f.project.edges.push({ ...createEdge(f.editor.id, tool.id, out, into), type: 'tool-access' })
     const model = provider(vi.fn(async (request: ModelRequest) => {
       if (request.messages[0]!.content.startsWith('Author')) return reply('Три простых слова')
-      if (request.messages.at(-1)!.role !== 'tool') return { ...reply(''), toolCalls: [{ name: `tool_${tool.id.replaceAll('-', '_')}`, arguments: {} }] }
+      if (request.messages.at(-1)!.role !== 'tool') return { ...reply(''), toolCalls: [{ name: 'text_statistics_1', arguments: {} }] }
       expect(JSON.parse(request.messages.at(-1)!.content)).toMatchObject({ words: 3, meetsMinimum: true })
       return reply('Проверенная статья')
     }))

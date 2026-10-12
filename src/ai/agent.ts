@@ -71,7 +71,9 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
   const combined = AbortSignal.any([signal, timer.signal, ...(provider.signal ? [provider.signal] : [])])
   let inputTokens = 0, outputTokens = 0, costUsd = 0, toolCalls = 0
   const usedTools = new Set<string>()
-  const messages: ModelMessage[] = [{ role: 'system', content: system }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input) }]
+  let finalizing = tools.length === 0, correctedToolChoice = false, correctedLength = false
+  const toolPolicy = requiredTools.length ? `\n\nRuntime requirement: before writing any final answer, call every required tool: ${requiredTools.join(', ')}. Your FIRST response must be a tool call, not the article or final answer. After receiving tool results, produce the complete final answer following the instructions above.` : ''
+  const messages: ModelMessage[] = [{ role: 'system', content: system + toolPolicy }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input) }]
   try {
     const capabilities = await abortable(() => provider.inspect(model, combined), combined)
     if (tools.length && !capabilities.tools) throw new Error('Модель не поддерживает вызовы инструментов.')
@@ -87,7 +89,8 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
       if (costUsd + reservedCost > limits.maxCostUsd) throw new Error('Следующий запрос превышает лимит расходов.')
       trace({ kind: 'model-start', call, model })
       const started = Date.now()
-      const reply: ModelResponse = await abortable(() => provider.chat({ model, messages: structuredClone(messages), tools: tools.map(tool => tool.definition), outputSchema: schema, maxOutputTokens, contextTokens, temperature }, combined), combined)
+      const finalSchema = finalizing ? schema : undefined
+      const reply: ModelResponse = await abortable(() => provider.chat({ model, messages: structuredClone(messages), tools: finalizing ? [] : tools.map(tool => tool.definition), outputSchema: finalSchema, maxOutputTokens, contextTokens, temperature }, combined), combined)
       combined.throwIfAborted()
       // Providers are an external boundary even when supplied by an in-process adapter.
       assertValueBudget(reply)
@@ -101,7 +104,21 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
       if (reply.finish === 'length') throw new Error('Модель исчерпала лимит ответа. Частичный текст не считается завершённым результатом.')
       if (!reply.toolCalls.length) {
         if (!reply.content.trim()) throw new Error('Модель вернула пустой результат.')
-        if (requiredTools.some(name => !usedTools.has(name))) throw new Error('Модель завершила ответ без обязательного инструмента.')
+        const missing = requiredTools.filter(name => !usedTools.has(name))
+        if (missing.length) {
+          if (correctedToolChoice || call >= limits.maxCalls) throw new Error('Модель завершила ответ без обязательного инструмента.')
+          correctedToolChoice = true
+          messages.push({ role: 'assistant', content: reply.content }, { role: 'user', content: `The answer cannot be accepted yet. Call the required tools now: ${missing.join(', ')}. Use their actual results before answering.` })
+          continue
+        }
+        // Keep optional tools available until the model finishes tool selection. JSON grammar
+        // is applied in a separate final call, within the same time/token/call budget.
+        if (schema && !finalizing) {
+          if (call >= limits.maxCalls) throw new Error('Исчерпан лимит вызовов модели перед structured output.')
+          finalizing = true
+          messages.push({ role: 'assistant', content: reply.content }, { role: 'user', content: 'Return the complete final result as JSON matching the provided output schema. Tool selection is complete.' })
+          continue
+        }
         let output: JsonValue = reply.content
         if (validateOutput) {
           try { output = JSON.parse(reply.content) as JsonValue } catch { throw new Error('Модель вернула не JSON при заданном structured output.') }
@@ -111,11 +128,17 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
         }
         if (minimumWords) {
           const words = typeof output === 'string' ? countWords(output) : 0
-          if (words < minimumWords) throw new Error(`Получено ${words} слов; результат должен содержать не менее ${minimumWords}. Уточните желаемый объём в prompt и запустите снова.`)
+          if (words < minimumWords) {
+            if (typeof output !== 'string' || correctedLength || call >= limits.maxCalls) throw new Error(`Получено ${words} слов; результат должен содержать не менее ${minimumWords}. Уточните желаемый объём в prompt и запустите снова.`)
+            correctedLength = true
+            messages.push({ role: 'assistant', content: reply.content }, { role: 'user', content: `В ответе ${words} слов, требуется минимум ${minimumWords}. Подготовь заново полный текст объёмом примерно ${Math.ceil(minimumWords * 1.5)} слов: добавь конкретные примеры и полезные пояснения, сохрани требования задания. Верни весь текст целиком, а не только дополнения. Не утверждай, что объём проверен: его проверяет приложение.` })
+            continue
+          }
         }
         return { output, inputTokens, outputTokens, costUsd, calls: call, toolCalls }
       }
       if (call === limits.maxCalls) throw new Error('Исчерпан лимит вызовов модели; новый инструмент не запущен.')
+      if (finalizing) throw new Error('Инструменты недоступны при подготовке окончательного результата.')
       if (toolCalls + reply.toolCalls.length > limits.maxToolCalls) throw new Error('Превышен лимит вызовов инструментов.')
       // Validate the entire batch before executing its first tool.
       const batch = reply.toolCalls.map(request => {

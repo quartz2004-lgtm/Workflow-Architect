@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { _electron as electron, expect, test, type Page } from '@playwright/test'
+import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -33,6 +33,10 @@ const model = process.env.WORKFLOW_AI_MODEL ?? 'qwen3:8b'
 const port = Number(process.env.WORKFLOW_AI_PORT ?? 11434)
 const folder = resolve('output/ai-acceptance')
 const command = (page: Page, command: AiCommand) => page.evaluate(command => window.workflowDesktop!.runtime.request({ kind: 'ai', command }), command)
+async function generated(dialog: Locator, selector: string) {
+  await expect(dialog.locator(`${selector}, .field-error`).first()).toBeVisible({ timeout: 180000 })
+  expect(await dialog.locator('.field-error').allTextContents()).toEqual([])
+}
 async function launch() {
   const directory = await mkdtemp(join(tmpdir(), 'workflow-real-ai-'))
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE
@@ -77,19 +81,27 @@ test('real Ollama passes capability probes and produces usable design and person
     await page.getByRole('button', { name: 'ИИ-помощник', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: /^ИИ ·/ })
     await dialog.getByRole('button', { name: 'Проверить модель и инструменты' }).click()
-    await expect(dialog.locator('.ai-success')).toBeVisible({ timeout: 180000 })
+    await generated(dialog, '.ai-success')
     await page.screenshot({ path: join(folder, 'capabilities.png') })
     await dialog.getByRole('button', { name: '02 · Проектирование' }).click()
     await dialog.getByLabel(/Задача или уточнение/).fill('Создай последовательный workflow: ручной запрос темы, агент Автор пишет статью, агент Редактор проверяет черновик, артефакт сохраняет Markdown. Пока без инструментов и внешних API. Локальная модель. Все инструкции на русском.')
     await dialog.getByRole('button', { name: 'Предложить workflow' }).click()
-    await expect(dialog.getByRole('region', { name: 'Предварительный просмотр предложения' })).toBeVisible({ timeout: 180000 })
+    await generated(dialog, '.ai-proposal, .ai-question')
+    if (await dialog.locator('.ai-question').count()) {
+      await writeFile(join(folder, 'design-questions.txt'), await dialog.innerText())
+      await dialog.getByLabel(/Задача или уточнение/).fill('Тема: Как выбрать бельё для комфорта. Общая аудитория. Русский язык, доброжелательный практический стиль. Минимум 600 слов, цель 1000 слов. Автор пишет развёрнутый черновик с введением, подразделами и примерами. Редактор улучшает ясность и структуру без сокращения объёма; без выдуманных источников и медицинских обещаний. Четыре узла: ручной Trigger → Agent Автор → Agent Редактор → Artifact Markdown. Других инструментов, API, дополнительных вопросов не требуется. Предложи этот граф сейчас.')
+      await dialog.getByRole('button', { name: 'Отправить уточнение' }).click()
+      await generated(dialog, '.ai-proposal, .ai-question')
+    }
+    await expect(dialog.getByRole('region', { name: 'Предварительный просмотр предложения' })).toBeVisible()
     await page.screenshot({ path: join(folder, 'design.png') })
     await dialog.getByRole('button', { name: 'Добавить на Canvas' }).click()
     await expect(dialog).toContainText('Добавлено · можно отменить Ctrl+Z')
     await dialog.getByRole('button', { name: '03 · Для меня' }).click()
     await dialog.getByLabel(/Пробная задача и ваши впечатления/).fill('Я создал автора и редактора статей, соединил узлы и запустил пример. Задача — русские статьи от 600 слов. Хочу сначала видеть основные настройки, крупнее отступы, минимальную анимацию. Технические параметры я пока понимаю плохо.')
     await dialog.getByRole('button', { name: 'Проанализировать и предложить варианты' }).click()
-    await expect.poll(() => dialog.locator('.ai-preset').count(), { timeout: 180000 }).toBeGreaterThanOrEqual(2)
+    await generated(dialog, '.ai-preset')
+    expect(await dialog.locator('.ai-preset').count()).toBeGreaterThanOrEqual(2)
     expect(await dialog.locator('.ai-preset').count()).toBeLessThanOrEqual(3)
     await writeFile(join(folder, 'personalization-text.txt'), await dialog.innerText())
     await page.screenshot({ path: join(folder, 'personalization.png') })

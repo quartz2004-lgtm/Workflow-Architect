@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
+import { APP_VERSION } from '../shared/version.ts'
 import { useEffect, useRef, useState } from 'react'
 import { useEditor } from '../app/context'
 import { Modal } from '../shared/Modal'
@@ -53,9 +54,9 @@ export function Almanac() {
     requestAnimationFrame(() => heading.current?.focus({ preventScroll: true }))
   }
   return <Modal wide className="almanac-modal" title="Альманах Workflow Architect" close={() => editor.uiStore.setState({ help: false, helpChapter: null })}>
-    <div className="almanac-toolbar"><div><span className="eyebrow">РУКОВОДСТВО ПО ПРИЛОЖЕНИЮ</span><p>От замысла до инженерной спецификации</p></div><button onClick={() => downloadBlob('Workflow-Architect-Almanac-0.3.1.html', new Blob([almanacHtml(chapters)], { type: 'text/html;charset=utf-8' }))}>Сохранить альманах <span aria-hidden="true">↗</span></button></div>
+    <div className="almanac-toolbar"><div><span className="eyebrow">РУКОВОДСТВО ПО ПРИЛОЖЕНИЮ</span><p>От замысла до инженерной спецификации</p></div><button onClick={() => downloadBlob(`Workflow-Architect-Almanac-${APP_VERSION}.html`, new Blob([almanacHtml(chapters)], { type: 'text/html;charset=utf-8' }))}>Сохранить альманах <span aria-hidden="true">↗</span></button></div>
     <div className="almanac-layout"><aside className="almanac-sidebar"><label className="almanac-search"><span>Поиск по альманаху</span><input type="search" placeholder="Контракты, Agent, экспорт…" value={query} onChange={event => setQuery(event.target.value)} /></label>
-      <div className="almanac-count" role="status">{query.trim() ? `Найдено глав: ${results.length}` : `${chapters.length} глав · 0.3.1`}</div>
+      <div className="almanac-count" role="status">{query.trim() ? `Найдено глав: ${results.length}` : `${chapters.length} глав · ${APP_VERSION}`}</div>
       <nav aria-label="Оглавление альманаха">{results.map((item, i) => <div key={item.id}>{results[i - 1]?.group !== item.group && <div className="almanac-group">{item.group}</div>}<button aria-current={chapter?.id === item.id ? 'page' : undefined} onClick={() => open(item.id)}><span>{String(chapters.indexOf(item) + 1).padStart(2, '0')}</span>{item.title}</button></div>)}</nav>
     </aside>
       {chapter ? <article key={chapter.id} ref={article} className="almanac-article" aria-labelledby="almanac-chapter"><div className="almanac-chapter-meta">{chapter.group} <span>ГЛАВА {String(index + 1).padStart(2, '0')}</span></div><h3 ref={heading} tabIndex={-1} id="almanac-chapter">{chapter.title}</h3><p className="almanac-summary">{chapter.summary}</p>{chapter.blocks.map((block, i) => <Block key={i} block={block} />)}

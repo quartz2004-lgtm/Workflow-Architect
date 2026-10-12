@@ -32,6 +32,17 @@ const request = (changes: Partial<AgentRequest> = {}): AgentRequest => ({ model:
 const call = (name = 'text_stats', args = {}): ModelResponse => ({ ...response(''), toolCalls: [{ name, arguments: args }] })
 
 describe('bounded agent loop', () => {
+  it('allows required tool calls before constraining the final response to JSON', async () => {
+    const provider = fake([call(), response('Three words'), response('{"words":3}')])
+    const outputSchema = { type: 'object', properties: { words: { type: 'number' } }, required: ['words'], additionalProperties: false }
+    await expect(runAgent(provider, request({ tools: [createTextTool('text_stats', 'Три простых слова', 3)], requiredTools: ['text_stats'], outputSchema }), new AbortController().signal)).resolves.toMatchObject({ output: { words: 3 }, toolCalls: 1 })
+    const calls = provider.chat.mock.calls as unknown as [import('./types').ModelRequest, AbortSignal][]
+    expect(calls[0]![0].outputSchema).toBeUndefined()
+    expect(calls[0]![0].messages[0]!.content).toContain('text_stats')
+    expect(calls[1]![0].outputSchema).toBeUndefined()
+    expect(calls[2]![0].outputSchema).toEqual(outputSchema)
+    expect(calls[2]![0].tools).toEqual([])
+  })
   it('executes only a granted tool, passes its result back and reports actual usage', async () => {
     const provider = fake([call(), response()]); const events: AgentTrace[] = []
     const result = await runAgent(provider, request({ tools: [createTextTool('text_stats', 'Три простых слова', 3)], requiredTools: ['text_stats'] }), new AbortController().signal, event => events.push(event))
@@ -58,12 +69,31 @@ describe('bounded agent loop', () => {
   it('does not accept partial output, missing mandatory tool, short text or invalid JSON output', async () => {
     const signal = new AbortController().signal
     await expect(runAgent(fake([{ ...response(), finish: 'length' }]), request(), signal)).rejects.toThrow('Частичный')
-    await expect(runAgent(fake([response()]), request({ tools: [createTextTool('text_stats', '', 0)], requiredTools: ['text_stats'] }), signal)).rejects.toThrow('обязательного')
-    await expect(runAgent(fake([response()]), request({ minimumWords: 600 }), signal)).rejects.toThrow('600')
+    await expect(runAgent(fake([response(), response()]), request({ tools: [createTextTool('text_stats', '', 0)], requiredTools: ['text_stats'] }), signal)).rejects.toThrow('обязательного')
+    await expect(runAgent(fake([response(), response()]), request({ minimumWords: 600 }), signal)).rejects.toThrow('600')
     const outputSchema = { type: 'object', properties: { answer: { type: 'number' } }, required: ['answer'], additionalProperties: false }
     await expect(runAgent(fake([response('not json')]), request({ outputSchema }), signal)).rejects.toThrow('не JSON')
     await expect(runAgent(fake([response('{"answer":"wrong"}')]), request({ outputSchema }), signal)).rejects.toThrow('схеме')
     await expect(runAgent(fake([response('{"answer":42}')]), request({ outputSchema }), signal)).resolves.toMatchObject({ output: { answer: 42 } })
+  })
+  it('keeps optional tools available before the structured final phase', async () => {
+    const provider = fake([call(), response('3'), response('{"words":3}')])
+    await expect(runAgent(provider, request({ tools: [createTextTool('text_stats', 'Три простых слова', 0)], outputSchema: { type: 'object' } }), new AbortController().signal)).resolves.toMatchObject({ toolCalls: 1, calls: 3, output: { words: 3 } })
+    const calls = provider.chat.mock.calls as unknown as [import('./types').ModelRequest, AbortSignal][]
+    expect(calls[0]![0].tools).toHaveLength(1)
+    expect(calls[2]![0].tools).toHaveLength(0)
+  })
+  it('corrects short text once without resetting usage or bypassing call limits', async () => {
+    const provider = fake([response('Мало'), response('Достаточно полных слов')])
+    await expect(runAgent(provider, request({ minimumWords: 3 }), new AbortController().signal)).resolves.toMatchObject({ calls: 2, inputTokens: 100, outputTokens: 60 })
+    const limited = fake([response('Мало')])
+    await expect(runAgent(limited, request({ minimumWords: 3, limits: { ...defaultAgentLimits, maxCalls: 1 } }), new AbortController().signal)).rejects.toThrow('не менее 3')
+    expect(limited.chat).toHaveBeenCalledTimes(1)
+  })
+  it('lets the model correct a missing tool once and still executes only its explicit call', async () => {
+    const tool = createTextTool('text_stats', 'Текст', 0); tool.execute = vi.fn(tool.execute)
+    await expect(runAgent(fake([response(), call(), response()]), request({ tools: [tool], requiredTools: ['text_stats'] }), new AbortController().signal)).resolves.toMatchObject({ calls: 3, toolCalls: 1 })
+    expect(tool.execute).toHaveBeenCalledTimes(1)
   })
   it('refuses context and cost overrun before generation and reports actual overrun before tools', async () => {
     const signal = new AbortController().signal
