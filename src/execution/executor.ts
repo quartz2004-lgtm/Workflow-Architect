@@ -357,6 +357,9 @@ export class ExecutionRun {
   private async executeParallel(fork: WorkflowNode, input: JsonValue, context: Context): Promise<{ output: JsonValue; next: Token[] }> {
     if (fork.operation?.kind !== 'parallel') throw new Error('Ожидался Parallel.')
     const { agents, join } = parallelRegion(context.graph, fork)
+    const forkPorts = new Map(fork.ports.filter(port => port.direction === 'output' && ['flow', 'data'].includes(port.kind)).map(port => [port.id, input]))
+    for (const port of fork.ports.filter(port => forkPorts.has(port.id))) this.check(port.contract, input)
+    context.outputs.set(fork.id, forkPorts)
     const branchAbort = new AbortController(), signal = AbortSignal.any([this.abort.signal, branchAbort.signal])
     const results: JsonValue[] = new Array(agents.length)
     let cursor = 0
@@ -367,7 +370,7 @@ export class ExecutionRun {
         const activation: Activation = { id: createId(), callId: context.id, graphId: context.graphId, nodeId: node.id, path: context.path }
         try {
           if (++this.steps > this.plan.limits.maxSteps) throw new Error('Превышен лимит шагов.')
-          const incoming = new Map<string, JsonValue>()
+          const incoming = new Map(context.data.get(node.id) ?? [])
           const entry = context.graph.edges.find(edge => edge.type === 'flow' && edge.sourceNode === fork.id && edge.targetNode === node.id)!
           this.check(entry.contract, input); this.check(node.ports.find(port => port.id === entry.targetPort)?.contract, input)
           if ('input' in node.config) this.check(node.config.input, input)
@@ -377,6 +380,7 @@ export class ExecutionRun {
             this.check(edge.contract, value); this.check(node.ports.find(port => port.id === edge.targetPort)?.contract, value)
             incoming.set(edge.targetPort!, value)
           }
+          for (const [portId, value] of incoming) this.check(node.ports.find(port => port.id === portId)?.contract, value)
           this.emit({ kind: 'step-start', activation, input, data: Object.fromEntries(incoming) })
           const output = await this.executeAgent(node, input, context, incoming, activation, signal)
           this.guard(); signal.throwIfAborted(); assertValueBudget(output)

@@ -37,7 +37,7 @@ export function validateAgent(project: Project, graph: Graph, node: WorkflowNode
   const config = node.config
   if (config.model?.provider !== 'ollama' || !localModelNameSchema.safeParse(config.model.name).success) throw new Error('Выберите провайдера ollama и локальную модель Agent.')
   if (!config.role?.trim()) throw new Error('Укажите роль Agent.')
-  const prompt = config.promptId ? project.prompts.find(prompt => prompt.id === config.promptId)?.content : config.systemPrompt
+  const prompt = [config.promptId ? project.prompts.find(prompt => prompt.id === config.promptId)?.content : '', config.systemPrompt].filter(Boolean).join('\n\n')
   if (!prompt?.trim()) throw new Error('Укажите system prompt или непустой prompt reference.')
   if ([config.role, prompt, ...(config.behavioralRules ?? []), config.context?.knowledge, config.context?.policy].filter(Boolean).join('\n\n').length > 24000) throw new Error('Общие инструкции и знания Agent превышают 24000 символов.')
   const contract = config.output

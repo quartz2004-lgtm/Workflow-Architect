@@ -143,6 +143,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
         if (source?.type !== 'agent' || target?.type !== 'tool' || target.operation?.kind !== 'text-statistics') add(id, edge.id, 'tool-access', 'Исполняемый Tool access идёт от включённого Agent к встроенному Tool.')
         if (edge.predicate || edge.condition?.trim()) add(id, edge.id, 'tool-condition', 'Tool access не исполняет условия.')
         if (!edge.sourcePort || !edge.targetPort) add(id, edge.id, 'explicit-ports', 'Для Tool access укажите оба порта.')
+        contract(edge.contract, id, edge.id)
         continue
       }
       if (!active.has(edge.sourceNode) || !active.has(edge.targetNode)) add(id, edge.id, 'disabled-endpoint', 'Исполняемая связь не может пересекать отключённый узел.')

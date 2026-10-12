@@ -1,0 +1,58 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+.ai-workbench { width: min(960px, calc(100vw - 48px)); }
+.ai-workbench > header { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.ai-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.ai-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--text); background: var(--surface); }
+.ai-section { display: grid; gap: 16px; padding: 22px 0 6px; font-size: 13px; line-height: 1.65; }
+.ai-intro h3 { font-size: 23px; line-height: 1.3; margin: 8px 0 12px; font-weight: 550; }
+.ai-intro p { color: var(--muted); max-width: 680px; margin: 0; }
+.ai-form { display: grid; gap: 16px; border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; background: var(--surface); }
+.ai-section .field { display: grid; gap: 8px; }
+.ai-section .field > span { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.ai-section input:not([type="checkbox"]), .ai-section textarea, .ai-section select { width: 100%; padding: 10px 12px; background: var(--canvas); border: 1px solid var(--border); border-radius: var(--radius-small); color: var(--text); font: inherit; }
+.ai-section textarea { resize: vertical; min-height: 90px; }
+.ai-section :focus-visible, .ai-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ai-section :disabled { opacity: .55; cursor: not-allowed; }
+.ai-check { display: flex; align-items: center; gap: 10px; }
+.ai-check input { accent-color: var(--emerald); flex: 0 0 auto; }
+.ai-section .inline-actions { flex-wrap: wrap; gap: 10px; }
+.ai-section > button { justify-self: start; }
+.ai-task-status:empty { display: none; }
+.ai-task-status details { font: 12px var(--mono); color: var(--muted); }
+.ai-task-status li { padding: 4px 0; overflow-wrap: anywhere; }
+.ai-success { color: var(--emerald); }
+.ai-message, .ai-analysis { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-message strong { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.ai-question { border-left: 2px solid var(--amber); padding-left: 12px; margin: 0; }
+.ai-node-grid, .ai-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.ai-node-preview, .ai-preset { padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.ai-node-preview > strong { display: block; margin-top: 5px; }
+.ai-node-preview[data-type="agent"] { border-top-color: var(--violet); }
+.ai-node-preview[data-type="tool"] { border-top-color: var(--cyan); }
+.ai-node-preview[data-type="trigger"] { border-top-color: var(--emerald); }
+.ai-node-preview[data-type="artifact"] { border-top-color: var(--indigo); }
+.ai-node-preview p, .ai-preset p { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-node-preview details { font-size: 12px; }
+.ai-preset h4 { margin: 0 0 10px; }
+.ai-edges { color: var(--text); padding-left: 20px; }
+.ai-grants { padding: 15px; border: 1px solid var(--border); border-left: 2px solid var(--amber); margin: 16px 0; border-radius: var(--radius-small); }
+.ai-proposal > button { margin-top: 10px; }
+.ai-section summary { cursor: pointer; }
+.ai-section code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .ai-workbench { width: calc(100vw - 20px); } .ai-tabs button { flex: 1 1 180px; } .ai-form { padding: 14px; } }

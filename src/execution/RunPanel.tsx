@@ -25,6 +25,7 @@ import { BackgroundConsent, RuntimeControls } from './RuntimeControls'
 import { runStatusLabels } from './view-state'
 export { runStatusLabels } from './view-state'
 import './run-panel.css'
+import { articleBrief } from './article-example'
 
 const eventLabels = { ai: 'Вызов ИИ / инструмента', status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
 const stringify = (value: unknown) => JSON.stringify(value, null, 2)
@@ -44,7 +45,7 @@ export function RunPanel() {
   const project = useStore(editor.projectStore, state => state.project)
   const entries = project.nodes.filter(node => node.type === 'trigger' && node.status !== 'disabled')
   const [entryId, setEntryId] = useState(entries[0]?.id ?? '')
-  const [input, setInput] = useState('{\n  "approved": true,\n  "text": "Workflow Architect"\n}'), [answer, setAnswer] = useState('null'), [error, setError] = useState('')
+  const [input, setInput] = useState(project.nodes.some(node => node.operation?.kind === 'agent') ? JSON.stringify(articleBrief, null, 2) : '{\n  "approved": true,\n  "text": "Workflow Architect"\n}'), [answer, setAnswer] = useState('null'), [error, setError] = useState('')
   const [page, setPage] = useState<number | null>(null)
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
@@ -57,9 +58,9 @@ export function RunPanel() {
   const lastPage = Math.max(0, Math.ceil(state.events.length / 50) - 1), currentPage = Math.min(page ?? lastPage, lastPage)
   const parse = (text: string, action: (value: unknown) => void) => { try { action(JSON.parse(text)); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
   return <section className="run-panel" aria-label="Локальное выполнение">
-    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.3.1</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
+    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.4.0</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
     <div className="run-body">
-      <p className="muted">Локальные операции без ИИ и сети. Максимум 5 минут / 10 000 шагов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
+      <p className="muted">Локальные операции; Agent вызывает настроенную модель Ollama. Максимум 5 минут / 10 000 шагов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
       {editor.runtime.native && <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />}
       {(!editor.runtime.native || !state.jobId) && <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
         <label>Вход запуска (JSON)<textarea aria-label="Вход запуска (JSON)" className="code-input" disabled={busy} value={input} onChange={event => setInput(event.target.value)} rows={3} spellCheck={false} /></label>
@@ -67,7 +68,7 @@ export function RunPanel() {
         <div className="inline-actions"><button className="primary" disabled={busy || !selected || !state.available} onClick={() => parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) })}>Запустить workflow</button><button disabled={!active || state.actionPending || !state.available} onClick={editor.runtime.cancel}>Остановить запуск</button></div>
       </div>}
       {state.snapshot && <p className="muted">Снимок: {state.snapshot.project.name}. Правки Canvas применятся при следующем запуске.{!currentProject && ' В редакторе открыт другой проект.'}</p>}
-      {state.runId && <p className="run-identification muted">Run ID: <code>{state.runId}</code><br />План 0.3: <code>{state.planId}</code></p>}
+      {state.runId && <p className="run-identification muted">Run ID: <code>{state.runId}</code><br />План: <code>{state.planId}</code></p>}
       {(error || state.message) && <p className={error || ['failed', 'blocked', 'unknown'].includes(state.status) ? 'field-error' : 'muted'} role={error || ['failed', 'blocked', 'unknown'].includes(state.status) ? 'alert' : 'status'}>{error || state.message}</p>}
       {!!state.diagnostics.length && <details open={state.status === 'blocked'}><summary>Диагностика · {state.diagnostics.length}</summary><ul className="run-diagnostics">{state.diagnostics.map((issue, index) => <li key={index}><strong>{issue.severity === 'error' ? 'Ошибка' : 'Замечание'}</strong> · {issue.message} <button disabled={!currentProject} onClick={() => editor.focusEntity(issue.entityId)}>Показать узел</button></li>)}</ul></details>}
       {state.human && <section className="run-human" aria-label="Ответ человеку"><h3>{state.human.question}</h3><p className="muted">{label(state.human.activation.nodeId)} · до {new Date(state.human.expiresAt).toLocaleTimeString('ru-RU')}</p>

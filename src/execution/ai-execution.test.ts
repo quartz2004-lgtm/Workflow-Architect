@@ -25,6 +25,7 @@ import { ExecutionRun } from './executor'
 import { parseCheckpoint, type RunCheckpoint } from './checkpoint'
 import { runEventSchema } from './protocol'
 import type { RunEvent } from './run-types'
+import { createArticleExample } from './article-example'
 
 const link = (a: WorkflowNode, b: WorkflowNode) => createEdge(a.id, b.id, a.ports[1]!.id, b.ports[0]!.id)
 const reply = (content: string): ModelResponse => ({ content, toolCalls: [], inputTokens: 50, outputTokens: 40, finish: 'stop' })
@@ -48,6 +49,18 @@ function fixture(parallel = false) {
 const provider = (chat: ModelProvider['chat']): ModelProvider => ({ id: 'fake', costPerMillionInput: 0, costPerMillionOutput: 0, async list() { return ['qwen3:8b'] }, async inspect() { return { tools: true, thinking: false, contextTokens: 32768 } }, chat })
 
 describe('AI graph execution', () => {
+  it('ships an executable article example with fresh IDs and explicit Tool grants', () => {
+    const project = createArticleExample(), another = createArticleExample()
+    expect(compileProject(project, project.nodes[0]!.id).ok).toBe(true)
+    expect(new Set([...project.nodes, ...another.nodes].map(node => node.id)).size).toBe(project.nodes.length * 2)
+    expect(project.nodes.filter(node => node.type === 'agent').every(node => node.operation?.kind === 'agent' && node.operation.minimumWords === 600)).toBe(true)
+  })
+  it('checks fork output contracts before issuing any parallel model request', async () => {
+    const f = fixture(true), chat = vi.fn(async () => reply('unused'))
+    f.fork.ports[1]!.contract = { kind: 'json-schema', schema: { type: 'number' } }
+    const result = await new ExecutionRun(f.plan(), () => {}, { provider: () => provider(chat) }).start('wrong type')
+    expect(result.status).toBe('failed'); expect(chat).not.toHaveBeenCalled()
+  })
   it('runs author then editor with a granted tool and durable trace, producing an actual artifact', async () => {
     const f = fixture(), tool = createNode('tool')
     tool.config = { provider: 'builtin', reference: 'text-statistics' }; tool.operation = { kind: 'text-statistics', minimumWords: 3 }

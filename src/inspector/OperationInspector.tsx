@@ -22,6 +22,7 @@ import { configureOperation, operationOptions } from '../execution/configure-ope
 import { LiteralField, PredicateFields, SourceField } from './ExecutionFields'
 import { SelectField, TextField } from './controls'
 import { FieldHelp } from '../help/FieldHelp'
+import { AiOperationFields } from './AiOperationFields'
 
 export function OperationInspector({ node }: { node: WorkflowNode }) {
   const editor = useEditor(), options = operationOptions[node.type], op = node.operation
@@ -29,11 +30,12 @@ export function OperationInspector({ node }: { node: WorkflowNode }) {
   const commit = (operation: ExecutionConfig) => editor.safely(() => editor.execute({ type: 'configure-node', node: nodeSchema.parse({ ...node, operation }) }))
   const ports = node.ports.filter(port => port.direction === 'output' && port.kind === 'flow').map(port => ({ value: port.id, label: port.name }))
   const port = (label: string, value: string, change: (portId: string) => void) => <SelectField label={label} helpKey="runtime.branch" value={value} empty={false} options={ports} commit={change} />
-  return <details className="inspector-section operation-section" open><summary>Локальное выполнение · 0.3</summary>
+  return <details className="inspector-section operation-section" open><summary>Локальное выполнение · 0.4</summary>
     <SelectField label="Операция" helpKey="runtime.operation" value={op?.kind ?? ''} options={options} commit={kind => editor.safely(() => editor.execute({ type: 'configure-node', node: configureOperation(node, kind) }))} />
     {!op && <p className="muted">Выберите действие. Описательные настройки сами по себе не исполняются.</p>}
     {op?.kind === 'manual' && <p className="muted">Run передаст введённые JSON-данные на выход Trigger.</p>}
-    {op?.kind === 'merge' && <p className="muted">Каждый приход передаётся дальше отдельно. Merge не ждёт остальные ветви.</p>}
+    <AiOperationFields node={node} commit={commit} />
+    {op?.kind === 'merge' && <p className="muted">В паре с явно настроенным Parallel получает все результаты один раз. Вне Parallel каждый приход передаётся дальше отдельно.</p>}
     {op?.kind === 'subworkflow' && <p className="muted">Выберите вложенный граф и привяжите открытые порты ниже. Каждый вызов получает отдельный контекст.</p>}
     {op?.kind === 'map' && <>
       <div className="check-field"><label><input type="checkbox" checked={op.keepInput} onChange={event => commit({ ...op, keepInput: event.target.checked })} />Сохранить остальные поля</label><FieldHelp helpKey="runtime.map" /></div>
