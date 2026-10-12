@@ -15,6 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
+import { APP_VERSION } from '../shared/version.ts'
 import { FieldHelp } from '../help/FieldHelp'
 import { useStore } from 'zustand'
 import { useEditor, useGraph } from '../app/context'
@@ -75,6 +76,6 @@ export function Inspector() {
         </details><button onClick={() => editor.uiStore.setState({ resources: true })}>Общие схемы и prompts</button>
         <div className="property-summary"><span>Узлы</span><strong>{project.nodes.length}</strong><span>Связи</span><strong>{project.edges.length}</strong><span>Хранение</span><span>На этом устройстве</span></div>
       </>}
-    </div><div className="inspector-footer">WORKFLOW ARCHITECT <span>0.3.1 / LOCAL RUN</span></div>
+    </div><div className="inspector-footer">WORKFLOW ARCHITECT <span>{APP_VERSION} / LOCAL AI</span></div>
   </aside>
 }

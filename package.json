@@ -1,7 +1,7 @@
 {
   "name": "workflow-architect",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -26,7 +26,8 @@
     "notices:generate": "node scripts/generate-notices.mjs",
     "notices:check": "node scripts/generate-notices.mjs --check",
     "copyright:check": "node scripts/check-copyright.mjs",
-    "copyright:fix": "node scripts/check-copyright.mjs --fix"
+    "copyright:fix": "node scripts/check-copyright.mjs --fix",
+    "test:ai:local": "npm run desktop:prepare && playwright test --config playwright.ai.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

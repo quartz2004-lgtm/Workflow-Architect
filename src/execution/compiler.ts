@@ -23,10 +23,11 @@ import type { ValueSource } from '../domain/execution-config'
 import { validateProject } from '../validation/validate-project'
 import { compileContract } from './contracts'
 import { assertValueBudget, jsonEqual } from './values'
+import { parallelRegion, validateAgent } from './ai-plan'
 
 export interface ExecutionDiagnostic { severity: 'error' | 'warning'; graphId: string | null; entityId: string; code: string; message: string }
 export interface ExecutionPlan {
-  readonly planVersion: '0.3'
+  readonly planVersion: '0.3' | '0.4'
   readonly id: string
   readonly createdAt: string
   readonly entryNodeId: string
@@ -74,9 +75,18 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     const active = new Map(enabled.map(node => [node.id, node]))
     for (const node of enabled) {
       const operation = node.operation
-      const kinds: Partial<Record<WorkflowNode['type'], readonly string[]>> = { trigger: ['manual'], data: ['map'], logic: ['if', 'switch', 'loop', 'merge'], human: ['human'], artifact: ['artifact'], subworkflow: ['subworkflow'] }
+      const kinds: Partial<Record<WorkflowNode['type'], readonly string[]>> = { trigger: ['manual'], data: ['map'], logic: ['if', 'switch', 'loop', 'merge', 'parallel'], human: ['human'], artifact: ['artifact'], subworkflow: ['subworkflow'], agent: ['agent'], tool: ['text-statistics'] }
       if (!kinds[node.type]) { add(id, node.id, 'unsupported-node', `${node.type} пока не исполняется. Завершите формализацию или отключите узел.`); continue }
       if (!operation || !kinds[node.type]!.includes(operation.kind)) { add(id, node.id, 'missing-operation', 'Настройте поддерживаемую операцию этого узла.'); continue }
+      try {
+        if (operation.kind === 'agent') validateAgent(project, graph, node)
+        if (operation.kind === 'parallel') parallelRegion(graph, node)
+        if (node.type === 'tool') {
+          if (node.config.provider !== 'builtin' || node.config.reference !== 'text-statistics') throw new Error('Выберите builtin / text-statistics. Внешние API пока не исполняются.')
+          if (node.config.authentication?.type && node.config.authentication.type !== 'none') throw new Error('Встроенный инструмент не использует credentials.')
+          if (node.config.permissions?.length) throw new Error('Свободные permissions не исполняются встроенным инструментом.')
+        }
+      } catch (error) { add(id, node.id, 'ai-configuration', error instanceof Error ? error.message : String(error)) }
       const sources: ValueSource[] = operation.kind === 'map' ? operation.fields.map(field => field.source)
         : operation.kind === 'if' || operation.kind === 'loop' ? [operation.predicate.source]
         : operation.kind === 'switch' || operation.kind === 'artifact' ? [operation.source] : []
@@ -128,7 +138,14 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
         if (edge.predicate || edge.condition?.trim()) add(id, edge.id, 'reference-condition', 'Reference не исполняет условия.')
         continue
       }
-      if (edge.type === 'tool-access') { add(id, edge.id, 'tool-access', 'Tool access начнёт исполняться вместе с Agent и Tool в следующем этапе.'); continue }
+      if (edge.type === 'tool-access') {
+        const source = active.get(edge.sourceNode), target = active.get(edge.targetNode)
+        if (source?.type !== 'agent' || target?.type !== 'tool' || target.operation?.kind !== 'text-statistics') add(id, edge.id, 'tool-access', 'Исполняемый Tool access идёт от включённого Agent к встроенному Tool.')
+        if (edge.predicate || edge.condition?.trim()) add(id, edge.id, 'tool-condition', 'Tool access не исполняет условия.')
+        if (!edge.sourcePort || !edge.targetPort) add(id, edge.id, 'explicit-ports', 'Для Tool access укажите оба порта.')
+        contract(edge.contract, id, edge.id)
+        continue
+      }
       if (!active.has(edge.sourceNode) || !active.has(edge.targetNode)) add(id, edge.id, 'disabled-endpoint', 'Исполняемая связь не может пересекать отключённый узел.')
       if (!edge.sourcePort || !edge.targetPort) add(id, edge.id, 'explicit-ports', 'Для выполнения укажите оба порта связи.')
       if (edge.condition?.trim()) add(id, edge.id, 'text-condition', 'Текстовое условие не исполняется: настройте структурированное условие связи.')
@@ -142,7 +159,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     if (hasUnguardedCycle(graph, active)) add(id, id ?? project.project.id, 'unbounded-cycle', 'Цикл должен проходить через выход тела явно ограниченного Loop.')
   }
   if (diagnostics.some(issue => issue.severity === 'error')) return { ok: false, diagnostics }
-  const plan: ExecutionPlan = { planVersion: '0.3', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs: 300000 } }
+  const plan: ExecutionPlan = { planVersion: '0.4', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs: 300000 } }
   deepFreeze(plan)
   return { ok: true, plan, diagnostics }
 }

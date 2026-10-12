@@ -18,10 +18,12 @@ along with this program.  If not, see <https://gnu.org>.
 import { createId } from '../domain/factories'
 import { nodeSchema, type WorkflowNode } from '../domain/schema'
 import type { ExecutionConfig, Predicate } from '../domain/execution-config'
+import { defaultAgentLimits } from '../domain/agent-config'
 
 export const operationOptions: Partial<Record<WorkflowNode['type'], { value: ExecutionConfig['kind']; label: string }[]>> = {
+  agent: [{ value: 'agent', label: 'Локальный ИИ-агент' }], tool: [{ value: 'text-statistics', label: 'Проверка текста · встроенный Tool' }],
   trigger: [{ value: 'manual', label: 'Ручной запуск' }], data: [{ value: 'map', label: 'Преобразование полей' }],
-  logic: [{ value: 'if', label: 'Условие · If' }, { value: 'switch', label: 'Выбор · Switch' }, { value: 'loop', label: 'Ограниченный цикл · Loop' }, { value: 'merge', label: 'Объединение · Merge' }],
+  logic: [{ value: 'if', label: 'Условие · If' }, { value: 'switch', label: 'Выбор · Switch' }, { value: 'loop', label: 'Ограниченный цикл · Loop' }, { value: 'merge', label: 'Объединение · Merge' }, { value: 'parallel', label: 'Параллельные агенты · Parallel' }],
   human: [{ value: 'human', label: 'Ожидание человека' }], artifact: [{ value: 'artifact', label: 'Локальный файл' }], subworkflow: [{ value: 'subworkflow', label: 'Вложенный workflow' }],
 }
 export const defaultPredicate = (): Predicate => ({ source: { kind: 'input', pointer: '/approved' }, operator: 'is-true' })
@@ -37,6 +39,21 @@ export function configureOperation(source: WorkflowNode, kind: string): Workflow
     const id = createId(); node.ports.push({ id, name, direction: 'output', kind: 'flow' }); return id
   }
   switch (kind) {
+    case 'agent': {
+      node.operation = { kind, limits: structuredClone(defaultAgentLimits), minimumWords: 0, requireTools: false }
+      if (node.type === 'agent') {
+        node.config.model ??= { provider: 'ollama', name: 'qwen3:8b' }
+        node.config.role ||= node.title
+        node.config.systemPrompt ||= 'Выполни задачу пользователя на русском языке. Не выдумывай источники. Отделяй предположения от проверенных данных.'
+      }
+      break
+    }
+    case 'text-statistics': {
+      node.operation = { kind, minimumWords: 0 }
+      if (node.type === 'tool') { node.config.provider ||= 'builtin'; node.config.reference ||= 'text-statistics'; node.config.category ||= 'text' }
+      break
+    }
+    case 'parallel': node.operation = { kind, joinNodeId: createId(), concurrency: 2 }; break
     case 'manual': node.operation = { kind }; if (node.type === 'trigger') node.config.triggerType = 'manual'; break
     case 'map': node.operation = { kind, keepInput: true, fields: [] }; if (node.type === 'data') node.config.dataType = 'json'; break
     case 'if': node.operation = { kind, predicate: defaultPredicate(), truePortId: output(0, 'true'), falsePortId: output(1, 'false') }; break
@@ -47,6 +64,6 @@ export function configureOperation(source: WorkflowNode, kind: string): Workflow
     case 'artifact': node.operation = { kind, filename: 'result.json', format: 'json', source: { kind: 'input', pointer: '' } }; break
     case 'subworkflow': node.operation = { kind }; break
   }
-  if (node.type === 'logic') node.config.logicType = kind as 'if' | 'switch' | 'loop' | 'merge'
+  if (node.type === 'logic') node.config.logicType = kind as 'if' | 'switch' | 'loop' | 'merge' | 'parallel'
   return nodeSchema.parse(node)
 }

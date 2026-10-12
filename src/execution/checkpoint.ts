@@ -19,12 +19,14 @@ import { z } from 'zod'
 import { activationSchema, artifactSchema, humanRequestSchema } from './protocol'
 import { assertValueBudget } from './values'
 import type { ExecutionPlan } from './compiler'
+import { aiUsageSchema } from '../ai/trace-schema'
 
 const id = z.uuid()
 const values = z.record(id, z.record(id, z.json()))
 const token = z.strictObject({ nodeId: id, portId: id.optional(), value: z.json() })
 export const checkpointSchema = z.strictObject({
-  checkpointVersion: z.literal('0.3.1'), planId: id, runId: id,
+  checkpointVersion: z.enum(['0.3.1', '0.4']), planId: id, runId: id,
+  aiUsage: aiUsageSchema.optional(),
   status: z.enum(['queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled']),
   cancelled: z.boolean(), sequence: z.number().int().min(0).max(30000),
   steps: z.number().int().min(0).max(10001), deadline: z.number().int().nonnegative(),

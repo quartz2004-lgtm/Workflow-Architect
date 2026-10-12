@@ -31,15 +31,30 @@ import { createRepository, loadProject } from '../persistence/repository'
 import { copySelection, cloneClipboard } from '../editor/clipboard'
 import { createEditor } from '../editor/session'
 import { recoverProject } from '../persistence/recovery'
+import { defaultAgentLimits } from './agent-config'
 
 const raw = readFileSync(new URL('./fixtures/project-0.1-agent.json', import.meta.url), 'utf8')
 const legacy = JSON.parse(raw)
 
-describe('project execution format 0.2', () => {
+describe('project execution format 0.3', () => {
+  it('preserves new AI operations and remaps parallel join IDs on copy', () => {
+    const project = createProject(), agent = createNode('agent'), tool = createNode('tool'), fork = createNode('logic'), join = createNode('logic')
+    agent.operation = { kind: 'agent', limits: defaultAgentLimits, minimumWords: 600, requireTools: true }
+    tool.operation = { kind: 'text-statistics', minimumWords: 600 }
+    fork.operation = { kind: 'parallel', joinNodeId: join.id, concurrency: 2 }
+    join.operation = { kind: 'merge' }
+    project.nodes.push(agent, tool, fork, join)
+    expect(deserializeProject(serializeProject(project))).toEqual(project)
+    const copy = cloneClipboard(copySelection(project, project, project.nodes.map(node => node.id), []), project)
+    expect(copy.graph.nodes[2]!.operation).toEqual({ kind: 'parallel', joinNodeId: copy.graph.nodes[3]!.id, concurrency: 2 })
+    const injected = JSON.stringify({ ...project, schemaVersion: '0.2' })
+    const recovery = recoverProject(injected)
+    expect(recovery.project?.nodes.filter(node => node.operation).map(node => node.operation!.kind)).toEqual(['merge'])
+  })
   it('imports legacy JSON, YAML and ZIP pair with durable original snapshots', async () => {
     const backups = createBackupRepository()
     const before = (await backups.list()).length
-    const expected = { ...legacy, schemaVersion: '0.2' }
+    const expected = { ...legacy, schemaVersion: '0.3' }
     expect(await importText(raw, 'legacy.json')).toEqual(expected)
     expect(await importText(stringify(legacy), 'legacy.yaml')).toEqual(expected)
     const { project, ...workflow } = legacy
@@ -56,7 +71,7 @@ describe('project execution format 0.2', () => {
     expect(backup).not.toHaveBeenCalled()
     await expect(migrateProjectSnapshot(raw, async () => { throw new Error('Backup storage full') })).rejects.toThrow('Backup storage full')
     const report = recoverProject(JSON.stringify(injected))
-    expect(report.project?.schemaVersion).toBe('0.2')
+    expect(report.project?.schemaVersion).toBe('0.3')
     expect(report.project?.nodes.every(node => !node.operation)).toBe(true)
     expect(report.issues.some(issue => issue.path.endsWith('.operation'))).toBe(true)
   })
@@ -68,11 +83,11 @@ describe('project execution format 0.2', () => {
     const repository = createRepository(name)
     expect((await repository.list())[0]?.damaged).toBe(false)
     const current = await loadProject(repository)
-    expect(current?.schemaVersion).toBe('0.2')
+    expect(current?.schemaVersion).toBe('0.3')
     expect(await db.get('projects', legacy.project.id)).toBe(raw)
     await repository.adopt?.(current!)
     await repository.save(current!)
-    expect(JSON.parse(await db.get('projects', legacy.project.id)).schemaVersion).toBe('0.2')
+    expect(JSON.parse(await db.get('projects', legacy.project.id)).schemaVersion).toBe('0.3')
     db.close()
   })
   it('roundtrips operations, undoes edits and remaps branch ports without rewriting literals', async () => {

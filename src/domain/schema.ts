@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { z } from 'zod'
 import { executionConfigSchema, predicateSchema } from './execution-config'
+import { projectSchema as legacy02Schema } from './legacy-0.2-schema'
 
 export const idSchema = z.uuid()
 const text = z.string().max(100_000)
@@ -103,13 +104,15 @@ export const groupSchema = z.strictObject({
 })
 const graph = { nodes: z.array(nodeSchema).max(10_000), edges: z.array(edgeSchema).max(50_000), groups: z.array(groupSchema) }
 export const projectSchema = z.strictObject({
-  schemaVersion: z.literal('0.2'),
+  schemaVersion: z.enum(['0.2', '0.3']),
   project: z.strictObject({ id: idSchema, name: z.string().min(1).max(300), description: text, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }),
   ...graph,
   schemas: z.array(z.strictObject({ id: idSchema, name: text, definition: z.union([jsonObject, z.boolean()]) })),
   prompts: z.array(z.strictObject({ id: idSchema, name: text, content: text })),
   subworkflows: z.array(z.strictObject({ id: idSchema, title: text, description: text, ports: z.array(portSchema), ...graph })),
   settings: z.strictObject({ defaultMode: z.enum(['concept', 'engineering']), grid: z.boolean(), snap: z.boolean(), motion: z.enum(['system', 'reduced']), exportDefault: z.enum(['archive', 'json', 'yaml', 'markdown', 'codex']).optional() }),
+}).superRefine((value, context) => {
+  if (value.schemaVersion === '0.2' && !legacy02Schema.safeParse(value).success) context.addIssue({ code: 'custom', message: 'Новые операции требуют schemaVersion 0.3.' })
 })
 
 export type Project = z.infer<typeof projectSchema>

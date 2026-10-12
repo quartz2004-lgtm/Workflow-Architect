@@ -1,0 +1,174 @@
+{
+  "schemaVersion": "0.2",
+  "project": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Historical 0.2 executable mapping",
+    "description": "Snapshot compatible with the 0.1.1 baseline",
+    "createdAt": "2026-10-08T12:00:00.000Z",
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+  },
+  "nodes": [
+    {
+      "id": "22222222-2222-4222-8222-222222222221",
+      "type": "trigger",
+      "title": "Manual",
+      "description": "",
+      "notes": "",
+      "tags": [],
+      "links": [],
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "size": {
+        "width": 280,
+        "height": 180
+      },
+      "status": "configured",
+      "color": "neutral",
+      "ports": [
+        {
+          "id": "33333333-2222-4222-8222-222222222221",
+          "name": "in",
+          "direction": "input",
+          "kind": "flow"
+        },
+        {
+          "id": "44444444-2222-4222-8222-222222222221",
+          "name": "out",
+          "direction": "output",
+          "kind": "flow"
+        }
+      ],
+      "config": {
+        "triggerType": "manual"
+      },
+      "operation": {
+        "kind": "manual"
+      }
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "type": "data",
+      "title": "Uppercase",
+      "description": "",
+      "notes": "",
+      "tags": [],
+      "links": [],
+      "position": {
+        "x": 400,
+        "y": 100
+      },
+      "size": {
+        "width": 280,
+        "height": 180
+      },
+      "status": "configured",
+      "color": "neutral",
+      "ports": [
+        {
+          "id": "33333333-2222-4222-8222-222222222222",
+          "name": "in",
+          "direction": "input",
+          "kind": "flow"
+        },
+        {
+          "id": "44444444-2222-4222-8222-222222222222",
+          "name": "out",
+          "direction": "output",
+          "kind": "flow"
+        }
+      ],
+      "config": {},
+      "operation": {
+        "kind": "map",
+        "keepInput": false,
+        "fields": [
+          {
+            "key": "title",
+            "source": {
+              "kind": "input",
+              "pointer": "/title"
+            },
+            "transform": "uppercase"
+          }
+        ]
+      }
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222223",
+      "type": "artifact",
+      "title": "Result",
+      "description": "",
+      "notes": "",
+      "tags": [],
+      "links": [],
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "size": {
+        "width": 280,
+        "height": 180
+      },
+      "status": "configured",
+      "color": "neutral",
+      "ports": [
+        {
+          "id": "33333333-2222-4222-8222-222222222223",
+          "name": "in",
+          "direction": "input",
+          "kind": "flow"
+        },
+        {
+          "id": "44444444-2222-4222-8222-222222222223",
+          "name": "out",
+          "direction": "output",
+          "kind": "flow"
+        }
+      ],
+      "config": {},
+      "operation": {
+        "kind": "artifact",
+        "filename": "result.json",
+        "format": "json",
+        "source": {
+          "kind": "input",
+          "pointer": ""
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "55555555-5555-4555-8555-555555555550",
+      "sourceNode": "22222222-2222-4222-8222-222222222221",
+      "sourcePort": "44444444-2222-4222-8222-222222222221",
+      "targetNode": "22222222-2222-4222-8222-222222222222",
+      "targetPort": "33333333-2222-4222-8222-222222222222",
+      "type": "flow",
+      "label": "",
+      "metadata": {}
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555551",
+      "sourceNode": "22222222-2222-4222-8222-222222222222",
+      "sourcePort": "44444444-2222-4222-8222-222222222222",
+      "targetNode": "22222222-2222-4222-8222-222222222223",
+      "targetPort": "33333333-2222-4222-8222-222222222223",
+      "type": "flow",
+      "label": "",
+      "metadata": {}
+    }
+  ],
+  "groups": [],
+  "schemas": [],
+  "prompts": [],
+  "subworkflows": [],
+  "settings": {
+    "defaultMode": "engineering",
+    "grid": true,
+    "snap": true,
+    "motion": "system"
+  }
+}

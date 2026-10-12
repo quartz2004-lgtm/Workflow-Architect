@@ -40,7 +40,7 @@ describe('execution compiler', () => {
     const result = compileProject(project, trigger.id)
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error('Fixture must compile')
-    expect(result.plan.planVersion).toBe('0.3')
+    expect(result.plan.planVersion).toBe('0.4')
     expect(JSON.parse(JSON.stringify(result.plan))).toEqual(result.plan)
     data.title = 'Changed after Run'; data.position.x = 999
     expect(result.plan.snapshot.nodes[1]?.title).not.toBe(data.title)
@@ -54,7 +54,8 @@ describe('execution compiler', () => {
     data.operation = undefined
     const result = compileProject(project, trigger.id)
     expect(result.ok).toBe(false)
-    expect(result.diagnostics.filter(issue => issue.code === 'unsupported-node')).toHaveLength(3)
+    expect(result.diagnostics.filter(issue => issue.code === 'unsupported-node')).toHaveLength(1)
+    expect(result.diagnostics.filter(issue => issue.code === 'missing-operation')).toHaveLength(3)
     expect(result.diagnostics.find(issue => issue.entityId === data.id)?.code).toBe('missing-operation')
     expect(codes(project, createId())).toContain('entry')
   })

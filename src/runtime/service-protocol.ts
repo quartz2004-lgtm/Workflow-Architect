@@ -18,9 +18,11 @@ along with this program.  If not, see <https://gnu.org>.
 import { z } from 'zod'
 import { runtimeProfileSchema, submitJobSchema } from './job-schema'
 import { assertValueBudget } from '../execution/values'
+import { aiCommandSchema } from '../ai/protocol'
 
 const owned = { profileId: runtimeProfileSchema, id: z.uuid() }
 export const runtimeCommandSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('ai'), command: aiCommandSchema }),
   z.strictObject({ kind: z.literal('submit'), request: submitJobSchema }),
   z.strictObject({ kind: z.literal('list'), profileId: runtimeProfileSchema }),
   ...(['get', 'cancel', 'resume', 'remove'] as const).map(kind => z.strictObject({ kind: z.literal(kind), ...owned })),

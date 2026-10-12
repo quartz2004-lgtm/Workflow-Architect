@@ -32,7 +32,7 @@ export function createNode(type: NodeType = 'concept', position: Position = { x:
 export function createProject(name = 'Новый workflow'): Project {
   const now = new Date().toISOString()
   return {
-    schemaVersion: '0.2', project: { id: createId(), name, description: '', createdAt: now, updatedAt: now },
+    schemaVersion: '0.3', project: { id: createId(), name, description: '', createdAt: now, updatedAt: now },
     nodes: [], edges: [], groups: [], schemas: [], prompts: [], subworkflows: [],
     settings: { defaultMode: 'concept', grid: true, snap: true, motion: 'system' },
   }

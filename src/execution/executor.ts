@@ -24,6 +24,10 @@ import { compileContract, type ContractCheck } from './contracts'
 import { assertValueBudget, evaluatePredicate, jsonEqual, mapValue, sourceValue } from './values'
 import type { Activation, HumanRequest, RunArtifact, RunEvent, RunEventPayload, RunOutcome, RunStatus } from './run-types'
 import { parseCheckpoint, type CheckpointFrame, type RunCheckpoint } from './checkpoint'
+import { executeAgentOperation, type ProviderResolver } from './agent-operation'
+import { parallelRegion } from './ai-plan'
+import { textStatistics } from '../ai/text-tool'
+import type { AiUsage } from '../ai/trace-schema'
 
 class RunFailure extends Error {
   constructor(message: string, readonly activation?: Activation) { super(message) }
@@ -43,7 +47,7 @@ interface PendingHuman {
   resolve(value: JsonValue): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>
 }
 
-/** Transport-independent executor. Operations have no filesystem, shell or network capability. */
+/** Transport-independent executor; model access is injected only by the trusted host. */
 export class ExecutionRun {
   readonly id: string
   private readonly plan: ExecutionPlan
@@ -60,8 +64,11 @@ export class ExecutionRun {
   private frames: Context[] = []
   private restored: CheckpointFrame[] = []
   private resumed = false
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void } = {}) {
-    if (plan.planVersion !== '0.3') throw new Error('Неподдерживаемая версия плана.')
+  private readonly abort = new AbortController()
+  private aiUsage: AiUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, toolCalls: 0 }
+  private reservedTokens = 0
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver } = {}) {
+    if (!['0.3', '0.4'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
     if (!verified.ok) throw new Error(verified.diagnostics.map(issue => issue.message).join('\n'))
@@ -72,14 +79,21 @@ export class ExecutionRun {
     if (persistence.checkpoint !== undefined) {
       const saved = parseCheckpoint(persistence.checkpoint, this.plan)
       if (['succeeded', 'failed', 'cancelled'].includes(saved.status)) throw new Error('Завершённый запуск нельзя возобновить.')
+      for (const frame of saved.frames) {
+        const graph = frame.graphId === null ? this.plan.snapshot : this.plan.snapshot.subworkflows.find(item => item.id === frame.graphId)
+        const operation = graph?.nodes.find(node => node.id === frame.activation?.nodeId)?.operation?.kind
+        if (operation === 'agent' || operation === 'parallel') throw new Error('Прерванный запрос ИИ не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
+      }
       this.id = saved.runId; this.status = saved.status; this.cancelled = saved.cancelled
       this.sequence = saved.sequence; this.steps = saved.steps; this.deadline = saved.deadline
       this.eventBytes = saved.eventBytes; this.artifacts = saved.artifacts; this.restored = saved.frames
+      this.aiUsage = saved.aiUsage ?? this.aiUsage
       this.resumed = true
     }
   }
   getStatus(): RunStatus { return this.status }
   checkClock(): void {
+    if (this.started && Date.now() >= this.deadline) this.abort.abort(new Error('Истёк общий timeout запуска.'))
     const waiting = this.pending
     if (waiting && Date.now() >= Math.min(this.deadline, Date.parse(waiting.request.expiresAt))) {
       this.pending = undefined; clearTimeout(waiting.timer)
@@ -89,6 +103,7 @@ export class ExecutionRun {
   cancel(): void {
     if (['succeeded', 'failed', 'cancelled'].includes(this.status)) return
     this.cancelled = true
+    this.abort.abort(new Error('Запуск отменён.'))
     try { if (this.started) this.save() }
     finally { if (this.pending) { const waiting = this.pending; this.pending = undefined; clearTimeout(waiting.timer); waiting.reject(new RunFailure('Запуск отменён.', waiting.request.activation)) } }
   }
@@ -123,6 +138,7 @@ export class ExecutionRun {
     if (this.started) throw new Error('Этот запуск уже начат; создайте новый run.')
     this.started = true
     if (!this.resumed) this.deadline = Math.min(Date.now() + this.plan.limits.timeoutMs, this.persistence.deadline ?? Infinity)
+    const deadlineTimer = setTimeout(() => this.abort.abort(new Error('Истёк общий timeout запуска.')), Math.max(0, this.deadline - Date.now()))
     let failure: RunOutcome['error']
     try {
       if (!this.resumed) this.changeStatus('queued')
@@ -137,6 +153,7 @@ export class ExecutionRun {
       this.emit({ kind: 'failure', ...failure }, true)
       this.changeStatus(this.cancelled ? 'cancelled' : 'failed')
     } finally {
+      clearTimeout(deadlineTimer)
       if (this.pending) { clearTimeout(this.pending.timer); this.pending = undefined }
     }
     this.save()
@@ -146,7 +163,7 @@ export class ExecutionRun {
     if (!this.persistence.save) return
     const records = (values: Context['outputs']) => Object.fromEntries([...values].map(([id, ports]) => [id, Object.fromEntries(ports)]))
     const checkpoint: RunCheckpoint = {
-      checkpointVersion: '0.3.1', planId: this.plan.id, runId: this.id, status: this.status,
+      checkpointVersion: '0.4', aiUsage: this.aiUsage, planId: this.plan.id, runId: this.id, status: this.status,
       cancelled: this.cancelled, sequence: this.sequence, steps: this.steps, deadline: this.deadline,
       eventBytes: this.eventBytes, artifacts: this.artifacts,
       frames: this.frames.map(frame => ({ id: frame.id, graphId: frame.graphId, path: frame.path,
@@ -236,7 +253,8 @@ export class ExecutionRun {
         this.emit({ kind: 'step-finish', activation, output: result.output, ports: Object.fromEntries(ports) })
         this.guard()
         if (result.artifact) { this.emit({ kind: 'artifact', artifact: result.artifact }); this.artifacts.push(result.artifact) }
-        for (const edge of graph.edges.filter(edge => edge.type === 'flow' && edge.sourceNode === node.id)) {
+        if (result.next) queue.push(...result.next)
+        else for (const edge of graph.edges.filter(edge => edge.type === 'flow' && edge.sourceNode === node.id)) {
           const value = ports.get(edge.sourcePort!)
           if (value === undefined || (edge.predicate && !evaluatePredicate(edge.predicate, value, incoming))) continue
           this.check(edge.contract, value)
@@ -253,10 +271,16 @@ export class ExecutionRun {
     this.frames.pop()
     return context
   }
-  private async executeNode(node: WorkflowNode, token: Token, context: Context, data: ReadonlyMap<string, JsonValue>, activation: Activation): Promise<{ output: JsonValue; ports?: Map<string, JsonValue>; artifact?: RunArtifact }> {
+  private async executeNode(node: WorkflowNode, token: Token, context: Context, data: ReadonlyMap<string, JsonValue>, activation: Activation): Promise<{ output: JsonValue; ports?: Map<string, JsonValue>; artifact?: RunArtifact; next?: Token[] }> {
     const op = node.operation!, input = token.value
     const routed = (portId: string) => ({ output: input, ports: new Map(node.ports.filter(port => port.direction === 'output' && (port.id === portId || port.kind === 'data')).map(port => [port.id, input])) })
     switch (op.kind) {
+      case 'agent': return { output: await this.executeAgent(node, input, context, data, activation, this.abort.signal) }
+      case 'text-statistics': {
+        if (typeof input !== 'string') throw new Error('Вход инструмента проверки текста должен быть строкой.')
+        return { output: textStatistics(input, op.minimumWords) }
+      }
+      case 'parallel': return this.executeParallel(node, input, context)
       case 'manual': case 'merge': return { output: input }
       case 'map': return { output: mapValue(op, input, data) }
       case 'if': return routed(evaluatePredicate(op.predicate, input, data) ? op.truePortId : op.falsePortId)
@@ -301,6 +325,84 @@ export class ExecutionRun {
         return { output: ports.get(flow.id)!, ports }
       }
     }
+  }
+  private async executeAgent(node: WorkflowNode, input: JsonValue, context: Context, data: ReadonlyMap<string, JsonValue>, activation: Activation, signal: AbortSignal): Promise<JsonValue> {
+    if (!this.persistence.provider || node.operation?.kind !== 'agent') throw new Error('Для ИИ требуется Windows-приложение с настроенной локальной моделью.')
+    const reserved = Math.min(node.operation.limits.maxTotalTokens, 131072 - this.aiUsage.inputTokens - this.aiUsage.outputTokens - this.reservedTokens)
+    if (reserved < 128) throw new Error('Исчерпан общий бюджет ИИ запуска (131072 токена).')
+    if (this.deadline - Date.now() < 1000) throw new Error('Недостаточно времени для запроса модели.')
+    this.reservedTokens += reserved
+    let consumed = 0
+    try {
+      this.save()
+      return await executeAgentOperation({ node, project: this.plan.snapshot, graph: context.graph, input, data, outputs: context.outputs,
+        tokenBudget: reserved, timeoutMs: this.deadline - Date.now(), provider: this.persistence.provider, signal,
+        trace: trace => {
+          this.guard(); signal.throwIfAborted()
+          if (trace.kind === 'model-start' && this.aiUsage.calls >= 32) throw new Error('Превышен общий лимит 32 вызовов модели.')
+          if (trace.kind === 'tool-start' && this.aiUsage.toolCalls >= 64) throw new Error('Превышен общий лимит 64 вызовов инструментов.')
+          if (trace.kind === 'model-start') this.aiUsage.calls++
+          if (trace.kind === 'tool-start') this.aiUsage.toolCalls++
+          if (trace.kind === 'model-finish') {
+            this.aiUsage.inputTokens += trace.inputTokens; this.aiUsage.outputTokens += trace.outputTokens; this.aiUsage.costUsd += trace.costUsd
+            const newlyConsumed = Math.min(reserved - consumed, trace.inputTokens + trace.outputTokens)
+            consumed += newlyConsumed; this.reservedTokens -= newlyConsumed
+          }
+          this.emit({ kind: 'ai', activation, trace }); this.save()
+          if (this.aiUsage.inputTokens + this.aiUsage.outputTokens > 131072) throw new Error('Превышен общий бюджет ИИ запуска.')
+        },
+      })
+    } finally { this.reservedTokens -= reserved - consumed }
+  }
+  private async executeParallel(fork: WorkflowNode, input: JsonValue, context: Context): Promise<{ output: JsonValue; next: Token[] }> {
+    if (fork.operation?.kind !== 'parallel') throw new Error('Ожидался Parallel.')
+    const { agents, join } = parallelRegion(context.graph, fork)
+    const forkPorts = new Map(fork.ports.filter(port => port.direction === 'output' && ['flow', 'data'].includes(port.kind)).map(port => [port.id, input]))
+    for (const port of fork.ports.filter(port => forkPorts.has(port.id))) this.check(port.contract, input)
+    context.outputs.set(fork.id, forkPorts)
+    const branchAbort = new AbortController(), signal = AbortSignal.any([this.abort.signal, branchAbort.signal])
+    const results: JsonValue[] = new Array(agents.length)
+    let cursor = 0
+    const work = async () => {
+      while (cursor < agents.length) {
+        signal.throwIfAborted(); this.guard()
+        const index = cursor++, node = agents[index]!
+        const activation: Activation = { id: createId(), callId: context.id, graphId: context.graphId, nodeId: node.id, path: context.path }
+        try {
+          if (++this.steps > this.plan.limits.maxSteps) throw new Error('Превышен лимит шагов.')
+          const incoming = new Map(context.data.get(node.id) ?? [])
+          const entry = context.graph.edges.find(edge => edge.type === 'flow' && edge.sourceNode === fork.id && edge.targetNode === node.id)!
+          this.check(entry.contract, input); this.check(node.ports.find(port => port.id === entry.targetPort)?.contract, input)
+          if ('input' in node.config) this.check(node.config.input, input)
+          for (const edge of context.graph.edges.filter(edge => edge.type === 'data' && edge.targetNode === node.id)) {
+            const value = context.outputs.get(edge.sourceNode)?.get(edge.sourcePort!)
+            if (value === undefined) throw new Error('Источник Data параллельной ветви ещё не выполнен.')
+            this.check(edge.contract, value); this.check(node.ports.find(port => port.id === edge.targetPort)?.contract, value)
+            incoming.set(edge.targetPort!, value)
+          }
+          for (const [portId, value] of incoming) this.check(node.ports.find(port => port.id === portId)?.contract, value)
+          this.emit({ kind: 'step-start', activation, input, data: Object.fromEntries(incoming) })
+          const output = await this.executeAgent(node, input, context, incoming, activation, signal)
+          this.guard(); signal.throwIfAborted(); assertValueBudget(output)
+          if ('output' in node.config) this.check(node.config.output, output)
+          const ports = new Map(node.ports.filter(port => port.direction === 'output' && ['flow', 'data'].includes(port.kind)).map(port => [port.id, output]))
+          for (const [id, value] of ports) this.check(node.ports.find(port => port.id === id)?.contract, value)
+          const exit = context.graph.edges.find(edge => edge.type === 'flow' && edge.sourceNode === node.id)!
+          this.check(exit.contract, output); this.check(join.ports.find(port => port.id === exit.targetPort)?.contract, output)
+          context.outputs.set(node.id, ports)
+          results[index] = { nodeId: node.id, title: node.title, output }
+          this.emit({ kind: 'step-finish', activation, output, ports: Object.fromEntries(ports) }); this.save()
+        } catch (error) {
+          const failure = new RunFailure(error instanceof Error ? error.message : String(error), activation)
+          branchAbort.abort(failure); throw failure
+        }
+      }
+    }
+    const settled = await Promise.allSettled(Array.from({ length: Math.min(agents.length, fork.operation.concurrency) }, work))
+    const failed = settled.find(item => item.status === 'rejected')
+    if (failed?.status === 'rejected') throw branchAbort.signal.reason ?? failed.reason
+    this.guard()
+    return { output: input, next: [{ nodeId: join.id, value: { results } }] }
   }
   private waitForHuman(node: WorkflowNode, activation: Activation): Promise<JsonValue> {
     const op = node.operation

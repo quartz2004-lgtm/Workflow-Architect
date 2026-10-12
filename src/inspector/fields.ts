@@ -54,7 +54,7 @@ export const inspectorSections: Record<NodeType, ConfigSection[]> = {
       { path: 'context.attachedNodeIds', label: 'Прикреплённые данные', kind: 'node-list' }, { path: 'context.policy', label: 'Политика контекста', kind: 'multiline' },
     ] },
     { title: 'Инструменты', fields: [
-      { path: 'toolIds', label: 'Connected tools', kind: 'node-list', nodeType: 'tool' }, { path: 'permissions', label: 'Разрешения', kind: 'list' },
+      { path: 'toolIds', label: 'Разрешённые инструменты', kind: 'node-list', nodeType: 'tool' }, { path: 'permissions', label: 'Дополнительные разрешения (описание)', kind: 'list' },
     ] }, contracts, execution,
   ],
   tool: [

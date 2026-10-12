@@ -16,12 +16,14 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import type { JsonValue } from '../domain/execution-config'
+import type { AgentTrace } from '../ai/agent'
 
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 export interface Activation { id: string; callId: string; graphId: string | null; nodeId: string; path: string[] }
 export interface RunArtifact { id: string; activation: Activation; filename: string; format: 'json' | 'text'; content: string }
 export interface HumanRequest { id: string; activation: Activation; question: string; mode: 'approval' | 'input'; expiresAt: string }
 export type RunEventPayload =
+  | { kind: 'ai'; activation: Activation; trace: AgentTrace }
   | { kind: 'status'; status: RunStatus }
   | { kind: 'step-start'; activation: Activation; input: JsonValue; data: Record<string, JsonValue> }
   | { kind: 'step-finish'; activation: Activation; output: JsonValue; ports: Record<string, JsonValue> }

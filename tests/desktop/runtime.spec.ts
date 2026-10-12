@@ -70,10 +70,10 @@ test('utility process survives editor close and completes an allowed run without
     const read = async (id: string) => jobSchema.parse(JSON.parse(await readFile(join(directory, 'runtime', 'jobs', `${id}.json`), 'utf8')))
     expect((await read(foreground.id)).status).toBe('cancelled')
     expect((await read(background.id)).status).not.toBe('succeeded')
-    await expect.poll(async () => {
-      const saved = await read(background.id)
-      return { status: saved.status, message: saved.message, error: saved.outcome?.error?.message ?? '' }
-    }, { timeout: 20000 }).toMatchObject({ status: 'succeeded' })
+    await expect.poll(async () => ['succeeded', 'failed', 'cancelled'].includes((await read(background.id)).status), { timeout: 20000 }).toBe(true)
+    const saved = await read(background.id)
+    await test.info().attach('background-job', { body: JSON.stringify(saved, null, 2), contentType: 'application/json' })
+    expect({ status: saved.status, message: saved.message, error: saved.outcome?.error?.message ?? '' }).toEqual({ status: 'succeeded', message: '', error: '' })
     expect((await read(background.id)).outcome!.artifacts).toHaveLength(1)
     expect(await app.evaluate(({ app }) => app.getAppMetrics().some(metric => metric.name === 'Workflow Architect Runtime'))).toBe(true)
     const reopened = app.waitForEvent('window')

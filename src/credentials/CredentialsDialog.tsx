@@ -65,7 +65,7 @@ export function CredentialsDialog({ close }: { close(): void }) {
   }
   return <Modal wide title="Защищённые подключения" close={() => { if (!busy) close() }} className="credentials-dialog">
     <p className="muted">Профиль: <strong>{profile.name}</strong>. Секреты шифруются Windows и хранятся отдельно от проектов. В граф переносится только credential ID.</p>
-    <p className="muted">В 0.3.1 это хранилище данных для следующих интеграций: Agent и Tool ещё не выполняют внешние запросы.</p>
+    <p className="muted">Это хранилище для будущих подключений внешних сервисов. Локальная Ollama настраивается в «ИИ-помощнике» и не требует API-ключа.</p>
     {loading ? <p role="status">Открываем защищённое хранилище…</p> : !available && <p role="status" className="field-error">Защищённое хранилище недоступно. Сохранение без шифрования запрещено.</p>}
     {error && <p role="alert" className="field-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}

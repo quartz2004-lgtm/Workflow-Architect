@@ -18,15 +18,21 @@ along with this program.  If not, see <https://gnu.org>.
 import { JobManager } from './job-manager'
 import { parseServiceRequest, serviceRequestSchema } from './service-protocol'
 import type {} from 'electron'
+import { join } from 'node:path'
+import { ConnectionStore } from '../ai/connection-store'
+import { AssistantService } from '../ai/assistant-service'
 
 const port = process.parentPort
 if (!port || !process.argv[2]) throw new Error('Runtime must be started by its desktop parent.')
 const send = (message: unknown) => port.postMessage(message)
+const connections = new ConnectionStore(join(process.argv[2], '..', 'ai-connections'))
+const assistant = new AssistantService(connections)
 const manager = new JobManager(process.argv[2], {
+  provider: profileId => model => connections.resolve(profileId, model),
   changed: job => send({ version: '0.3.1', kind: 'changed', jobId: job.id, profileId: job.profileId }),
   unavailable: message => send({ version: '0.3.1', kind: 'unavailable', message }),
 })
-port.on('message', event => {
+port.on('message', async event => {
   let requestId: string | undefined
   try {
     const candidate = serviceRequestSchema.shape.requestId.safeParse(event.data && typeof event.data === 'object' ? event.data.requestId : undefined)
@@ -36,6 +42,7 @@ port.on('message', event => {
     const command = request.command
     let result: unknown
     switch (command.kind) {
+      case 'ai': result = await assistant.handle(command.command); break
       case 'submit': result = manager.submit(command.request); break
       case 'list': result = manager.list(command.profileId); break
       case 'get': result = manager.get(command.profileId, command.id); break
@@ -43,9 +50,9 @@ port.on('message', event => {
       case 'resume': result = manager.resume(command.profileId, command.id); break
       case 'remove': manager.remove(command.profileId, command.id); result = null; break
       case 'answer': result = manager.answer(command.profileId, command.id, command.requestId, command.value); break
-      case 'close-window': manager.closeWindow(); result = null; break
+      case 'close-window': assistant.closeWindow(); manager.closeWindow(); result = null; break
       case 'wake': manager.wake(); result = null; break
-      case 'stop': manager.stop(); result = null; break
+      case 'stop': assistant.stop(); manager.stop(); result = null; break
     }
     send({ version: '0.3.1', kind: 'reply', requestId, ok: true, result })
     if (command.kind === 'stop') setTimeout(() => process.exit(0), 0)

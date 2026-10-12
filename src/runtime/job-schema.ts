@@ -28,7 +28,7 @@ export const submitJobSchema = z.strictObject({
 })
 export type SubmitJob = z.infer<typeof submitJobSchema>
 export const executionPlanSchema = z.strictObject({
-  planVersion: z.literal('0.3'), id: z.uuid(), createdAt: z.iso.datetime(), entryNodeId: z.uuid(), snapshot: projectSchema,
+  planVersion: z.enum(['0.3', '0.4']), id: z.uuid(), createdAt: z.iso.datetime(), entryNodeId: z.uuid(), snapshot: projectSchema,
   limits: z.strictObject({ maxSteps: z.literal(10000), maxDepth: z.literal(24), timeoutMs: z.literal(300000) }),
 })
 export const jobSchema = z.strictObject({

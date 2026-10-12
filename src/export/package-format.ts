@@ -23,9 +23,10 @@ import { projectSchema as legacyProjectSchema } from '../domain/legacy-schema'
 export type ExportFiles = Record<string, string>
 export const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 const metadataSchema = projectSchema.shape.project.extend({
-  schemaVersion: z.enum(['0.1', '0.2']), mode: projectSchema.shape.settings.shape.defaultMode,
+  schemaVersion: z.enum(['0.1', '0.2', '0.3']), mode: projectSchema.shape.settings.shape.defaultMode,
 })
-const workflowSchema = z.union([projectSchema.omit({ project: true }), legacyProjectSchema.omit({ project: true })])
+// Full version-specific validation follows after pairing, at the migration boundary.
+const workflowSchema = z.union([z.strictObject(projectSchema.shape).omit({ project: true }), legacyProjectSchema.omit({ project: true })])
 
 /** The pair is authoritative; all other package files are generated views. */
 export function projectPair(project: Project): ExportFiles {
@@ -39,7 +40,7 @@ export function projectPair(project: Project): ExportFiles {
 export function decodePair(metadata: unknown, workflow: unknown): unknown {
   const meta = metadataSchema.safeParse(metadata)
   const graph = workflowSchema.safeParse(workflow)
-  if (!meta.success || !graph.success) throw new ProjectFormatError('Некорректная пара project.json + workflow.json. Поддерживаются форматы 0.1 и 0.2.')
+  if (!meta.success || !graph.success) throw new ProjectFormatError('Некорректная пара project.json + workflow.json. Поддерживаются форматы 0.1, 0.2 и 0.3.')
   const { schemaVersion, mode, ...project } = meta.data
   if (schemaVersion !== graph.data.schemaVersion) throw new ProjectFormatError('Версии project.json и workflow.json не совпадают.')
   if (mode !== graph.data.settings.defaultMode) throw new ProjectFormatError('Режимы project.json и workflow.json не совпадают.')
