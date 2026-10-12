@@ -54,7 +54,7 @@ for (const channel of ['workflow:runtime-request', 'workflow:runtime-state', 'wo
   if (channel === 'workflow:runtime-state') return runtime.snapshot()
   if (channel === 'workflow:runtime-reconnect') return runtime.reconnect()
   try {
-    if (value && typeof value === 'object' && 'kind' in value && (value.kind === 'submit' || value.kind === 'answer')) credentials?.assertNoSecrets(value)
+    if (value && typeof value === 'object' && 'kind' in value && (value.kind === 'submit' || value.kind === 'answer' || value.kind === 'ai')) credentials?.assertNoSecrets(value)
     return await runtime.request(value)
   } catch (error) {
     // Do not attach an unredacted native error as cause across the renderer boundary.

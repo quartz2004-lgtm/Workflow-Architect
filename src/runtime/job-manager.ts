@@ -26,6 +26,7 @@ import { graphEntries } from '../domain/graphs'
 import { AtomicStore, type StoreLimits } from './atomic-store'
 import { jobSchema, runtimeProfileSchema, submitJobSchema, summarizeJob, terminalJob, type JobSummary, type RuntimeJob, type SubmitJob } from './job-schema'
 import { recoveryDecision } from './recovery-policy'
+import type { ProviderResolver } from '../execution/agent-operation'
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -49,7 +50,7 @@ export class JobManager {
   private stopped = false
   private fault = ''
   readonly damaged: { id: string; message: string }[] = []
-  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void } = {}) {
+  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver } = {}) {
     if (!Number.isInteger(options.concurrency ?? 2) || (options.concurrency ?? 2) < 1 || (options.concurrency ?? 2) > 4) throw new Error('Параллельность должна быть от 1 до 4.')
     this.disk = new AtomicStore(directory, jobSchema, options.limits)
     for (const id of this.disk.ids()) {
@@ -200,7 +201,7 @@ export class JobManager {
   private launch(job: RuntimeJob) {
     let events = [...job.events]
     try {
-      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
+      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { provider: this.options.provider?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
         const current = this.jobs.get(job.id)!
         const outcome = this.outcome(checkpoint, events)
         this.commit({ ...current, status: current.cancelRequested ? 'cancelled' : checkpoint.status, checkpoint, events, outcome })

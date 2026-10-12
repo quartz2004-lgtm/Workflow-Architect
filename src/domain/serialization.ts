@@ -29,8 +29,8 @@ export function assertNoObviousSecrets(value: unknown): void {
 }
 
 export function parseProject(value: unknown): Project {
-  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== '0.2') {
-    throw new ProjectFormatError('Неподдерживаемая версия проекта. Ожидается schemaVersion 0.2; старые проекты открывайте через импорт или локальное хранилище с резервной копией.')
+  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || !['0.2', '0.3'].includes(String(value.schemaVersion))) {
+    throw new ProjectFormatError('Неподдерживаемая версия проекта. Ожидается schemaVersion 0.3 (или архивный 0.2); старые проекты открывайте через импорт или локальное хранилище с резервной копией.')
   }
   assertNoObviousSecrets(value)
   const result = projectSchema.safeParse(value)

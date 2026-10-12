@@ -44,6 +44,7 @@ export interface ModelResponse {
 export interface ModelCapabilities { tools: boolean; thinking: boolean; contextTokens: number }
 export interface ModelProvider {
   readonly id: string
+  readonly signal?: AbortSignal
   readonly costPerMillionInput: number
   readonly costPerMillionOutput: number
   list(signal: AbortSignal): Promise<string[]>

@@ -21,6 +21,7 @@ import { createId, createNode, createProject } from '../domain/factories'
 import { nodeSchema, projectSchema, type Project } from '../domain/schema'
 import { assertNoObviousSecrets, parseProject } from '../domain/serialization'
 import { nodeSchema as legacyNodeSchema, projectSchema as legacyProjectSchema } from '../domain/legacy-schema'
+import { nodeSchema as legacy02NodeSchema, projectSchema as legacy02ProjectSchema } from '../domain/legacy-0.2-schema'
 
 export interface RecoveryIssue { path: string; message: string; entityId?: string; original?: unknown }
 export interface RecoveryReport { raw: string; project: Project | null; issues: RecoveryIssue[] }
@@ -34,7 +35,7 @@ export function recoverProject(raw: string): RecoveryReport {
   try {
     assertPortableSnapshot(raw)
     value = record(JSON.parse(raw))
-    if (value.schemaVersion !== '0.1' && value.schemaVersion !== '0.2') throw new Error('Автоматическое восстановление поддерживает schemaVersion 0.1 и 0.2.')
+    if (!['0.1', '0.2', '0.3'].includes(String(value.schemaVersion))) throw new Error('Автоматическое восстановление поддерживает schemaVersion 0.1, 0.2 и 0.3.')
   } catch (error) { add('project', error instanceof Error ? error.message : 'Некорректный JSON.'); return report }
   const safe = (schema: z.ZodType, candidate: unknown) => {
     try { assertNoObviousSecrets(candidate); return schema.safeParse(candidate) }
@@ -71,7 +72,7 @@ export function recoverProject(raw: string): RecoveryReport {
     if (!Array.isArray(source)) { add(path, 'Список узлов повреждён.'); return [] }
     const ids = new Set<string>()
     return source.slice(0, 10_000).flatMap((item: unknown, index) => {
-      const sourceNodeSchema = value.schemaVersion === '0.1' ? legacyNodeSchema : nodeSchema
+      const sourceNodeSchema = value.schemaVersion === '0.1' ? legacyNodeSchema : value.schemaVersion === '0.2' ? legacy02NodeSchema : nodeSchema
       const input = record(item), parsed = safe(sourceNodeSchema, item)
       const schema = sourceNodeSchema.options.find(option => option.shape.type.value === input.type) ?? sourceNodeSchema.options[0]!
       const fallback = createNode(schema.shape.type.value)
@@ -88,7 +89,7 @@ export function recoverProject(raw: string): RecoveryReport {
   }
   try {
     const fresh = createProject(), metadata = fields(projectSchema.shape.project, value.project, fresh.project, 'project')
-    const sourceSchema = value.schemaVersion === '0.1' ? legacyProjectSchema : projectSchema
+    const sourceSchema = value.schemaVersion === '0.1' ? legacyProjectSchema : value.schemaVersion === '0.2' ? legacy02ProjectSchema : projectSchema
     const graph = (input: Record<string, unknown>, path: string) => ({ nodes: nodes(input.nodes, `${path}.nodes`), edges: list(sourceSchema.shape.edges.element, input.edges, `${path}.edges`), groups: list(projectSchema.shape.groups.element, input.groups, `${path}.groups`) })
     const subworkflows = Array.isArray(value.subworkflows) ? value.subworkflows.flatMap((item: unknown, index) => {
       const input = record(item), schema = projectSchema.shape.subworkflows.element, path = `subworkflows[${index}]`

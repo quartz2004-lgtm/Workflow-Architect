@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import type { Project } from './schema'
 import { projectSchema as legacyProjectSchema } from './legacy-schema'
+import { projectSchema as legacy02Schema } from './legacy-0.2-schema'
 import { assertNoObviousSecrets, parseProject, ProjectFormatError } from './serialization'
 
 export interface ProjectMigration {
@@ -31,6 +32,10 @@ export const projectMigrations: readonly ProjectMigration[] = [{
   from: '0.1', to: '0.2',
   validateSource(value) { legacyProjectSchema.parse(value) },
   transform(value) { return { ...legacyProjectSchema.parse(value), schemaVersion: '0.2' } },
+}, {
+  from: '0.2', to: '0.3',
+  validateSource(value) { legacy02Schema.parse(value) },
+  transform(value) { return { ...legacy02Schema.parse(value), schemaVersion: '0.3' } },
 }]
 
 function versionOf(value: unknown): string {
@@ -43,15 +48,15 @@ export async function migrateProjectSnapshot(raw: string, backup: (raw: string, 
   let value: unknown
   try { value = JSON.parse(raw) } catch { throw new ProjectFormatError('Некорректный JSON. Исходный файл не изменён.') }
   const originalVersion = versionOf(value)
-  if (originalVersion === '0.2') return parseProject(value)
+  if (originalVersion === '0.3') return parseProject(value)
   const route: ProjectMigration[] = []
   const visited = new Set<string>()
   let version = originalVersion
-  while (version !== '0.2') {
+  while (version !== '0.3') {
     if (visited.has(version)) throw new ProjectFormatError('Цикл в цепочке миграций.')
     visited.add(version)
     const candidates = migrations.filter(step => step.from === version)
-    if (candidates.length !== 1) throw new ProjectFormatError(`Неподдерживаемая версия проекта ${version}. Нет однозначной миграции в 0.2.`)
+    if (candidates.length !== 1) throw new ProjectFormatError(`Неподдерживаемая версия проекта ${version}. Нет однозначной миграции в 0.3.`)
     const step = candidates[0]!
     route.push(step); version = step.to
   }

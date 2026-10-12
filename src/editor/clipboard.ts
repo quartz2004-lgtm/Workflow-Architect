@@ -61,7 +61,7 @@ export function cloneClipboard(clipboard: GraphClipboard, target: Project, offse
   const schemas = clipboard.schemas.filter(s => !target.schemas.some(t => t.id === s.id && JSON.stringify(t) === JSON.stringify(s)))
   const prompts = clipboard.prompts.filter(s => !target.prompts.some(t => t.id === s.id && JSON.stringify(t) === JSON.stringify(s)))
   for (const resource of [...schemas, ...prompts]) register(resource.id)
-  const idKeys = new Set(['id', 'nodeId', 'nodeIds', 'sourceNode', 'targetNode', 'sourcePort', 'targetPort', 'toolIds', 'attachedNodeIds', 'fallbackNodeId', 'subworkflowId', 'portId', 'schemaId', 'promptId', 'truePortId', 'falsePortId', 'bodyPortId', 'exitPortId', 'defaultPortId'])
+  const idKeys = new Set(['id', 'nodeId', 'nodeIds', 'sourceNode', 'targetNode', 'sourcePort', 'targetPort', 'toolIds', 'attachedNodeIds', 'fallbackNodeId', 'subworkflowId', 'portId', 'schemaId', 'promptId', 'truePortId', 'falsePortId', 'bodyPortId', 'exitPortId', 'defaultPortId', 'joinNodeId'])
   const remap = (value: unknown, key = ''): unknown => {
     if (typeof value === 'string') return idKeys.has(key) ? ids.get(value) ?? value : value
     if (Array.isArray(value)) return value.map(item => remap(item, key))

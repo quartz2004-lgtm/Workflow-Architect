@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { z } from 'zod'
 import { assertValueBudget } from './values'
+import { agentTraceSchema } from '../ai/trace-schema'
 
 const id = z.uuid()
 const time = z.iso.datetime()
@@ -30,6 +31,7 @@ const failure = { activation: activation.optional(), message: z.string().max(100
 const diagnostic = z.strictObject({ severity: z.enum(['error', 'warning']), graphId: id.nullable(), entityId: z.string(), code: z.string(), message: z.string() })
 const eventBase = { runId: id, sequence: z.number().int().positive(), timestamp: time }
 export const runEventSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ ...eventBase, kind: z.literal('ai'), activation, trace: agentTraceSchema }),
   z.strictObject({ ...eventBase, kind: z.literal('status'), status }),
   z.strictObject({ ...eventBase, kind: z.literal('step-start'), activation, input: z.json(), data: z.record(id, z.json()) }),
   z.strictObject({ ...eventBase, kind: z.literal('step-finish'), activation, output: z.json(), ports: z.record(id, z.json()) }),

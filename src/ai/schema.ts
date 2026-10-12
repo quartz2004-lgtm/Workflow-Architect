@@ -26,18 +26,5 @@ export const localConnectionSchema = z.strictObject({
   port: z.number().int().min(1024).max(65535),
   model: localModelNameSchema,
 })
-export const agentLimitsSchema = z.strictObject({
-  maxCalls: z.number().int().min(1).max(12),
-  maxToolCalls: z.number().int().min(0).max(24),
-  maxOutputTokens: z.number().int().min(64).max(8192),
-  maxTotalTokens: z.number().int().min(128).max(131072),
-  contextTokens: z.number().int().min(2048).max(32768),
-  timeoutMs: z.number().int().min(1000).max(300000),
-  maxCostUsd: z.number().finite().min(0).max(100),
-})
-export const defaultAgentLimits: AgentLimits = {
-  maxCalls: 4, maxToolCalls: 4, maxOutputTokens: 4096, maxTotalTokens: 32768,
-  contextTokens: 32768, timeoutMs: 180000, maxCostUsd: 0,
-}
+export { agentLimitsSchema, defaultAgentLimits, type AgentLimits } from '../domain/agent-config'
 export type LocalConnection = z.infer<typeof localConnectionSchema>
-export type AgentLimits = z.infer<typeof agentLimitsSchema>

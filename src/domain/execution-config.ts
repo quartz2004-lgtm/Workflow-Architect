@@ -16,6 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { z } from 'zod'
+import { agentLimitsSchema } from './agent-config'
 
 /** Declarative data, never JavaScript. Empty JSON Pointer selects the entire value. */
 export const jsonPointerSchema = z.string().max(1000).refine(value => value === '' || (value.startsWith('/') && !/~(?![01])/u.test(value)), 'Ожидается JSON Pointer: /field или пустая строка.')
@@ -41,6 +42,9 @@ const fieldSchema = z.strictObject({
 const fieldsSchema = z.array(fieldSchema).max(100).refine(fields => new Set(fields.map(field => field.key)).size === fields.length, 'Имена полей должны быть уникальными.')
 
 export const executionConfigSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('agent'), limits: agentLimitsSchema, minimumWords: z.number().int().min(0).max(5000), requireTools: z.boolean() }),
+  z.strictObject({ kind: z.literal('text-statistics'), minimumWords: z.number().int().min(0).max(5000) }),
+  z.strictObject({ kind: z.literal('parallel'), joinNodeId: z.uuid(), concurrency: z.number().int().min(1).max(4) }),
   z.strictObject({ kind: z.literal('manual') }),
   z.strictObject({ kind: z.literal('map'), keepInput: z.boolean(), fields: fieldsSchema }),
   z.strictObject({ kind: z.literal('if'), predicate: predicateSchema, truePortId: z.uuid(), falsePortId: z.uuid() }),

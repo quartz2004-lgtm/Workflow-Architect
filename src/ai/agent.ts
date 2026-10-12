@@ -68,7 +68,7 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
   for (const price of [provider.costPerMillionInput, provider.costPerMillionOutput]) z.number().finite().min(0).parse(price)
   const timer = new AbortController()
   const timeout = setTimeout(() => timer.abort(new Error('Истёк timeout агента.')), limits.timeoutMs)
-  const combined = AbortSignal.any([signal, timer.signal])
+  const combined = AbortSignal.any([signal, timer.signal, ...(provider.signal ? [provider.signal] : [])])
   let inputTokens = 0, outputTokens = 0, costUsd = 0, toolCalls = 0
   const usedTools = new Set<string>()
   const messages: ModelMessage[] = [{ role: 'system', content: system }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input) }]

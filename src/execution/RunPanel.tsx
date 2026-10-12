@@ -26,10 +26,11 @@ import { runStatusLabels } from './view-state'
 export { runStatusLabels } from './view-state'
 import './run-panel.css'
 
-const eventLabels = { status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
+const eventLabels = { ai: 'Вызов ИИ / инструмента', status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
 const stringify = (value: unknown) => JSON.stringify(value, null, 2)
 const preview = (value: unknown) => { const text = stringify(value); return text.length > 20000 ? `${text.slice(0, 20000)}\n… Предпросмотр сокращён. Сохраните журнал для полного значения.` : text }
 function eventContent(event: RunEvent) {
+  if (event.kind === 'ai') return event.trace
   if (event.kind === 'step-start') return { input: event.input, data: event.data }
   if (event.kind === 'step-finish') return { output: event.output, ports: event.ports }
   if (event.kind === 'status') return runStatusLabels[event.status]
