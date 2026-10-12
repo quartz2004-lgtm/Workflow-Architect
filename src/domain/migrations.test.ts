@@ -23,6 +23,8 @@ import { deserializeStoredProject, serializeProject } from './serialization'
 import { migrateProjectSnapshot, type ProjectMigration } from './migrations'
 import { createNode, createProject } from './factories'
 import { defaultAgentLimits } from './agent-config'
+import { compileProject } from '../execution/compiler'
+import { ExecutionRun } from '../execution/executor'
 
 const raw = readFileSync(new URL('./fixtures/project-0.1-agent.json', import.meta.url), 'utf8')
 const historical = raw.replace('"schemaVersion": "0.1"', '"schemaVersion": "test-legacy"')
@@ -34,6 +36,18 @@ const step: ProjectMigration = {
 }
 
 describe('format evolution', () => {
+  it('preserves and executes a fixed 0.2 snapshot after migration', async () => {
+    const fixture = readFileSync(new URL('./fixtures/project-0.2-execution.json', import.meta.url), 'utf8')
+    const backup = vi.fn(), project = await migrateProjectSnapshot(fixture, backup)
+    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.3' })
+    expect(backup).toHaveBeenCalledExactlyOnceWith(fixture, '0.2')
+    const compiled = compileProject(project, project.nodes[0]!.id)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) throw new Error('Historical fixture did not compile')
+    const result = await new ExecutionRun(compiled.plan).start({ title: 'Old project' })
+    expect(result.status).toBe('succeeded')
+    expect(JSON.parse(result.artifacts[0]!.content)).toEqual({ title: 'OLD PROJECT' })
+  })
   it('backs up 0.2 before upgrading and preserves archived snapshots for runtime history', async () => {
     const source = { ...createProject(), schemaVersion: '0.2' }
     const raw02 = JSON.stringify(source), backup = vi.fn()
