@@ -21,20 +21,24 @@ import { assertValueBudget } from './values'
 const id = z.uuid()
 const time = z.iso.datetime()
 const status = z.enum(['queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'])
-const activation = z.strictObject({ id, callId: id, graphId: id.nullable(), nodeId: id, path: z.array(id).max(24) })
-const artifact = z.strictObject({ id, activation, filename: z.string().max(150), format: z.enum(['json', 'text']), content: z.string().max(4 * 1024 * 1024) })
+export const activationSchema = z.strictObject({ id, callId: id, graphId: id.nullable(), nodeId: id, path: z.array(id).max(24) })
+const activation = activationSchema
+export const artifactSchema = z.strictObject({ id, activation, filename: z.string().max(150), format: z.enum(['json', 'text']), content: z.string().max(4 * 1024 * 1024) })
+const artifact = artifactSchema
+export const humanRequestSchema = z.strictObject({ id, activation, question: z.string().max(10000), mode: z.enum(['approval', 'input']), expiresAt: time })
 const failure = { activation: activation.optional(), message: z.string().max(100000) }
 const diagnostic = z.strictObject({ severity: z.enum(['error', 'warning']), graphId: id.nullable(), entityId: z.string(), code: z.string(), message: z.string() })
 const eventBase = { runId: id, sequence: z.number().int().positive(), timestamp: time }
-const event = z.discriminatedUnion('kind', [
+export const runEventSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...eventBase, kind: z.literal('status'), status }),
   z.strictObject({ ...eventBase, kind: z.literal('step-start'), activation, input: z.json(), data: z.record(id, z.json()) }),
   z.strictObject({ ...eventBase, kind: z.literal('step-finish'), activation, output: z.json(), ports: z.record(id, z.json()) }),
-  z.strictObject({ ...eventBase, kind: z.literal('human-request'), request: z.strictObject({ id, activation, question: z.string().max(10000), mode: z.enum(['approval', 'input']), expiresAt: time }) }),
+  z.strictObject({ ...eventBase, kind: z.literal('human-request'), request: humanRequestSchema }),
   z.strictObject({ ...eventBase, kind: z.literal('human-answer'), requestId: id, value: z.json() }),
   z.strictObject({ ...eventBase, kind: z.literal('artifact'), artifact }),
   z.strictObject({ ...eventBase, kind: z.literal('failure'), ...failure }),
 ])
+export const runOutcomeSchema = z.strictObject({ runId: id, planId: id, status, steps: z.number().int().nonnegative(), artifacts: z.array(artifact), error: z.strictObject(failure).optional() })
 export const workerCommandSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('start'), jobId: id, project: z.unknown(), entryNodeId: id, input: z.json() }),
   z.strictObject({ kind: z.literal('cancel'), jobId: id }),
@@ -43,8 +47,8 @@ export const workerCommandSchema = z.discriminatedUnion('kind', [
 export const workerResponseSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('ready'), jobId: id, runId: id, planId: id, diagnostics: z.array(diagnostic) }),
   z.strictObject({ kind: z.literal('rejected'), jobId: id, diagnostics: z.array(diagnostic) }),
-  z.strictObject({ kind: z.literal('event'), jobId: id, event }),
-  z.strictObject({ kind: z.literal('complete'), jobId: id, outcome: z.strictObject({ runId: id, planId: id, status, steps: z.number().int().nonnegative(), artifacts: z.array(artifact), error: z.strictObject(failure).optional() }) }),
+  z.strictObject({ kind: z.literal('event'), jobId: id, event: runEventSchema }),
+  z.strictObject({ kind: z.literal('complete'), jobId: id, outcome: runOutcomeSchema }),
   z.strictObject({ kind: z.literal('answer-result'), jobId: id, requestId: id, ok: z.boolean(), message: z.string().optional() }),
   z.strictObject({ kind: z.literal('fault'), jobId: id, message: z.string() }),
 ])

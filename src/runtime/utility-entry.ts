@@ -1,0 +1,59 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+import { JobManager } from './job-manager'
+import { parseServiceRequest, serviceRequestSchema } from './service-protocol'
+import type {} from 'electron'
+
+const port = process.parentPort
+if (!port || !process.argv[2]) throw new Error('Runtime must be started by its desktop parent.')
+const send = (message: unknown) => port.postMessage(message)
+const manager = new JobManager(process.argv[2], {
+  changed: job => send({ version: '0.3.1', kind: 'changed', jobId: job.id, profileId: job.profileId }),
+  unavailable: message => send({ version: '0.3.1', kind: 'unavailable', message }),
+})
+port.on('message', event => {
+  let requestId: string | undefined
+  try {
+    const candidate = serviceRequestSchema.shape.requestId.safeParse(event.data && typeof event.data === 'object' ? event.data.requestId : undefined)
+    if (candidate.success) requestId = candidate.data
+    const request = parseServiceRequest(event.data)
+    requestId = request.requestId
+    const command = request.command
+    let result: unknown
+    switch (command.kind) {
+      case 'submit': result = manager.submit(command.request); break
+      case 'list': result = manager.list(command.profileId); break
+      case 'get': result = manager.get(command.profileId, command.id); break
+      case 'cancel': result = manager.cancel(command.profileId, command.id); break
+      case 'resume': result = manager.resume(command.profileId, command.id); break
+      case 'remove': manager.remove(command.profileId, command.id); result = null; break
+      case 'answer': result = manager.answer(command.profileId, command.id, command.requestId, command.value); break
+      case 'close-window': manager.closeWindow(); result = null; break
+      case 'wake': manager.wake(); result = null; break
+      case 'stop': manager.stop(); result = null; break
+    }
+    send({ version: '0.3.1', kind: 'reply', requestId, ok: true, result })
+    if (command.kind === 'stop') setTimeout(() => process.exit(0), 0)
+  } catch (error) {
+    // No command body, environment or input values are printed to process logs.
+    const message = error instanceof Error ? error.message.slice(0, 4000) : 'Ошибка runtime.'
+    if (requestId) send({ version: '0.3.1', kind: 'reply', requestId, ok: false, message })
+  }
+})
+manager.start()
+if (manager.available) send({ version: '0.3.1', kind: 'ready', damaged: manager.damaged })

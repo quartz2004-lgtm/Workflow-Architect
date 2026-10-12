@@ -23,6 +23,7 @@ import { compileProject, resolveContract, type ExecutionPlan } from './compiler'
 import { compileContract, type ContractCheck } from './contracts'
 import { assertValueBudget, evaluatePredicate, jsonEqual, mapValue, sourceValue } from './values'
 import type { Activation, HumanRequest, RunArtifact, RunEvent, RunEventPayload, RunOutcome, RunStatus } from './run-types'
+import { parseCheckpoint, type CheckpointFrame, type RunCheckpoint } from './checkpoint'
 
 class RunFailure extends Error {
   constructor(message: string, readonly activation?: Activation) { super(message) }
@@ -33,6 +34,9 @@ interface Context {
   outputs: Map<string, Map<string, JsonValue>>
   data: Map<string, Map<string, JsonValue>>
   loops: Map<string, number>
+  queue: Token[]
+  activation?: Activation
+  human?: CheckpointFrame['human']
 }
 interface PendingHuman {
   request: HumanRequest; node: WorkflowNode
@@ -41,7 +45,7 @@ interface PendingHuman {
 
 /** Transport-independent executor. Operations have no filesystem, shell or network capability. */
 export class ExecutionRun {
-  readonly id = createId()
+  readonly id: string
   private readonly plan: ExecutionPlan
   private status: RunStatus = 'queued'
   private started = false
@@ -53,19 +57,40 @@ export class ExecutionRun {
   private artifacts: RunArtifact[] = []
   private pending?: PendingHuman
   private checks = new Map<string, ContractCheck>()
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}) {
+  private frames: Context[] = []
+  private restored: CheckpointFrame[] = []
+  private resumed = false
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void } = {}) {
     if (plan.planVersion !== '0.3') throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
     if (!verified.ok) throw new Error(verified.diagnostics.map(issue => issue.message).join('\n'))
     // Recompile at the execution boundary; supplied limits and mutable plan objects are not trusted.
     this.plan = { ...verified.plan, id: plan.id, createdAt: plan.createdAt }
+    if (persistence.deadline !== undefined && (!Number.isSafeInteger(persistence.deadline) || persistence.deadline <= 0)) throw new Error('Некорректный deadline запуска.')
+    this.id = createId()
+    if (persistence.checkpoint !== undefined) {
+      const saved = parseCheckpoint(persistence.checkpoint, this.plan)
+      if (['succeeded', 'failed', 'cancelled'].includes(saved.status)) throw new Error('Завершённый запуск нельзя возобновить.')
+      this.id = saved.runId; this.status = saved.status; this.cancelled = saved.cancelled
+      this.sequence = saved.sequence; this.steps = saved.steps; this.deadline = saved.deadline
+      this.eventBytes = saved.eventBytes; this.artifacts = saved.artifacts; this.restored = saved.frames
+      this.resumed = true
+    }
   }
   getStatus(): RunStatus { return this.status }
+  checkClock(): void {
+    const waiting = this.pending
+    if (waiting && Date.now() >= Math.min(this.deadline, Date.parse(waiting.request.expiresAt))) {
+      this.pending = undefined; clearTimeout(waiting.timer)
+      waiting.reject(new RunFailure('Истёк timeout ожидания Human, включая время сна ПК.', waiting.request.activation))
+    }
+  }
   cancel(): void {
     if (['succeeded', 'failed', 'cancelled'].includes(this.status)) return
     this.cancelled = true
-    if (this.pending) { const waiting = this.pending; this.pending = undefined; clearTimeout(waiting.timer); waiting.reject(new RunFailure('Запуск отменён.', waiting.request.activation)) }
+    try { if (this.started) this.save() }
+    finally { if (this.pending) { const waiting = this.pending; this.pending = undefined; clearTimeout(waiting.timer); waiting.reject(new RunFailure('Запуск отменён.', waiting.request.activation)) } }
   }
   answer(requestId: string, value: unknown): { ok: boolean; message?: string } {
     const waiting = this.pending
@@ -75,8 +100,21 @@ export class ExecutionRun {
       assertValueBudget(value)
       if (waiting.request.mode === 'approval' && typeof value !== 'boolean') throw new Error('Для подтверждения требуется да или нет.')
       if (waiting.node.type === 'human') this.check(waiting.node.config.response, value)
-      this.emit({ kind: 'human-answer', requestId, value })
     } catch (error) { return { ok: false, message: error instanceof Error ? error.message : String(error) } }
+    try {
+      // Validation above may reject an answer without closing the question.
+      assertValueBudget(value)
+      const frame = this.frames.at(-1)
+      if (!frame?.human || frame.human.request.id !== requestId) throw new Error('Контрольная точка Human недоступна.')
+      frame.human.answer = { value: structuredClone(value) }
+      this.emit({ kind: 'human-answer', requestId, value })
+      this.save()
+    } catch (error) {
+      // A failed durable acknowledgement must never let execution continue.
+      this.cancelled = true; this.pending = undefined; clearTimeout(waiting.timer)
+      waiting.reject(error instanceof Error ? error : new Error(String(error)))
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
+    }
     this.pending = undefined; clearTimeout(waiting.timer)
     waiting.resolve(structuredClone(value))
     return { ok: true }
@@ -84,10 +122,10 @@ export class ExecutionRun {
   async start(input: unknown): Promise<RunOutcome> {
     if (this.started) throw new Error('Этот запуск уже начат; создайте новый run.')
     this.started = true
-    this.deadline = Date.now() + this.plan.limits.timeoutMs
+    if (!this.resumed) this.deadline = Math.min(Date.now() + this.plan.limits.timeoutMs, this.persistence.deadline ?? Infinity)
     let failure: RunOutcome['error']
     try {
-      this.changeStatus('queued')
+      if (!this.resumed) this.changeStatus('queued')
       assertValueBudget(input)
       this.guard()
       this.changeStatus('running')
@@ -101,7 +139,23 @@ export class ExecutionRun {
     } finally {
       if (this.pending) { clearTimeout(this.pending.timer); this.pending = undefined }
     }
+    this.save()
     return { runId: this.id, planId: this.plan.id, status: this.status, steps: this.steps, artifacts: structuredClone(this.artifacts), ...(failure ? { error: failure } : {}) }
+  }
+  private save() {
+    if (!this.persistence.save) return
+    const records = (values: Context['outputs']) => Object.fromEntries([...values].map(([id, ports]) => [id, Object.fromEntries(ports)]))
+    const checkpoint: RunCheckpoint = {
+      checkpointVersion: '0.3.1', planId: this.plan.id, runId: this.id, status: this.status,
+      cancelled: this.cancelled, sequence: this.sequence, steps: this.steps, deadline: this.deadline,
+      eventBytes: this.eventBytes, artifacts: this.artifacts,
+      frames: this.frames.map(frame => ({ id: frame.id, graphId: frame.graphId, path: frame.path,
+        queue: frame.queue, outputs: records(frame.outputs), data: records(frame.data), loops: Object.fromEntries(frame.loops),
+        ...(frame.activation ? { activation: frame.activation } : {}), ...(frame.human ? { human: frame.human } : {}),
+      })),
+    }
+    assertValueBudget(checkpoint, 32 * 1024 * 1024, true)
+    this.persistence.save(structuredClone(checkpoint))
   }
   private changeStatus(status: RunStatus) { this.status = status; this.emit({ kind: 'status', status }, true) }
   private emit(payload: RunEventPayload, terminal = false) {
@@ -115,6 +169,7 @@ export class ExecutionRun {
   private guard() {
     if (this.cancelled) throw new RunFailure('Запуск отменён.')
     if (Date.now() >= this.deadline) throw new RunFailure('Истёк общий timeout запуска.')
+    if (this.steps > this.plan.limits.maxSteps) throw new RunFailure('Превышен лимит шагов.')
   }
   private check(contract: Contract | undefined, value: JsonValue) {
     if (!contract || contract.kind === 'informal') return
@@ -131,16 +186,27 @@ export class ExecutionRun {
     if (path.length > this.plan.limits.maxDepth) throw new Error('Превышена глубина Subworkflow.')
     const graph = graphId === null ? this.plan.snapshot : this.plan.snapshot.subworkflows.find(graph => graph.id === graphId)
     if (!graph) throw new Error('Вложенный граф не найден.')
-    const context: Context = { id: createId(), graphId, graph, path, outputs: new Map(), data, loops: new Map() }
-    const queue = [initial]
-    for (let index = 0; index < queue.length; index++) {
+    const saved = this.restored[path.length]
+    if (saved && (saved.graphId !== graphId || JSON.stringify(saved.path) !== JSON.stringify(path))) throw new Error('Контрольная точка не соответствует вызову.')
+    const maps = (values: CheckpointFrame['outputs']) => new Map(Object.entries(values).map(([id, ports]) => [id, new Map(Object.entries(ports))]))
+    const context: Context = saved
+      ? { id: saved.id, graphId, graph, path, outputs: maps(saved.outputs), data: maps(saved.data), loops: new Map(Object.entries(saved.loops)), queue: saved.queue, activation: saved.activation, human: saved.human }
+      : { id: createId(), graphId, graph, path, outputs: new Map(), data, loops: new Map(), queue: [initial] }
+    // A restored frame is consumed once; subsequent invocations get fresh local data.
+    delete this.restored[path.length]
+    this.frames.push(context)
+    const queue = context.queue
+    if (!saved) this.save()
+    while (queue.length) {
       await new Promise<void>(resolve => setTimeout(resolve, 0))
       this.guard()
-      const token = queue[index]!, node = graph.nodes.find(node => node.id === token.nodeId)
+      const token = queue[0]!, node = graph.nodes.find(node => node.id === token.nodeId)
       if (!node || node.status === 'disabled' || !node.operation) throw new Error('Недоступный узел в плане.')
-      const activation: Activation = { id: createId(), callId: context.id, graphId, nodeId: node.id, path }
+      const continuing = !!context.activation
+      const activation: Activation = context.activation ?? { id: createId(), callId: context.id, graphId, nodeId: node.id, path }
+      context.activation = activation
       try {
-        if (++this.steps > this.plan.limits.maxSteps) throw new Error('Превышен лимит шагов.')
+        if (!continuing && ++this.steps > this.plan.limits.maxSteps) throw new Error('Превышен лимит шагов.')
         const incoming = new Map(context.data.get(node.id) ?? [])
         for (const edge of graph.edges.filter(edge => edge.type === 'data' && edge.targetNode === node.id)) {
           const value = context.outputs.get(edge.sourceNode)?.get(edge.sourcePort!)
@@ -153,7 +219,7 @@ export class ExecutionRun {
         this.check(node.ports.find(port => port.id === token.portId)?.contract, token.value)
         if ('input' in node.config) this.check(node.config.input, token.value)
         if (node.type === 'trigger') this.check(node.config.payload, token.value)
-        this.emit({ kind: 'step-start', activation, input: token.value, data: Object.fromEntries(incoming) })
+        if (!continuing) this.emit({ kind: 'step-start', activation, input: token.value, data: Object.fromEntries(incoming) })
         const result = await this.executeNode(node, token, context, incoming, activation)
         this.guard()
         assertValueBudget(result.output)
@@ -174,14 +240,17 @@ export class ExecutionRun {
           const value = ports.get(edge.sourcePort!)
           if (value === undefined || (edge.predicate && !evaluatePredicate(edge.predicate, value, incoming))) continue
           this.check(edge.contract, value)
-          if (queue.length - index > 10000) throw new Error('Превышен лимит ожидающих активаций.')
+          if (queue.length > 10000) throw new Error('Превышен лимит ожидающих активаций.')
           queue.push({ nodeId: edge.targetNode, portId: edge.targetPort, value })
         }
+        queue.shift(); context.activation = undefined; context.human = undefined
+        this.save()
       } catch (error) {
         if (error instanceof RunFailure && error.activation) throw error
         throw new RunFailure(error instanceof Error ? error.message : String(error), activation)
       }
     }
+    this.frames.pop()
     return context
   }
   private async executeNode(node: WorkflowNode, token: Token, context: Context, data: ReadonlyMap<string, JsonValue>, activation: Activation): Promise<{ output: JsonValue; ports?: Map<string, JsonValue>; artifact?: RunArtifact }> {
@@ -236,13 +305,25 @@ export class ExecutionRun {
   private waitForHuman(node: WorkflowNode, activation: Activation): Promise<JsonValue> {
     const op = node.operation
     if (op?.kind !== 'human') throw new Error('Ожидалась операция Human.')
+    const frame = this.frames.at(-1)!
+    if (frame.human?.answer) {
+      const answer = frame.human.answer.value
+      if (node.type === 'human') this.check(node.config.response, answer)
+      return Promise.resolve(structuredClone(answer))
+    }
     return new Promise((resolve, reject) => {
-      const expires = Math.min(this.deadline, Date.now() + op.timeoutMs)
-      const request: HumanRequest = { id: createId(), activation, question: op.question, mode: op.mode, expiresAt: new Date(expires).toISOString() }
+      const previous = frame.human?.request
+      const expires = previous ? Date.parse(previous.expiresAt) : Math.min(this.deadline, Date.now() + op.timeoutMs)
+      if (Date.now() >= expires) { reject(new RunFailure('Истёк timeout ожидания Human.', activation)); return }
+      const request: HumanRequest = previous ?? { id: createId(), activation, question: op.question, mode: op.mode, expiresAt: new Date(expires).toISOString() }
+      frame.human = { request }
       const timer = setTimeout(() => { this.pending = undefined; reject(new RunFailure('Истёк timeout ожидания Human.', activation)) }, Math.max(0, expires - Date.now()))
       this.pending = { request, node, resolve, reject, timer }
-      this.changeStatus('waiting')
-      this.emit({ kind: 'human-request', request })
+      try {
+        this.changeStatus('waiting')
+        if (!previous) this.emit({ kind: 'human-request', request })
+        this.save()
+      } catch (error) { clearTimeout(timer); this.pending = undefined; reject(error instanceof Error ? error : new Error(String(error))) }
     })
   }
 }

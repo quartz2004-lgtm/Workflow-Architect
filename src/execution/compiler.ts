@@ -82,7 +82,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
         : operation.kind === 'switch' || operation.kind === 'artifact' ? [operation.source] : []
       for (const edge of graph.edges.filter(edge => edge.sourceNode === node.id && edge.type === 'flow' && edge.predicate)) sources.push(edge.predicate!.source)
       for (const source of sources) if (source.kind === 'data' && !node.ports.some(port => port.id === source.portId && port.direction === 'input' && port.kind === 'data')) add(id, node.id, 'data-source-port', 'Операция ссылается на отсутствующий вход Data.')
-      if (node.type === 'trigger' && node.config.triggerType !== 'manual') add(id, node.id, 'trigger-type', 'В 0.3.0 исполняется только ручной Trigger.')
+      if (node.type === 'trigger' && node.config.triggerType !== 'manual') add(id, node.id, 'trigger-type', 'В 0.3.1 исполняется только ручной Trigger.')
       if (node.type === 'data' && node.config.dataType && node.config.dataType !== 'json') add(id, node.id, 'data-type', 'Доступна только обработка JSON; чтение файлов и баз пока не исполняется.')
       if (node.type === 'logic') {
         if (node.config.logicType && node.config.logicType !== operation.kind) add(id, node.id, 'logic-type', 'Тип Logic не совпадает с выбранной операцией.')

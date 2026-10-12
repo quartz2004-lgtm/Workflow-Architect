@@ -41,6 +41,16 @@ along with this program.  If not, see <https://gnu.org>.
 .run-journal-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
 .run-diagnostics { padding-left: 18px; font-size: 12px; }
 .run-diagnostics li { margin: 10px 0; line-height: 1.5; }
+.runtime-controls { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px; }
+.runtime-connection, .runtime-history-heading { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.runtime-connection strong { flex: 1; font-size: 12px; }
+.runtime-ready { color: var(--emerald); }
+.runtime-unavailable { color: var(--amber); }
+.runtime-history-heading h3 { margin: 16px 0; }
+.runtime-history-actions { margin-top: 12px; flex-wrap: wrap; }
+.run-body .runtime-consent { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; color: var(--text); }
+.runtime-consent input { accent-color: var(--emerald); margin-top: 3px; flex-shrink: 0; }
+.runtime-delete { border-left: 2px solid var(--amber); padding-left: 12px; font-size: 12px; }
 .operation-section fieldset { min-width: 0; margin: 10px 0; padding: 10px; border: 1px solid var(--border); }
 .operation-section legend { color: var(--muted); font-size: 11px; }
 @media (max-width: 760px) { .run-panel { right: 8px; bottom: 34px; width: calc(100vw - 16px); max-height: calc(100dvh - 90px); } .run-body { padding: 4px 12px 12px; } .run-start, .run-human { padding: 12px; } }

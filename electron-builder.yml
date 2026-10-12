@@ -21,6 +21,7 @@ directories:
 files:
   - dist/**/*
   - desktop-dist/**/*
+  - runtime-dist/**/*
   - desktop/assets/icon.ico
   - package.json
   - '!node_modules/**/*'

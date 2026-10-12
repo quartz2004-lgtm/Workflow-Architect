@@ -21,9 +21,11 @@ import { useEditor } from '../app/context'
 import { graphEntries } from '../domain/graphs'
 import { downloadBlob, downloadText } from '../shared/download'
 import type { RunEvent } from './run-types'
+import { BackgroundConsent, RuntimeControls } from './RuntimeControls'
+import { runStatusLabels } from './view-state'
+export { runStatusLabels } from './view-state'
 import './run-panel.css'
 
-export const runStatusLabels = { idle: 'Готов к запуску', queued: 'Подготовка', running: 'Выполняется', waiting: 'Нужен ваш ответ', succeeded: 'Завершён', failed: 'Ошибка', cancelled: 'Отменён', blocked: 'Запуск заблокирован' }
 const eventLabels = { status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
 const stringify = (value: unknown) => JSON.stringify(value, null, 2)
 const preview = (value: unknown) => { const text = stringify(value); return text.length > 20000 ? `${text.slice(0, 20000)}\n… Предпросмотр сокращён. Сохраните журнал для полного значения.` : text }
@@ -45,7 +47,8 @@ export function RunPanel() {
   const [page, setPage] = useState<number | null>(null)
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
-  const busy = ['queued', 'running', 'waiting'].includes(state.status)
+  const active = ['queued', 'running', 'waiting'].includes(state.status)
+  const busy = active || state.actionPending
   const selected = entries.some(node => node.id === entryId) ? entryId : entries[0]?.id ?? ''
   const nodes = state.snapshot ? graphEntries(state.snapshot).flatMap(entry => entry.graph.nodes) : []
   const label = (id: string) => nodes.find(node => node.id === id)?.title ?? id
@@ -53,19 +56,21 @@ export function RunPanel() {
   const lastPage = Math.max(0, Math.ceil(state.events.length / 50) - 1), currentPage = Math.min(page ?? lastPage, lastPage)
   const parse = (text: string, action: (value: unknown) => void) => { try { action(JSON.parse(text)); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
   return <section className="run-panel" aria-label="Локальное выполнение">
-    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.3</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
+    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.3.1</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
     <div className="run-body">
-      <p className="muted">Локальные операции без ИИ и сети. Максимум 5 минут / 10 000 шагов. Закрытие приложения прервёт запуск.</p>
-      <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
+      <p className="muted">Локальные операции без ИИ и сети. Максимум 5 минут / 10 000 шагов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
+      {editor.runtime.native && <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />}
+      {(!editor.runtime.native || !state.jobId) && <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
         <label>Вход запуска (JSON)<textarea aria-label="Вход запуска (JSON)" className="code-input" disabled={busy} value={input} onChange={event => setInput(event.target.value)} rows={3} spellCheck={false} /></label>
-        <div className="inline-actions"><button className="primary" disabled={busy || !selected} onClick={() => parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) })}>Запустить workflow</button><button disabled={!busy} onClick={editor.runtime.cancel}>Остановить запуск</button></div>
-      </div>
+        {editor.runtime.native && <BackgroundConsent native={editor.runtime.native} disabled={busy} runningAllowed={active ? state.backgroundAllowed : undefined} />}
+        <div className="inline-actions"><button className="primary" disabled={busy || !selected || !state.available} onClick={() => parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) })}>Запустить workflow</button><button disabled={!active || state.actionPending || !state.available} onClick={editor.runtime.cancel}>Остановить запуск</button></div>
+      </div>}
       {state.snapshot && <p className="muted">Снимок: {state.snapshot.project.name}. Правки Canvas применятся при следующем запуске.{!currentProject && ' В редакторе открыт другой проект.'}</p>}
       {state.runId && <p className="run-identification muted">Run ID: <code>{state.runId}</code><br />План 0.3: <code>{state.planId}</code></p>}
-      {(error || state.message) && <p className="field-error" role="alert">{error || state.message}</p>}
+      {(error || state.message) && <p className={error || ['failed', 'blocked', 'unknown'].includes(state.status) ? 'field-error' : 'muted'} role={error || ['failed', 'blocked', 'unknown'].includes(state.status) ? 'alert' : 'status'}>{error || state.message}</p>}
       {!!state.diagnostics.length && <details open={state.status === 'blocked'}><summary>Диагностика · {state.diagnostics.length}</summary><ul className="run-diagnostics">{state.diagnostics.map((issue, index) => <li key={index}><strong>{issue.severity === 'error' ? 'Ошибка' : 'Замечание'}</strong> · {issue.message} <button disabled={!currentProject} onClick={() => editor.focusEntity(issue.entityId)}>Показать узел</button></li>)}</ul></details>}
       {state.human && <section className="run-human" aria-label="Ответ человеку"><h3>{state.human.question}</h3><p className="muted">{label(state.human.activation.nodeId)} · до {new Date(state.human.expiresAt).toLocaleTimeString('ru-RU')}</p>
-        {state.human.mode === 'approval' ? <div className="inline-actions"><button onClick={() => editor.runtime.answer(state.human!.id, true)}>Подтвердить</button><button onClick={() => editor.runtime.answer(state.human!.id, false)}>Отклонить</button></div> : <><label>Ответ (JSON)<textarea aria-label="Ответ (JSON)" className="code-input" value={answer} onChange={event => setAnswer(event.target.value)} rows={3} /></label><button onClick={() => parse(answer, value => editor.runtime.answer(state.human!.id, value))}>Отправить ответ</button></>}
+        {state.human.mode === 'approval' ? <div className="inline-actions"><button disabled={!state.available || state.actionPending} onClick={() => editor.runtime.answer(state.human!.id, true)}>Подтвердить</button><button disabled={!state.available || state.actionPending} onClick={() => editor.runtime.answer(state.human!.id, false)}>Отклонить</button></div> : <><label>Ответ (JSON)<textarea aria-label="Ответ (JSON)" className="code-input" value={answer} onChange={event => setAnswer(event.target.value)} rows={3} /></label><button disabled={!state.available || state.actionPending} onClick={() => parse(answer, value => editor.runtime.answer(state.human!.id, value))}>Отправить ответ</button></>}
         {state.answerError && <p className="field-error" role="alert">{state.answerError}</p>}
       </section>}
       {!!state.artifacts.length && <section aria-label="Артефакты запуска"><h3>Артефакты · {state.artifacts.length}</h3>{state.artifacts.map(artifact => <details className="run-artifact" key={artifact.id}><summary>{artifact.filename} · {label(artifact.activation.nodeId)}</summary><pre>{artifact.content.slice(0, 20000)}{artifact.content.length > 20000 ? '\n… Предпросмотр сокращён. Файл сохранится полностью.' : ''}</pre><button onClick={() => downloadBlob(artifact.filename, new Blob([artifact.content], { type: artifact.format === 'json' ? 'application/json;charset=utf-8' : 'text/plain;charset=utf-8' }))}>Сохранить {artifact.filename}</button></details>)}</section>}

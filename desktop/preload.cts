@@ -19,6 +19,17 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 // This is the complete native surface. No filesystem, shell, or generic IPC API.
 contextBridge.exposeInMainWorld('workflowDesktop', {
+  credentials: { request: (command: unknown) => ipcRenderer.invoke('workflow:credentials-request', command) },
+  runtime: {
+    request: (command: unknown) => ipcRenderer.invoke('workflow:runtime-request', command),
+    state: () => ipcRenderer.invoke('workflow:runtime-state'),
+    reconnect: () => ipcRenderer.invoke('workflow:runtime-reconnect'),
+    subscribe: (listener: (message: unknown) => void) => {
+      const receive = (_event: Electron.IpcRendererEvent, message: unknown) => listener(message)
+      ipcRenderer.on('workflow:runtime-event', receive)
+      return () => ipcRenderer.removeListener('workflow:runtime-event', receive)
+    },
+  },
   onBeforeClose: (save: () => Promise<boolean>) => {
     ipcRenderer.removeAllListeners('workflow:before-close')
     ipcRenderer.on('workflow:before-close', (_event, request: unknown) => {
