@@ -1,0 +1,36 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+.integrations-dialog { width: min(1100px, 94vw); }
+.integration-tabs { display: flex; gap: var(--space-2); margin: var(--space-5) 0; }
+.integration-tabs button[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
+.integration-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); align-items: start; }
+.integration-card, .integration-form, .integration-pair { padding: var(--space-4); margin-bottom: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.integration-pair { border-color: var(--emerald); }
+.integration-card header { display: flex; justify-content: space-between; gap: var(--space-3); }
+.integration-card header span { color: var(--emerald); font-size: 12px; }
+.integrations-dialog label { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-3) 0; color: var(--muted); }
+.integrations-dialog input, .integrations-dialog select, .integrations-dialog textarea { width: 100%; min-width: 0; }
+.integrations-dialog small { color: var(--muted); line-height: 1.6; }
+.integrations-dialog .integration-check { flex-direction: row; align-items: center; }
+.integration-check input { width: auto; }
+.integration-grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-4); }
+.integration-id { overflow-wrap: anywhere; font-family: var(--mono); font-size: 11px; }
+.integration-grants { border-top: 1px solid var(--border); margin-top: var(--space-4); }
+.integration-grants pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
+.integration-card .inline-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+@media (max-width: 760px) { .integration-columns, .integration-grid { grid-template-columns: 1fr; } }

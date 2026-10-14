@@ -28,6 +28,7 @@ export async function createNativeVault(directory: string) {
   })
   await vault.initialize()
   return {
+    resolve: (profileId: string, id: string) => vault.resolve(profileId, id),
     assertNoSecrets: (value: unknown) => vault.assertNoSecrets(value),
     redact: (text: string) => vault.redactor.redact(text),
     handle: async (value: unknown): Promise<unknown> => {

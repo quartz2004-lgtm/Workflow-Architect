@@ -54,7 +54,7 @@ for (const channel of ['workflow:runtime-request', 'workflow:runtime-state', 'wo
   if (channel === 'workflow:runtime-state') return runtime.snapshot()
   if (channel === 'workflow:runtime-reconnect') return runtime.reconnect()
   try {
-    if (value && typeof value === 'object' && 'kind' in value && (value.kind === 'submit' || value.kind === 'answer' || value.kind === 'ai')) credentials?.assertNoSecrets(value)
+    if (value && typeof value === 'object' && 'kind' in value && (value.kind === 'submit' || value.kind === 'answer' || value.kind === 'ai' || value.kind === 'integrations')) credentials?.assertNoSecrets(value)
     return await runtime.request(value)
   } catch (error) {
     // Do not attach an unredacted native error as cause across the renderer boundary.
@@ -181,7 +181,10 @@ else {
     catch { /* No plaintext fallback. The editor and non-secret operations remain available. */ }
     runtime = new RuntimeHost(join(app.getAppPath(), 'runtime-dist', 'runtime.cjs'), join(app.getPath('userData'), 'runtime', 'jobs'), message => {
       if (window && !window.isDestroyed()) window.webContents.send('workflow:runtime-event', message)
-    }, message => credentials?.redact(message) ?? message)
+    }, message => credentials?.redact(message) ?? message, (profileId, id) => {
+      if (!credentials) return Promise.reject(new Error('Хранилище недоступно.'))
+      return credentials.resolve(profileId, id)
+    })
     try { await runtime.start() } catch { /* The editor remains available with a visible service error. */ }
     tray = new Tray(join(app.getAppPath(), 'desktop', 'assets', 'icon.ico'))
     tray.setToolTip('Workflow Architect — фоновое выполнение')

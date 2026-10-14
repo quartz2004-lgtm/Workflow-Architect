@@ -37,6 +37,9 @@ for (const [path, entry] of Object.entries(lock.packages).sort(([a], [b]) => a <
     files = ['LICENSE (upstream v4.25.12)']
     texts = [{ name: files[0], text: await readFile(resolve(root, 'docs/third-party/uiw-react-codemirror-4.25.12-LICENSE.txt'), 'utf8') }]
   }
+  if (!texts.length && name === '@modelcontextprotocol/server-filesystem' && entry.version === '1.0.0') {
+    texts = [{ name: 'LICENSE (upstream bbb701e7)', text: await readFile(resolve(root, 'docs/third-party/mcp-server-filesystem-1.0.0-LICENSE.txt'), 'utf8') }]
+  }
   if (!texts.length) throw new Error(`Missing license text for ${name}@${entry.version}; review upstream and vendor its versioned license before release`)
   sections.push(`## ${name}@${entry.version}\n\nDeclared license: ${entry.license}\n\n${texts.map(({ name, text }) => `### ${name}\n\n\`\`\`text\n${text.replace(/\r\n/g, '\n').trim()}\n\`\`\``).join('\n\n')}`)
 }
