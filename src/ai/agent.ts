@@ -71,7 +71,7 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
   const combined = AbortSignal.any([signal, timer.signal, ...(provider.signal ? [provider.signal] : [])])
   let inputTokens = 0, outputTokens = 0, costUsd = 0, toolCalls = 0
   const usedTools = new Set<string>()
-  let finalizing = tools.length === 0, correctedToolChoice = false, correctedLength = false
+  let finalizing = tools.length === 0, correctedToolChoice = false, correctedLength = false, correctedEmpty = false
   const toolPolicy = requiredTools.length ? `\n\nRuntime requirement: before writing any final answer, call every required tool: ${requiredTools.join(', ')}. Your FIRST response must be a tool call, not the article or final answer. After receiving tool results, produce the complete final answer following the instructions above.` : ''
   const messages: ModelMessage[] = [{ role: 'system', content: system + toolPolicy }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input) }]
   try {
@@ -103,7 +103,13 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
       if (costUsd > limits.maxCostUsd) throw new Error('Превышен лимит расходов.')
       if (reply.finish === 'length') throw new Error('Модель исчерпала лимит ответа. Частичный текст не считается завершённым результатом.')
       if (!reply.toolCalls.length) {
-        if (!reply.content.trim()) throw new Error('Модель вернула пустой результат.')
+        if (!reply.content.trim()) {
+          // One clarification before any tool effects, within the original call/token/time budget.
+          if (correctedEmpty || toolCalls > 0 || call >= limits.maxCalls) throw new Error('Модель вернула пустой результат.')
+          correctedEmpty = true
+          messages.push({ role: 'user', content: requiredTools.length ? `Your previous response was empty. Call the required tools now: ${requiredTools.join(', ')}. Then produce the complete answer.` : 'Your previous response was empty. Return the complete answer requested above.' })
+          continue
+        }
         const missing = requiredTools.filter(name => !usedTools.has(name))
         if (missing.length) {
           if (correctedToolChoice || call >= limits.maxCalls) throw new Error('Модель завершила ответ без обязательного инструмента.')

@@ -27,10 +27,35 @@ import { isPublicIPv4, scopedUrl } from './network'
 import { TelegramApi } from './telegram-api'
 import { FilesystemMcp } from './mcp'
 import { profileIds } from '../profiles/schema'
+import { IntegrationService } from './service'
+import { JobManager } from '../runtime/job-manager'
+import { ConnectionStore } from '../ai/connection-store'
+import { createExecutionExample } from '../execution/example'
 
 const directories: string[] = []
 function directory() { const path = mkdtempSync(join(tmpdir(), 'wa-integrations-')); directories.push(path); return path }
 afterEach(() => { for (const path of directories.splice(0)) { if (!resolve(path).startsWith(`${resolve(tmpdir())}${sep}wa-integrations-`)) throw new Error('Unsafe cleanup'); rmSync(path, { recursive: true, force: true }) } })
+
+it('deduplicates a schedule slot after a persistence failure and catches up only once after sleep', async () => {
+  vi.useFakeTimers()
+  const root = directory(), jobs = new JobManager(join(root, 'jobs')), models = new ConnectionStore(join(root, 'models'))
+  const service = new IntegrationService(join(root, 'integrations'), 'unused', async () => { throw new Error('No credentials') }, jobs, models)
+  try {
+    const project = createExecutionExample(), workflow = service.sources.publish(profileIds[0], 'Scheduled', project, project.nodes[0]!.id)
+    const slot = Date.now() - 600000
+    service.sources.saveSchedule({ version: '0.5', id: randomUUID(), profileId: profileIds[0], workflowId: workflow.id, intervalMinutes: 1, nextAt: slot, input: { approved: true, text: 'test' }, enabled: true })
+    const advance = vi.spyOn(service.sources, 'advanceSchedule').mockImplementationOnce(() => { throw new Error('disk temporarily unavailable') })
+    service.start()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(jobs.list(profileIds[0])).toHaveLength(1)
+    expect(service.sources.allSchedules()[0]!.nextAt).toBe(slot)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(jobs.list(profileIds[0])).toHaveLength(1)
+    expect(service.sources.allSchedules()[0]!.nextAt).toBeGreaterThan(Date.now())
+    expect(advance).toHaveBeenCalledTimes(2)
+    advance.mockRestore()
+  } finally { service.stop(); jobs.stop(); vi.useRealTimers() }
+})
 describe('durable external effects', () => {
   it('coalesces concurrent requests and reuses acknowledged results after restart', async () => {
     const path = directory(), store = new EffectStore(path), action = vi.fn(async () => ({ message: 7 }))

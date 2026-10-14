@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { relativeFileSchema } from './schema'
@@ -56,9 +56,12 @@ export class ScopedFiles {
     const target = this.path(path), fd = openSync(target, 'r')
     try {
       const info = fstatSync(fd)
-      if (!info.isFile() || info.size > MAX_FILE_BYTES) throw new Error('Разрешены текстовые файлы до 1 МБ.')
-      const data = readFileSync(fd)
-      if (data.length > MAX_FILE_BYTES) throw new Error('Файл вырос во время чтения.')
+      if (!info.isFile() || info.size > MAX_FILE_BYTES || info.nlink > 1) throw new Error('Разрешены текстовые файлы до 1 МБ без жёстких ссылок.')
+      const buffer = Buffer.alloc(MAX_FILE_BYTES + 1)
+      let length = 0, read = 0
+      do { read = readSync(fd, buffer, length, buffer.length - length, null); length += read } while (read && length < buffer.length)
+      if (length > MAX_FILE_BYTES) throw new Error('Файл вырос во время чтения.')
+      const data = buffer.subarray(0, length)
       const content = new TextDecoder('utf-8', { fatal: true }).decode(data)
       return { path, content, hash: contentHash(content), bytes: data.length }
     } finally { closeSync(fd) }

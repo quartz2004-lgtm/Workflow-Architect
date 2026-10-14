@@ -30,16 +30,30 @@ const raw = readFileSync(new URL('./fixtures/project-0.1-agent.json', import.met
 const historical = raw.replace('"schemaVersion": "0.1"', '"schemaVersion": "test-legacy"')
 // Synthetic transition tests the framework; it is intentionally not a production-supported version.
 const step: ProjectMigration = {
-  from: 'test-legacy', to: '0.3',
+  from: 'test-legacy', to: '0.4',
   validateSource(value) { if (!value || typeof value !== 'object' || !('project' in value)) throw new Error('Invalid source') },
-  transform(value) { return { ...value as object, schemaVersion: '0.3' } },
+  transform(value) { return { ...value as object, schemaVersion: '0.4' } },
 }
 
 describe('format evolution', () => {
+  it('backs up 0.3 and refuses connector fields disguised as the older format', async () => {
+    const source = createProject(), tool = createNode('tool')
+    tool.operation = { kind: 'text-statistics', minimumWords: 600 }; source.nodes.push(tool)
+    const old = { ...source, schemaVersion: '0.3' }, raw = JSON.stringify(old), backup = vi.fn()
+    expect(await migrateProjectSnapshot(raw, backup)).toEqual(source)
+    expect(backup).toHaveBeenCalledExactlyOnceWith(raw, '0.3')
+    expect(deserializeStoredProject(raw)).toEqual(old)
+    tool.operation = { kind: 'connector', connectionId: crypto.randomUUID(), action: 'files.read', fields: [] }
+    const disguised = JSON.stringify({ ...source, schemaVersion: '0.3' })
+    expect(() => deserializeStoredProject(disguised)).toThrow('schemaVersion 0.4')
+    backup.mockClear()
+    await expect(migrateProjectSnapshot(disguised, backup)).rejects.toThrow()
+    expect(backup).not.toHaveBeenCalled()
+  })
   it('preserves and executes a fixed 0.2 snapshot after migration', async () => {
     const fixture = readFileSync(new URL('./fixtures/project-0.2-execution.json', import.meta.url), 'utf8')
     const backup = vi.fn(), project = await migrateProjectSnapshot(fixture, backup)
-    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.3' })
+    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.4' })
     expect(backup).toHaveBeenCalledExactlyOnceWith(fixture, '0.2')
     const compiled = compileProject(project, project.nodes[0]!.id)
     expect(compiled.ok).toBe(true)
@@ -52,7 +66,7 @@ describe('format evolution', () => {
     const source = { ...createProject(), schemaVersion: '0.2' }
     const raw02 = JSON.stringify(source), backup = vi.fn()
     const result = await migrateProjectSnapshot(raw02, backup)
-    expect(result).toEqual({ ...source, schemaVersion: '0.3' })
+    expect(result).toEqual({ ...source, schemaVersion: '0.4' })
     expect(backup).toHaveBeenCalledExactlyOnceWith(raw02, '0.2')
     expect(deserializeStoredProject(raw02)).toEqual(source)
     const node = createNode('agent')
@@ -67,15 +81,15 @@ describe('format evolution', () => {
     const fixture = readFileSync(new URL(`./fixtures/project-0.1-${name}.json`, import.meta.url), 'utf8')
     const backup = vi.fn()
     const project = await migrateProjectSnapshot(fixture, backup)
-    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.3' })
-    expect(deserializeStoredProject(serializeProject(project))).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.3' })
+    expect(project).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.4' })
+    expect(deserializeStoredProject(serializeProject(project))).toEqual({ ...JSON.parse(fixture), schemaVersion: '0.4' })
     expect(backup).toHaveBeenCalledWith(fixture, '0.1')
   })
   it('durably backs up exact source bytes before any transform', async () => {
     const backups = createBackupRepository(crypto.randomUUID())
     let backupCommitted = false
     const migrated = await migrateProjectSnapshot(historical, async (source, version) => { await backups.save(source, version); backupCommitted = true }, [{ ...step, transform(value) { expect(backupCommitted).toBe(true); return step.transform(value) } }])
-    expect(migrated).toEqual({ ...JSON.parse(raw), schemaVersion: '0.3' })
+    expect(migrated).toEqual({ ...JSON.parse(raw), schemaVersion: '0.4' })
     expect((await backups.list())[0]!.raw).toBe(historical)
   })
   it('does not transform when backup fails and keeps backup after an invalid transform', async () => {

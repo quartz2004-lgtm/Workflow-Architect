@@ -34,7 +34,7 @@ export const integrationStateSchema = z.strictObject({
   connections: z.array(integrationConnectionSchema), damaged: z.array(z.string()),
   workflows: z.array(publishedWorkflowSchema.omit({ project: true })),
   schedules: z.array(scheduleSchema.extend({ problem: z.string() })),
-  telegram: z.strictObject({ bindings: z.array(telegramBindingSchema), problems: z.array(z.strictObject({ connectionId: z.uuid(), message: z.string() })), failures: z.array(z.strictObject({ id: z.uuid(), updateId: z.number(), error: z.string() })) }),
+  telegram: z.strictObject({ bindings: z.array(telegramBindingSchema), problems: z.array(z.strictObject({ connectionId: z.uuid(), message: z.string(), listening: z.boolean() })), failures: z.array(z.strictObject({ id: z.uuid(), updateId: z.number(), error: z.string() })) }),
   effects: z.array(z.strictObject({ id: z.uuid(), key: z.string(), status: z.enum(['pending', 'unknown']) })),
 })
 export type IntegrationState = z.infer<typeof integrationStateSchema>

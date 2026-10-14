@@ -30,7 +30,7 @@ import { FilesystemMcp } from './mcp'
 
 export class IntegrationBroker {
   readonly redactor = new SecretRedactor()
-  constructor(readonly connections: IntegrationConnections, readonly effects: EffectStore, readonly mcp: FilesystemMcp, private readonly resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly transport: JsonTransport = requestJson) {}
+  constructor(readonly connections: IntegrationConnections, readonly effects: EffectStore, readonly mcp: FilesystemMcp, private readonly resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly transport: JsonTransport = requestJson, private readonly allowedChat: (profileId: string, connectionId: string, chatId: string) => boolean = () => false) {}
   private async secret(profileId: string, id: string) {
     const secret = await this.resolveSecret(profileId, id)
     this.redactor.add(secret); return secret
@@ -75,6 +75,8 @@ export class IntegrationBroker {
         else if (action === 'files.list') result = files.list(actionArgumentsSchemas[action].parse(args).path)
         else if (action === 'files.write') { const input = actionArgumentsSchemas[action].parse(args); result = files.write(input.path, input.content, input.expectedHash) }
       } else if (settings.kind === 'telegram') {
+        const chatId = action === 'telegram.send-message' ? actionArgumentsSchemas[action].parse(args).chatId : actionArgumentsSchemas['telegram.send-document'].parse(args).chatId
+        if (!this.allowedChat(profileId, connectionId, chatId)) throw new Error('Telegram-чат не привязан к этому подключению и профилю.')
         const { api } = this.telegram(profileId, connectionId)
         if (action === 'telegram.send-message') { const input = actionArgumentsSchemas[action].parse(args); result = await api.message(input.chatId, input.text, signal) }
         else if (action === 'telegram.send-document') { const input = actionArgumentsSchemas[action].parse(args); result = await api.document(input.chatId, input.filename, input.content, signal, input.caption) }

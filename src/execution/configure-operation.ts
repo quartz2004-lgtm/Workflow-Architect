@@ -21,8 +21,8 @@ import type { ExecutionConfig, Predicate } from '../domain/execution-config'
 import { defaultAgentLimits } from '../domain/agent-config'
 
 export const operationOptions: Partial<Record<WorkflowNode['type'], { value: ExecutionConfig['kind']; label: string }[]>> = {
-  agent: [{ value: 'agent', label: 'Локальный ИИ-агент' }], tool: [{ value: 'text-statistics', label: 'Проверка текста · встроенный Tool' }],
-  trigger: [{ value: 'manual', label: 'Ручной запуск' }], data: [{ value: 'map', label: 'Преобразование полей' }],
+  agent: [{ value: 'agent', label: 'Локальный ИИ-агент' }], tool: [{ value: 'text-statistics', label: 'Проверка текста · встроенный Tool' }, { value: 'connector', label: 'Внешнее подключение · API / файлы / MCP' }],
+  trigger: [{ value: 'manual', label: 'Ручной запуск' }, { value: 'telegram-message', label: 'Сообщение Telegram' }, { value: 'schedule', label: 'Расписание' }], data: [{ value: 'map', label: 'Преобразование полей' }],
   logic: [{ value: 'if', label: 'Условие · If' }, { value: 'switch', label: 'Выбор · Switch' }, { value: 'loop', label: 'Ограниченный цикл · Loop' }, { value: 'merge', label: 'Объединение · Merge' }, { value: 'parallel', label: 'Параллельные агенты · Parallel' }],
   human: [{ value: 'human', label: 'Ожидание человека' }], artifact: [{ value: 'artifact', label: 'Локальный файл' }], subworkflow: [{ value: 'subworkflow', label: 'Вложенный workflow' }],
 }
@@ -39,6 +39,8 @@ export function configureOperation(source: WorkflowNode, kind: string): Workflow
     const id = createId(); node.ports.push({ id, name, direction: 'output', kind: 'flow' }); return id
   }
   switch (kind) {
+    case 'connector': node.operation = { kind, connectionId: createId(), action: 'files.read', fields: [] }; break
+    case 'telegram-message': case 'schedule': node.operation = { kind }; if (node.type === 'trigger') node.config.triggerType = kind === 'telegram-message' ? 'message' : 'schedule'; break
     case 'agent': {
       node.operation = { kind, limits: structuredClone(defaultAgentLimits), minimumWords: 0, requireTools: false }
       if (node.type === 'agent') {

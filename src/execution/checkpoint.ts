@@ -25,7 +25,7 @@ const id = z.uuid()
 const values = z.record(id, z.record(id, z.json()))
 const token = z.strictObject({ nodeId: id, portId: id.optional(), value: z.json() })
 export const checkpointSchema = z.strictObject({
-  checkpointVersion: z.enum(['0.3.1', '0.4']), planId: id, runId: id,
+  checkpointVersion: z.enum(['0.3.1', '0.4', '0.5']), planId: id, runId: id,
   aiUsage: aiUsageSchema.optional(),
   status: z.enum(['queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled']),
   cancelled: z.boolean(), sequence: z.number().int().min(0).max(30000),

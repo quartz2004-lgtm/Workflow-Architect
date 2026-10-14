@@ -159,7 +159,13 @@ Settings поддерживают optional exportDefault; отсутствие �
 
 ## Защищённые подключения 0.3.1
 
-`src/credentials/` отделяет схемы metadata/commands, атомарный vault, redactor и UI. `desktop/credentials-host.cts` загружает фиксированный main-only bundle; renderer имеет только list/create/set-enabled/remove/copy-reference/status. Асинхронный Windows DPAPI защищает ciphertext на диске; чтение секрета не доступно renderer или runtime UtilityProcess. Владение профилем и ревизия permission проверяются при каждом внутреннем resolve. Секреты и история находятся вне экспортируемого проекта. Подробности и границы защиты — [ADR 0011](decisions/0011-profile-credentials.md).
+`src/credentials/` отделяет схемы metadata/commands, атомарный vault, redactor и UI. `desktop/credentials-host.cts` загружает фиксированный main-only bundle; renderer имеет только list/create/set-enabled/remove/copy-reference/status. Асинхронный Windows DPAPI защищает ciphertext на диске. Начиная с 0.5 доверенный runtime-адаптер получает секрет на время запроса по отдельному private utility/main каналу; renderer этого метода не имеет. Владение профилем и ревизия permission проверяются при каждом внутреннем resolve. Секреты и история находятся вне экспортируемого проекта. Подробности — [ADR 0011](decisions/0011-profile-credentials.md) и [ADR 0013](decisions/0013-native-integrations-and-durable-sources.md).
+
+## Интеграции 0.5
+
+`src/integrations/` содержит чистые схемы/каталог/протокол UI отдельно от native-хранилищ, broker и адаптеров HTTP, файлов, Telegram и MCP. Connection UUID и декларативные field mappings входят в domain operation; секреты, разрешённые корни и права остаются в native profile configuration. Executor принимает ConnectorExecutor, а Agent получает только Tool, явно разрешённые через список UUID и Tool access. Поля, настроенные в Tool, фиксированы относительно аргументов модели.
+
+SourceStore сохраняет опубликованные неизменяемые snapshots, чат-привязки и интервальные расписания. TelegramInbox регистрирует событие до подтверждения offset; JobManager дедуплицирует запуск по bot/update или schedule/slot. EffectStore сохраняет намерение до внешней записи, результат — после подтверждения. Неопределённые исходы видны в UI и не повторяются автоматически. MCP SDK и официальный файловый сервер поставляются в native CJS bundles, без runtime npm install. См. [ADR 0013](decisions/0013-native-integrations-and-durable-sources.md).
 
 ## Альманах
 
@@ -173,7 +179,7 @@ Unit/integration tests покрывают все типы при round trip, ver
 
 Дополнительно проверены boundary conversion с внешними contracts, scoped undo/navigation, collapse projections, deep duplicate/remapping, references между подсистемами, каскадное удаление exposed ports, alignment и переход к вложенному узлу через поиск. Browser checks охватывают движение группы, сворачивание, конвертацию, reload, palette/clipboard/context menus и клавиатуру.
 
-Exporters потребляют только domain model. Вложенные графы входят во все форматы, а ZIP/pair/YAML round trip проверяется автоматически. Инженерные errors блокируют archive/Markdown/Codex, snapshots допускают semantic diagnostics. Импорт ZIP ограничивает compressed/expanded size, entries и пути; YAML запрещает aliases и неизвестные tags. Подробности — ADR 0003. Экспорт и импорт загружаются по требованию. MCP и живая Codex integration пока не реализованы; локальный runtime 0.3 описан выше; Codex получает статический implementation package. Полноэкранный редактор prompts использует CodeMirror с Markdown syntax highlighting и загружается по требованию.
+Exporters потребляют только domain model. Вложенные графы входят во все форматы, а ZIP/pair/YAML round trip проверяется автоматически. Инженерные errors блокируют archive/Markdown/Codex, snapshots допускают semantic diagnostics. Импорт ZIP ограничивает compressed/expanded size, entries и пути; YAML запрещает aliases и неизвестные tags. Подробности — ADR 0003. Экспорт и импорт загружаются по требованию. Файловый MCP добавлен в 0.5; живая Codex integration пока не реализована; локальный runtime 0.3 описан выше; Codex получает статический implementation package. Полноэкранный редактор prompts использует CodeMirror с Markdown syntax highlighting и загружается по требованию.
 
 ## Первичные API references
 

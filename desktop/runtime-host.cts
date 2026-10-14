@@ -107,7 +107,7 @@ export class RuntimeHost {
         this.pending.delete(requestId)
         this.change('unavailable', 'Runtime не отвечает. Переподключитесь, чтобы проверить сохранённое состояние.')
         reject(new Error('Нет подтверждения runtime. Результат команды неизвестен; проверьте сохранённую историю перед повтором.'))
-      }, 15000)
+      }, command && typeof command === 'object' && 'kind' in command && command.kind === 'integrations' ? 90000 : 15000)
       this.pending.set(requestId, { resolve, reject, timer })
       try { child.postMessage({ version: '0.3.1', requestId, command }) }
       catch (error) { clearTimeout(timer); this.pending.delete(requestId); reject(error instanceof Error ? error : new Error('Канал runtime недоступен.')) }

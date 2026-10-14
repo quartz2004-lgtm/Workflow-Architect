@@ -26,7 +26,7 @@ export function agentTools(graph: Graph, node: WorkflowNode): WorkflowNode[] {
   if (edges.some(edge => !ids.includes(edge.targetNode))) throw new Error('Tool access не даёт разрешение: добавьте инструмент в разрешённый список агента.')
   return ids.map(id => {
     const tool = graph.nodes.find(item => item.id === id)
-    if (tool?.type !== 'tool' || tool.status === 'disabled' || tool.operation?.kind !== 'text-statistics') throw new Error('Агенту разрешены только включённые встроенные инструменты этого графа.')
+    if (tool?.type !== 'tool' || tool.status === 'disabled' || !['text-statistics', 'connector'].includes(tool.operation?.kind ?? '')) throw new Error('Агенту разрешены только включённые настроенные инструменты этого графа.')
     if (!edges.some(edge => edge.targetNode === id)) throw new Error('Разрешённый Tool должен быть соединён с Agent связью Tool access.')
     return tool
   })

@@ -59,6 +59,7 @@ export class FilesystemMcp {
       const path = files.path(input.path, name === 'write_file')
       // The official server enforces its allowed directory too; callers only supply relative paths.
       if (name === 'read_text_file') files.read(input.path)
+      if (name === 'list_directory') files.list(input.path)
       if ('content' in input && typeof input.content === 'string' && Buffer.byteLength(input.content) > 1_000_000) throw new Error('Файл превышает 1 МБ.')
       const result = await client.callTool({ name, arguments: { ...input, path } }, undefined, { signal, timeout: 30000 })
       assertValueBudget(result)

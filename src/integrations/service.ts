@@ -40,8 +40,8 @@ export class IntegrationService {
   private scheduleProblems = new Map<string, string>()
   constructor(directory: string, filesystemEntry: string, resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly jobs: JobManager, models: ConnectionStore) {
     this.connections = new IntegrationConnections(join(directory, 'connections'))
-    this.broker = new IntegrationBroker(this.connections, new EffectStore(join(directory, 'effects')), new FilesystemMcp(filesystemEntry), resolveSecret)
     this.sources = new SourceStore(join(directory, 'sources'))
+    this.broker = new IntegrationBroker(this.connections, new EffectStore(join(directory, 'effects')), new FilesystemMcp(filesystemEntry), resolveSecret, undefined, (profileId, connectionId, chatId) => this.sources.listBindings(profileId).some(binding => binding.connectionId === connectionId && binding.chatId === chatId))
     this.telegram = new TelegramHub(this.broker, this.sources, new TelegramInbox(join(directory, 'telegram')), jobs, profileId => {
       const model = models.state(profileId).connection?.configuration.model
       if (!model) throw new Error('Подключите локальную модель для распознавания сообщений. Команды /run, /edit, /status доступны без распознавания.')

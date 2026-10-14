@@ -28,6 +28,7 @@ import { executeAgentOperation, type ProviderResolver } from './agent-operation'
 import { parallelRegion } from './ai-plan'
 import { textStatistics } from '../ai/text-tool'
 import type { AiUsage } from '../ai/trace-schema'
+import { connectorArguments, type ConnectorExecutor } from './connector-operation'
 
 class RunFailure extends Error {
   constructor(message: string, readonly activation?: Activation) { super(message) }
@@ -67,8 +68,8 @@ export class ExecutionRun {
   private readonly abort = new AbortController()
   private aiUsage: AiUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, toolCalls: 0 }
   private reservedTokens = 0
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver } = {}) {
-    if (!['0.3', '0.4'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor } = {}) {
+    if (!['0.3', '0.4', '0.5'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
     if (!verified.ok) throw new Error(verified.diagnostics.map(issue => issue.message).join('\n'))
@@ -82,7 +83,7 @@ export class ExecutionRun {
       for (const frame of saved.frames) {
         const graph = frame.graphId === null ? this.plan.snapshot : this.plan.snapshot.subworkflows.find(item => item.id === frame.graphId)
         const operation = graph?.nodes.find(node => node.id === frame.activation?.nodeId)?.operation?.kind
-        if (operation === 'agent' || operation === 'parallel') throw new Error('Прерванный запрос ИИ не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
+        if (operation === 'agent' || operation === 'parallel' || operation === 'connector') throw new Error('Прерванный запрос ИИ или сервиса не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
       }
       this.id = saved.runId; this.status = saved.status; this.cancelled = saved.cancelled
       this.sequence = saved.sequence; this.steps = saved.steps; this.deadline = saved.deadline
@@ -163,7 +164,7 @@ export class ExecutionRun {
     if (!this.persistence.save) return
     const records = (values: Context['outputs']) => Object.fromEntries([...values].map(([id, ports]) => [id, Object.fromEntries(ports)]))
     const checkpoint: RunCheckpoint = {
-      checkpointVersion: '0.4', aiUsage: this.aiUsage, planId: this.plan.id, runId: this.id, status: this.status,
+      checkpointVersion: '0.5', aiUsage: this.aiUsage, planId: this.plan.id, runId: this.id, status: this.status,
       cancelled: this.cancelled, sequence: this.sequence, steps: this.steps, deadline: this.deadline,
       eventBytes: this.eventBytes, artifacts: this.artifacts,
       frames: this.frames.map(frame => ({ id: frame.id, graphId: frame.graphId, path: frame.path,
@@ -275,13 +276,18 @@ export class ExecutionRun {
     const op = node.operation!, input = token.value
     const routed = (portId: string) => ({ output: input, ports: new Map(node.ports.filter(port => port.direction === 'output' && (port.id === portId || port.kind === 'data')).map(port => [port.id, input])) })
     switch (op.kind) {
+      case 'connector': {
+        if (!this.persistence.connector) throw new Error('Внешние подключения доступны только в Windows-runtime.')
+        this.save()
+        return { output: await this.persistence.connector(op.connectionId, `${this.id}:${activation.id}`, op.action, connectorArguments(op, input, data), this.abort.signal) }
+      }
       case 'agent': return { output: await this.executeAgent(node, input, context, data, activation, this.abort.signal) }
       case 'text-statistics': {
         if (typeof input !== 'string') throw new Error('Вход инструмента проверки текста должен быть строкой.')
         return { output: textStatistics(input, op.minimumWords) }
       }
       case 'parallel': return this.executeParallel(node, input, context)
-      case 'manual': case 'merge': return { output: input }
+      case 'manual': case 'telegram-message': case 'schedule': case 'merge': return { output: input }
       case 'map': return { output: mapValue(op, input, data) }
       case 'if': return routed(evaluatePredicate(op.predicate, input, data) ? op.truePortId : op.falsePortId)
       case 'switch': return routed(op.cases.find(item => jsonEqual(item.value, sourceValue(op.source, input, data)))?.portId ?? op.defaultPortId)
@@ -336,6 +342,7 @@ export class ExecutionRun {
     try {
       this.save()
       return await executeAgentOperation({ node, project: this.plan.snapshot, graph: context.graph, input, data, outputs: context.outputs,
+        connector: this.persistence.connector, effectPrefix: `${this.id}:${activation.id}`,
         tokenBudget: reserved, timeoutMs: this.deadline - Date.now(), provider: this.persistence.provider, signal,
         trace: trace => {
           this.guard(); signal.throwIfAborted()

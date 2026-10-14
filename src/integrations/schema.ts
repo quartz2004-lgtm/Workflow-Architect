@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { z } from 'zod'
 import { profileIds } from '../profiles/schema'
+import { connectorActionSchema } from '../domain/connector-actions'
 
 export const integrationIdSchema = z.enum(['http-json', 'local-files', 'telegram', 'mcp-filesystem'])
 export const safeFieldSchema = z.string().min(1).max(100).regex(/^[A-Za-z][A-Za-z0-9_-]*$/).refine(value => !['constructor', 'prototype', '__proto__'].includes(value))
@@ -35,7 +36,7 @@ export const integrationConnectionSchema = z.strictObject({
 })
 export type IntegrationConnection = z.infer<typeof integrationConnectionSchema>
 export type ConnectionSettings = z.infer<typeof connectionSettingsSchema>
-export const actionNameSchema = z.enum(['http.request', 'files.read', 'files.write', 'files.list', 'telegram.send-message', 'telegram.send-document', 'mcp.call'])
+export const actionNameSchema = connectorActionSchema
 export type ActionName = z.infer<typeof actionNameSchema>
 export const actionArgumentsSchemas = {
   'http.request': z.strictObject({ method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']), path: z.string().max(2000), query: z.record(safeFieldSchema, z.string().max(4000)).default({}), body: z.json().optional() }),

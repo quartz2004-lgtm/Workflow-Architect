@@ -30,12 +30,13 @@ const send = (message: unknown) => port.postMessage(message)
 const credentials = new CredentialChannel(send)
 const connections = new ConnectionStore(join(process.argv[2], '..', 'ai-connections'))
 const assistant = new AssistantService(connections)
-const manager = new JobManager(process.argv[2], {
+const manager: JobManager = new JobManager(process.argv[2], {
+  connector: profileId => (connectionId, key, action, args, signal) => integrations.broker.execute(profileId, connectionId, key, action, args, signal),
   provider: profileId => model => connections.resolve(profileId, model),
   changed: job => send({ version: '0.3.1', kind: 'changed', jobId: job.id, profileId: job.profileId }),
   unavailable: message => send({ version: '0.3.1', kind: 'unavailable', message }),
 })
-const integrations = new IntegrationService(join(process.argv[2], '..', 'integrations'), join(__dirname, 'filesystem.cjs'), credentials.resolve, manager, connections)
+const integrations: IntegrationService = new IntegrationService(join(process.argv[2], '..', 'integrations'), join(__dirname, 'filesystem.cjs'), credentials.resolve, manager, connections)
 port.on('message', async event => {
   if (credentials.receive(event.data)) return
   let requestId: string | undefined
