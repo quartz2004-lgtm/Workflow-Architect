@@ -25,7 +25,7 @@ import { SourceStore } from './source-store'
 import { TelegramInbox } from './telegram-inbox'
 import { TelegramHub } from './telegram-hub'
 import { integrationCommandSchema } from './protocol'
-import { scopedUrl } from './network'
+import { scopedUrl, type JsonTransport } from './network'
 import { ScopedFiles } from './files'
 import type { JobManager } from '../runtime/job-manager'
 import type { ConnectionStore } from '../ai/connection-store'
@@ -39,10 +39,10 @@ export class IntegrationService {
   readonly telegram: TelegramHub
   private timer?: ReturnType<typeof setInterval>
   private scheduleProblems = new Map<string, string>()
-  constructor(directory: string, filesystemEntry: string, resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly jobs: JobManager, models: ConnectionStore) {
+  constructor(directory: string, filesystemEntry: string, resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly jobs: JobManager, models: ConnectionStore, transport?: JsonTransport) {
     this.connections = new IntegrationConnections(join(directory, 'connections'))
     this.sources = new SourceStore(join(directory, 'sources'))
-    this.broker = new IntegrationBroker(this.connections, new EffectStore(join(directory, 'effects')), new FilesystemMcp(filesystemEntry), resolveSecret, undefined, (profileId, connectionId, chatId) => this.sources.listBindings(profileId).some(binding => binding.connectionId === connectionId && binding.chatId === chatId))
+    this.broker = new IntegrationBroker(this.connections, new EffectStore(join(directory, 'effects')), new FilesystemMcp(filesystemEntry), resolveSecret, transport, (profileId, connectionId, chatId) => this.sources.listBindings(profileId).some(binding => binding.connectionId === connectionId && binding.chatId === chatId))
     this.telegram = new TelegramHub(this.broker, this.sources, new TelegramInbox(join(directory, 'telegram')), jobs, profileId => {
       const model = models.state(profileId).connection?.configuration.model
       if (!model) throw new Error('Подключите локальную модель для распознавания сообщений. Команды /run, /edit, /status доступны без распознавания.')
@@ -91,6 +91,16 @@ export class IntegrationService {
         return this.broker.execute(command.profileId, command.id, `check:${randomUUID()}`, 'http.request', { method: 'GET', path: '', query: {} }, signal)
       }
       case 'pair': return this.telegram.pair(command.profileId, command.id)
+      case 'workflow-details': return this.sources.workflow(command.profileId, command.id)
+      case 'test-chat': {
+        const binding = this.sources.binding(command.profileId, command.id)
+        if (!binding.workflowId) throw new Error('Сначала выберите сценарий для этого чата.')
+        const workflow = this.sources.workflow(command.profileId, binding.workflowId)
+        const check = checkTelegramWorkflow(workflow.project, workflow.entryNodeId)
+        if (!check.ok) throw new Error(check.errors.join('\n'))
+        const { signal } = this.connections.capture(command.profileId, binding.connectionId)
+        return this.broker.execute(command.profileId, binding.connectionId, `test-chat:${randomUUID()}`, 'telegram.send-message', { chatId: binding.chatId, text: `Подключение работает.\nАктивный сценарий: ${workflow.label}\nВерсия от ${workflow.createdAt}.\nОтправьте /run и описание задачи, чтобы проверить выполнение.` }, signal)
+      }
       case 'publish': return this.sources.publish(command.profileId, command.label, command.project, command.entryNodeId)
       case 'preflight': return checkTelegramWorkflow(command.project, command.entryNodeId)
       case 'activate': return this.sources.activate(command.profileId, command.bindingId, command.expectedWorkflowId, command.label, command.project, command.entryNodeId)

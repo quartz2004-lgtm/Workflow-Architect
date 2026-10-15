@@ -21,18 +21,11 @@ import { Modal } from '../shared/Modal'
 import { useProfile } from '../profiles/context'
 import { createId } from '../domain/factories'
 import { FieldHelp } from '../help/FieldHelp'
-import { credentialCommandSchema, credentialViewSchema, type CredentialCommand, type CredentialView } from './schema'
+import { credentialViewSchema, type CredentialView } from './schema'
+import { credentialRequest as request } from './client'
 import './credentials.css'
 
 const statusSchema = z.strictObject({ available: z.boolean(), damaged: z.array(z.string()), unavailable: z.number().int().nonnegative() })
-const replySchema = z.discriminatedUnion('ok', [z.strictObject({ ok: z.literal(true), value: z.unknown() }), z.strictObject({ ok: z.literal(false), message: z.string() })])
-async function request(command: CredentialCommand): Promise<unknown> {
-  const bridge = window.workflowDesktop?.credentials
-  if (!bridge) throw new Error('Защищённые подключения доступны в Windows-приложении.')
-  const result = replySchema.parse(await bridge.request(credentialCommandSchema.parse(command)))
-  if (!result.ok) throw new Error(result.message)
-  return result.value
-}
 export function CredentialsDialog({ close }: { close(): void }) {
   const profile = useProfile()!.profile
   const [items, setItems] = useState<CredentialView[]>([]), [available, setAvailable] = useState(false)

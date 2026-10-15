@@ -18,10 +18,11 @@ along with this program.  If not, see <https://gnu.org>.
 import { lazy, Suspense, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useProfile } from '../profiles/context'
+import type { Autosave } from '../persistence/autosave'
 
 const Dialog = lazy(() => import('./IntegrationsDialog').then(module => ({ default: module.IntegrationsDialog })))
-export function IntegrationsMenu() {
+export function IntegrationsMenu({ autosave }: { autosave: Autosave }) {
   const [open, setOpen] = useState(false), profile = useProfile()
   if (!profile) return null
-  return <><button onClick={() => setOpen(true)}>Интеграции</button>{open && createPortal(<Suspense fallback={<div role="status">Открываем подключения…</div>}><Dialog key={profile.profile.id} close={() => setOpen(false)} /></Suspense>, document.body)}</>
+  return <><button onClick={() => setOpen(true)}>Интеграции</button>{open && createPortal(<Suspense fallback={<div role="status">Открываем подключения…</div>}><Dialog key={profile.profile.id} autosave={autosave} close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }

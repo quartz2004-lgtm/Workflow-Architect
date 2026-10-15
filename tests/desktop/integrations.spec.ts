@@ -40,6 +40,7 @@ test('Windows connector UI and packaged MCP execute only explicitly granted file
     const dialog = page.getByRole('dialog', { name: /Интеграции/ })
     await expect(dialog).toBeVisible()
     expect(errors).toEqual([])
+    await dialog.getByRole('button', { name: 'Другие подключения', exact: true }).click()
     await dialog.getByLabel('Сервис', { exact: true }).selectOption('mcp-filesystem')
     await dialog.getByLabel('Название', { exact: true }).fill('Мои статьи · MCP')
     await dialog.getByLabel('Разрешённая папка', { exact: true }).fill(articles)

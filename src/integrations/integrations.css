@@ -38,3 +38,21 @@ along with this program.  If not, see <https://gnu.org>.
 .integration-grants pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .integration-card .inline-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 @media (max-width: 760px) { .integration-columns, .integration-grid { grid-template-columns: 1fr; } }
+.telegram-heading { display: flex; justify-content: space-between; align-items: start; gap: var(--space-4); }
+.telegram-heading h2 { margin-top: 0; font-size: 20px; }
+.telegram-heading > button { flex-shrink: 0; }
+.telegram-progress { display: grid; grid-template-columns: repeat(4, 1fr); list-style: none; padding: 0; gap: var(--space-2); margin: var(--space-5) 0; }
+.telegram-progress li { border-bottom: 1px solid var(--border-strong); padding: var(--space-3) 0; color: var(--muted); font-size: 12px; }
+.telegram-setup fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.telegram-setup { max-width: 680px; }
+.telegram-active { display: grid; gap: var(--space-2); border-left: 2px solid var(--emerald); padding: var(--space-3) var(--space-4); background: var(--canvas); margin-bottom: var(--space-4); }
+.telegram-active strong { font-size: 17px; }
+.telegram-active span { color: var(--muted); font-size: 12px; }
+.telegram-warning { color: var(--amber); border-left: 2px solid var(--amber); padding-left: var(--space-3); }
+.telegram-panel details { margin-top: var(--space-4); }
+.telegram-panel summary { cursor: pointer; padding: var(--space-2) 0; }
+.telegram-panel summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+.telegram-panel .integration-pair { margin-top: var(--space-4); }
+.telegram-panel .integration-pair code { display: block; overflow-wrap: anywhere; margin-bottom: var(--space-3); }
+.telegram-test { border-top: 1px solid var(--border); margin-top: var(--space-5); padding-top: var(--space-3); }
+@media (max-width: 760px) { .telegram-heading { flex-direction: column; } .telegram-progress { grid-template-columns: 1fr 1fr; } .integration-tabs { flex-wrap: wrap; } }

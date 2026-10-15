@@ -24,7 +24,7 @@ const owner = { profileId: z.enum(profileIds) }
 export const integrationCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('list'), ...owner }),
   z.strictObject({ action: z.literal('save'), connection: integrationConnectionSchema }),
-  ...(['remove', 'check', 'pair', 'disable-workflow', 'remove-binding', 'remove-schedule'] as const).map(action => z.strictObject({ action: z.literal(action), ...owner, id: z.uuid() })),
+  ...(['remove', 'check', 'pair', 'disable-workflow', 'remove-binding', 'remove-schedule', 'workflow-details', 'test-chat'] as const).map(action => z.strictObject({ action: z.literal(action), ...owner, id: z.uuid() })),
   z.strictObject({ action: z.literal('publish'), ...owner, label: z.string().min(1).max(100), project: z.unknown(), entryNodeId: z.uuid() }),
   z.strictObject({ action: z.literal('preflight'), ...owner, project: z.unknown(), entryNodeId: z.uuid() }),
   z.strictObject({ action: z.literal('activate'), ...owner, bindingId: z.uuid(), expectedWorkflowId: z.uuid().nullable(), label: z.string().min(1).max(100), project: z.unknown(), entryNodeId: z.uuid() }),

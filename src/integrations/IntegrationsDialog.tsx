@@ -24,13 +24,15 @@ import { integrationRequest } from './client'
 import { integrationStateSchema, type IntegrationState } from './protocol'
 import { ConnectionForm, connectorLabels, McpGrants } from './ConnectionForm'
 import './integrations.css'
+import type { Autosave } from '../persistence/autosave'
+import { TelegramPanel } from './TelegramPanel'
 
 const toolsSchema = z.object({ tools: z.array(z.object({ name: z.string(), description: z.string(), schemaHash: z.string(), inputSchema: z.unknown() })) })
 const pairSchema = z.object({ username: z.string(), code: z.string(), expiresAt: z.number(), url: z.string() })
-export function IntegrationsDialog({ close }: { close(): void }) {
+export function IntegrationsDialog({ close, autosave }: { close(): void; autosave: Autosave }) {
   const profile = useProfile()!.profile, editor = useEditor()
   const [state, setState] = useState<IntegrationState | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [notice, setNotice] = useState('')
-  const [tab, setTab] = useState<'connections' | 'sources'>('connections'), [pair, setPair] = useState<z.infer<typeof pairSchema> | null>(null)
+  const [tab, setTab] = useState<'telegram' | 'connections' | 'sources'>('telegram'), [pair, setPair] = useState<z.infer<typeof pairSchema> | null>(null)
   const [tools, setTools] = useState<{ id: string; tools: z.infer<typeof toolsSchema>['tools'] } | null>(null)
   const [entry, setEntry] = useState(''), [workflow, setWorkflow] = useState(''), [interval, setIntervalMinutes] = useState(60), [input, setInput] = useState('{}')
   const refresh = useCallback(async () => { const parsed = integrationStateSchema.parse(await integrationRequest({ action: 'list', profileId: profile.id })); if (parsed.connections.some(item => item.profileId !== profile.id)) throw new Error('Неверный профиль подключения.'); setState(parsed) }, [profile.id])
@@ -40,7 +42,8 @@ export function IntegrationsDialog({ close }: { close(): void }) {
   if (!window.workflowDesktop?.runtime) return <Modal title="Интеграции" close={close}><h3>Подключения работают в Windows-приложении</h3><p>Telegram, HTTP/JSON, выбранные папки и MCP выполняются доверенным локальным сервисом. Здесь можно проектировать граф, настраивать поля Tool и экспортировать проект.</p></Modal>
   return <Modal wide className="integrations-dialog" title={`Интеграции · ${profile.name}`} close={close}>
     <p className="muted">Подключения и разрешения принадлежат профилю. Проект хранит только ссылки; токены и пути папок не попадают в экспорт.</p>
-    <nav className="integration-tabs" aria-label="Разделы интеграций"><button aria-pressed={tab === 'connections'} onClick={() => setTab('connections')}>01 · Подключения</button><button aria-pressed={tab === 'sources'} onClick={() => setTab('sources')}>02 · Telegram и расписание</button></nav>
+    <nav className="integration-tabs" aria-label="Разделы интеграций"><button aria-pressed={tab === 'telegram'} onClick={() => setTab('telegram')}>Telegram · начать здесь</button><button aria-pressed={tab === 'connections'} onClick={() => setTab('connections')}>Другие подключения</button><button aria-pressed={tab === 'sources'} onClick={() => setTab('sources')}>Расписание и публикации</button></nav>
+    {tab === 'telegram' && <TelegramPanel profile={profile} state={state} refresh={refresh} autosave={autosave} />}
     {error && <p role="alert" className="field-error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {tab === 'connections' && <div className="integration-columns"><section><h3>Подключения профиля</h3>{!state?.connections.length && <p className="muted">Создайте подключение и проверьте его перед запуском workflow.</p>}{state?.connections.map(connection => <article className="integration-card" key={connection.id}><header><strong>{connection.label}</strong><span>{connection.enabled ? 'Разрешено' : 'Отключено'}</span></header><p className="muted">{connectorLabels[connection.settings.kind]}</p><small className="integration-id">ID: {connection.id}</small>{connection.settings.kind === 'telegram' && <p className="muted">{state.telegram.problems.find(item => item.connectionId === connection.id)?.listening ? '● Слушает сообщения привязанных чатов' : 'Ожидает привязку или восстановления подключения'}</p>}<div className="inline-actions"><button disabled={busy || !connection.enabled} onClick={() => act(async () => { const result = await integrationRequest({ action: 'check', profileId: profile.id, id: connection.id }); const parsed = toolsSchema.safeParse(result); if (parsed.success) setTools({ id: connection.id, tools: parsed.data.tools }); setNotice('Подключение проверено.'); })}>Проверить</button><button disabled={busy} onClick={() => act(async () => { await integrationRequest({ action: 'save', connection: { ...connection, enabled: !connection.enabled } }) })}>{connection.enabled ? 'Отключить' : 'Включить'}</button>{connection.settings.kind === 'telegram' && <button disabled={busy || !connection.enabled} onClick={() => act(async () => { setPair(pairSchema.parse(await integrationRequest({ action: 'pair', profileId: profile.id, id: connection.id }))); setTab('sources') })}>Привязать мой чат</button>}</div>{tools?.id === connection.id && <McpGrants key={`${connection.id}:${connection.revision}`} connection={connection} tools={tools.tools} changed={() => { void refresh() }} />}</article>)}</section><ConnectionForm profileId={profile.id} saved={() => { void refresh() }} /></div>}
     {tab === 'sources' && <>
