@@ -26,6 +26,9 @@ import { configureOperation } from '../execution/configure-operation'
 import { profileIds } from '../profiles/schema'
 import { checkTelegramWorkflow } from './telegram-preflight'
 import { SourceStore } from './source-store'
+import { IntegrationService } from './service'
+import { ConnectionStore } from '../ai/connection-store'
+import { JobManager } from '../runtime/job-manager'
 
 function simple() {
   const project = createProject('Telegram Human'), trigger = configureOperation(createNode('trigger'), 'telegram-message'), human = configureOperation(createNode('human'), 'human'), artifact = configureOperation(createNode('artifact'), 'artifact')
@@ -34,6 +37,31 @@ function simple() {
   return { project, trigger }
 }
 describe('Telegram activation preflight', () => {
+  it('enforces profile model readiness at the native activation boundary without changing the old binding', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wa-telegram-readiness-')), models = new ConnectionStore(join(root, 'models')), jobs = new JobManager(join(root, 'jobs'))
+    const service = new IntegrationService(join(root, 'integrations'), 'unused', async () => '', jobs, models)
+    try {
+      const profileId = profileIds[1], { project, trigger } = simple()
+      const old = service.sources.publish(profileId, 'Human', project, trigger.id)
+      const binding = service.sources.saveBinding({ version: '0.5', id: createId(), profileId, connectionId: createId(), botId: '999', chatId: '101', userId: '101', workflowId: old.id, lastJobId: null })
+      const article = createTelegramArticleExample(), command = { action: 'activate', profileId, bindingId: binding.id, expectedWorkflowId: old.id, label: 'Articles', project: article, entryNodeId: article.nodes.find(node => node.type === 'trigger')!.id }
+      await expect(service.handle(command)).rejects.toThrow('ИИ не подключён')
+      models.save(profileIds[0], { provider: 'ollama', port: 11434, model: 'qwen3:8b' }, true)
+      await expect(service.handle(command)).rejects.toThrow('ИИ не подключён')
+      expect(service.sources.binding(profileId, binding.id).workflowId).toBe(old.id)
+      models.save(profileId, { provider: 'ollama', port: 11434, model: 'qwen3:8b' }, true)
+      await expect(service.handle(command)).resolves.toBeDefined()
+      expect(service.sources.binding(profileId, binding.id).workflowId).not.toBe(old.id)
+    } finally { service.stop(); models.stop(); jobs.stop(); rmSync(root, { recursive: true, force: true }) }
+  })
+  it('requires an explicitly permitted matching model for reachable agents, while Human needs none', () => {
+    const article = createTelegramArticleExample(), entry = article.nodes.find(node => node.type === 'trigger')!.id
+    expect(checkTelegramWorkflow(article, entry, null).errors.join(' ')).toContain('ИИ не подключён')
+    expect(checkTelegramWorkflow(article, entry, 'other-model').errors.join(' ')).toContain('профиль разрешает')
+    expect(checkTelegramWorkflow(article, entry, 'qwen3:8b').ok).toBe(true)
+    const { project, trigger } = simple()
+    expect(checkTelegramWorkflow(project, trigger.id, null).ok).toBe(true)
+  })
   it('rejects the local JSON example before a chat receives its missing approved field error', () => {
     const project = createExecutionExample(), result = checkTelegramWorkflow(project, project.nodes[0]!.id)
     expect(result.ok).toBe(false)

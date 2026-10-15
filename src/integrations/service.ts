@@ -39,7 +39,7 @@ export class IntegrationService {
   readonly telegram: TelegramHub
   private timer?: ReturnType<typeof setInterval>
   private scheduleProblems = new Map<string, string>()
-  constructor(directory: string, filesystemEntry: string, resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly jobs: JobManager, models: ConnectionStore, transport?: JsonTransport) {
+  constructor(directory: string, filesystemEntry: string, resolveSecret: (profileId: string, id: string) => Promise<string>, private readonly jobs: JobManager, private readonly models: ConnectionStore, transport?: JsonTransport) {
     this.connections = new IntegrationConnections(join(directory, 'connections'))
     this.sources = new SourceStore(join(directory, 'sources'))
     this.broker = new IntegrationBroker(this.connections, new EffectStore(join(directory, 'effects')), new FilesystemMcp(filesystemEntry), resolveSecret, transport, (profileId, connectionId, chatId) => this.sources.listBindings(profileId).some(binding => binding.connectionId === connectionId && binding.chatId === chatId))
@@ -47,7 +47,12 @@ export class IntegrationService {
       const model = models.state(profileId).connection?.configuration.model
       if (!model) throw new Error('Подключите локальную модель для распознавания сообщений. Команды /run, /edit, /status доступны без распознавания.')
       return { model, provider: models.resolve(profileId, model) }
-    })
+    }, (profileId, workflow) => this.assertReady(profileId, workflow.project, workflow.entryNodeId))
+  }
+  private permittedModel(profileId: string) { const record = this.models.state(profileId).connection; return record?.enabled ? record.configuration.model : null }
+  private assertReady(profileId: string, project: unknown, entryNodeId: string) {
+    const check = checkTelegramWorkflow(project, entryNodeId, this.permittedModel(profileId))
+    if (!check.ok) throw new Error(check.errors.join('\n'))
   }
   start() { this.telegram.start(); this.timer = setInterval(() => this.tick(), 1000) }
   stop() { clearInterval(this.timer); this.telegram.stop(); this.connections.stop() }
@@ -75,6 +80,7 @@ export class IntegrationService {
     const command = integrationCommandSchema.parse(value)
     switch (command.action) {
       case 'list': return {
+        permittedModel: this.permittedModel(command.profileId),
         connections: this.connections.list(command.profileId), damaged: this.connections.damaged,
         workflows: this.sources.listWorkflows(command.profileId).map(record => ({ id: record.id, profileId: record.profileId, version: record.version, label: record.label, createdAt: record.createdAt, entryNodeId: record.entryNodeId, enabled: record.enabled })),
         schedules: this.sources.allSchedules().filter(item => item.profileId === command.profileId).map(item => ({ ...item, problem: this.scheduleProblems.get(item.id) ?? '' })),
@@ -96,16 +102,18 @@ export class IntegrationService {
         const binding = this.sources.binding(command.profileId, command.id)
         if (!binding.workflowId) throw new Error('Сначала выберите сценарий для этого чата.')
         const workflow = this.sources.workflow(command.profileId, binding.workflowId)
-        const check = checkTelegramWorkflow(workflow.project, workflow.entryNodeId)
-        if (!check.ok) throw new Error(check.errors.join('\n'))
+        this.assertReady(command.profileId, workflow.project, workflow.entryNodeId)
         const { signal } = this.connections.capture(command.profileId, binding.connectionId)
         return this.telegram.testChat(command.profileId, binding.id, `Подключение работает.\nАктивный сценарий: ${workflow.label}\nВерсия от ${new Date(workflow.createdAt).toLocaleString('ru-RU')}.\nНажмите «Новый текст» и отправьте описание задачи, чтобы проверить выполнение.`, signal)
       }
       case 'publish': return this.sources.publish(command.profileId, command.label, command.project, command.entryNodeId)
-      case 'preflight': return checkTelegramWorkflow(command.project, command.entryNodeId)
-      case 'activate': return this.sources.activate(command.profileId, command.bindingId, command.expectedWorkflowId, command.label, command.project, command.entryNodeId)
+      case 'preflight': return checkTelegramWorkflow(command.project, command.entryNodeId, this.permittedModel(command.profileId))
+      case 'activate': this.assertReady(command.profileId, command.project, command.entryNodeId); return this.sources.activate(command.profileId, command.bindingId, command.expectedWorkflowId, command.label, command.project, command.entryNodeId)
       case 'disable-workflow': this.sources.disableWorkflow(command.profileId, command.id); return null
-      case 'select-workflow': return this.sources.selectWorkflow(command.profileId, command.bindingId, command.workflowId, command.expectedWorkflowId)
+      case 'select-workflow': {
+        if (command.workflowId) { const workflow = this.sources.workflow(command.profileId, command.workflowId); this.assertReady(command.profileId, workflow.project, workflow.entryNodeId) }
+        return this.sources.selectWorkflow(command.profileId, command.bindingId, command.workflowId, command.expectedWorkflowId)
+      }
       case 'remove-binding': this.sources.removeBinding(command.profileId, command.id); return null
       case 'schedule': return this.sources.saveSchedule({ version: '0.5', id: randomUUID(), profileId: command.profileId, workflowId: command.workflowId, intervalMinutes: command.intervalMinutes, input: command.input, enabled: true, nextAt: Date.now() + command.intervalMinutes * 60000 })
       case 'remove-schedule': this.sources.removeSchedule(command.profileId, command.id); return null

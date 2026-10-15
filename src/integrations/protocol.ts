@@ -33,6 +33,7 @@ export const integrationCommandSchema = z.discriminatedUnion('action', [
 ])
 export type IntegrationCommand = z.infer<typeof integrationCommandSchema>
 export const integrationStateSchema = z.strictObject({
+  permittedModel: z.string().nullable(),
   connections: z.array(integrationConnectionSchema), damaged: z.array(z.string()),
   workflows: z.array(publishedWorkflowSchema.omit({ project: true })),
   schedules: z.array(scheduleSchema.extend({ problem: z.string() })),

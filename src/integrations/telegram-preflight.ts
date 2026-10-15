@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { compileProject } from '../execution/compiler'
 import { readPointer, mapValue } from '../execution/values'
 import type { JsonValue, ValueSource } from '../domain/execution-config'
+import type { Graph } from '../domain/schema'
 
 export const telegramPreflightSchema = z.strictObject({
   ok: z.boolean(),
@@ -29,10 +30,29 @@ export type TelegramPreflight = z.infer<typeof telegramPreflightSchema>
 export const telegramInputExample = { text: 'Проверка подключения', source: 'telegram', chatId: '123456', userId: '123456' }
 
 /** Structural preflight only. Never runs agents, connectors, or Human requests. */
-export function checkTelegramWorkflow(project: unknown, entryNodeId: string): TelegramPreflight {
+export function checkTelegramWorkflow(project: unknown, entryNodeId: string, permittedModel?: string | null): TelegramPreflight {
   const compiled = compileProject(project, entryNodeId)
   if (!compiled.ok) return { ok: false, errors: compiled.diagnostics.filter(item => item.severity === 'error').map(item => item.message), warnings: [] }
   const graph = compiled.plan.snapshot, errors = new Set<string>(), warnings = new Set<string>()
+  if (permittedModel !== undefined) {
+    const pending: { graph: Graph; id: string }[] = [{ graph, id: entryNodeId }], visited = new Set<string>()
+    while (pending.length) {
+      const next = pending.pop()!
+      if (visited.has(next.id)) continue
+      visited.add(next.id)
+      const node = next.graph.nodes.find(node => node.id === next.id)
+      if (!node || node.status === 'disabled') continue
+      if (node.type === 'agent' && node.operation?.kind === 'agent') {
+        if (!permittedModel) errors.add('В этом профиле ИИ не подключён. Откройте «ИИ-помощник → Подключение», выберите модель и разрешите использование. Для проверки без модели выберите «Подтверждение и файл · без ИИ».')
+        else if (node.config.model?.name !== permittedModel) errors.add(`«${node.title}»: выбрана модель ${node.config.model?.name}, а профиль разрешает ${permittedModel}. Выберите разрешённую модель в настройках Agent или измените подключение профиля.`)
+      }
+      if (node.type === 'subworkflow') {
+        const nested = graph.subworkflows.find(item => item.id === node.config.subworkflowId)
+        if (nested) for (const port of node.ports.filter(port => port.direction === 'input' && port.kind === 'flow' && port.binding)) pending.push({ graph: nested, id: port.binding!.nodeId })
+      }
+      for (const edge of next.graph.edges.filter(edge => edge.type === 'flow' && edge.sourceNode === node.id)) pending.push({ graph: next.graph, id: edge.targetNode })
+    }
+  }
   const queue: { id: string; input: JsonValue | undefined }[] = [{ id: entryNodeId, input: telegramInputExample }]
   const seen = new Set<string>()
   while (queue.length && seen.size < 1000) {

@@ -28,13 +28,13 @@ import { checkTelegramWorkflow } from './telegram-preflight'
 import { publishedWorkflowSchema, type PublishedWorkflow, type TelegramBinding } from './source-schema'
 import type { IntegrationState } from './protocol'
 
-export function TelegramScenario({ profileId, binding, workflows, autosave, refresh }: { profileId: Profile['id']; binding: TelegramBinding; workflows: IntegrationState['workflows']; autosave: Autosave; refresh(): Promise<void> }) {
+export function TelegramScenario({ profileId, binding, workflows, permittedModel, autosave, refresh }: { profileId: Profile['id']; binding: TelegramBinding; workflows: IntegrationState['workflows']; permittedModel: string | null; autosave: Autosave; refresh(): Promise<void> }) {
   const editor = useEditor(), project = useStore(editor.projectStore, state => state.project)
   const [active, setActive] = useState<PublishedWorkflow | null>(null), [entry, setEntry] = useState(''), [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const entries = project.nodes.filter(node => node.type === 'trigger' && ['manual', 'telegram-message'].includes(node.operation?.kind ?? ''))
   const selectedEntry = entries.some(node => node.id === entry) ? entry : entries[0]?.id ?? ''
-  const preflight = useMemo(() => selectedEntry ? checkTelegramWorkflow(project, selectedEntry) : null, [project, selectedEntry])
+  const preflight = useMemo(() => selectedEntry ? checkTelegramWorkflow(project, selectedEntry, permittedModel) : null, [project, selectedEntry, permittedModel])
   const enabled = workflows.some(item => item.id === binding.workflowId && item.enabled)
   useEffect(() => {
     let alive = true

@@ -25,6 +25,7 @@ import { JobManager } from '../runtime/job-manager'
 import type { ModelProvider } from '../ai/types'
 import type { JsonValue } from '../domain/execution-config'
 import type { RuntimeJob } from '../runtime/job-schema'
+import type { PublishedWorkflow } from './source-schema'
 
 const intentSchema = z.strictObject({ kind: z.enum(['create', 'edit', 'status', 'file', 'help']), text: z.string().max(4096) })
 type Intent = z.infer<typeof intentSchema>
@@ -41,7 +42,7 @@ export class TelegramHub {
   private notificationsBusy = false
   private stopped = false
   private timer?: ReturnType<typeof setInterval>
-  constructor(private readonly broker: IntegrationBroker, readonly sources: SourceStore, readonly inbox: TelegramInbox, private readonly jobs: JobManager, private readonly model?: (profileId: string) => { provider: ModelProvider; model: string }) {}
+  constructor(private readonly broker: IntegrationBroker, readonly sources: SourceStore, readonly inbox: TelegramInbox, private readonly jobs: JobManager, private readonly model?: (profileId: string) => { provider: ModelProvider; model: string }, private readonly validateWorkflow?: (profileId: string, workflow: PublishedWorkflow) => void) {}
   status(profileId: string) {
     const bindings = this.sources.listBindings(profileId)
     return { bindings, problems: this.broker.connections.list(profileId).filter(item => item.settings.kind === 'telegram').map(item => ({ connectionId: item.id, message: this.problems.get(item.id) ?? '', listening: item.enabled && !this.problems.has(item.id) && bindings.some(binding => binding.connectionId === item.id && this.pollers.has(binding.botId)) })), failures: this.inbox.failures(profileId) }
@@ -178,6 +179,7 @@ export class TelegramHub {
       else if (text === 'Новый текст' || text === 'Правки') {
         if (current && ['queued', 'running', 'waiting'].includes(current.status)) throw new Error('Задача ещё выполняется или ждёт вашего ответа. Нажмите «Статус». Ответьте на вопрос Human или нажмите «Остановить» перед новой задачей.')
         if (text === 'Правки' && !current?.outcome?.artifacts.at(-1)?.content) throw new Error('Пока нет готового текста для правок. Нажмите «Новый текст» и отправьте тему.')
+        if (binding.workflowId) this.validateWorkflow?.(binding.profileId, this.sources.workflow(binding.profileId, binding.workflowId))
         const dialogue = this.sources.beginDialogue(binding.profileId, binding.id, text === 'Правки' ? 'edit' : 'create', record.updateId)
         const workflow = this.sources.workflow(binding.profileId, dialogue.workflowId)
         await this.menu(binding, `${record.updateId}:prompt`, `Сценарий: ${workflow.label}\n${text === 'Правки' ? 'Что изменить в последнем результате? Отправьте пожелания одним сообщением.' : 'Отправьте тему и пожелания одним сообщением: для кого текст, объём и стиль.'}\nЖду 10 минут. «Остановить» отменяет ожидание.`, signal)
@@ -208,6 +210,7 @@ export class TelegramHub {
           const workflowId = explicit?.[1] ?? record.workflowId
           if (!workflowId) throw new Error('В приложении откройте Интеграции → Telegram, выберите сценарий и нажмите «Включить для этого чата». Затем нажмите «Новый текст» в боте.')
           const workflow = this.sources.workflow(binding.profileId, workflowId)
+          this.validateWorkflow?.(binding.profileId, workflow)
           text = explicit?.[2] ?? intent.text
           if (!text.trim()) throw new Error('Задание пустое. Нажмите «Новый текст» и отправьте тему или «Правки» и опишите изменения.')
           let input: JsonValue = { text, source: 'telegram', chatId: binding.chatId, userId: binding.userId }
