@@ -32,6 +32,18 @@ const request = (changes: Partial<AgentRequest> = {}): AgentRequest => ({ model:
 const call = (name = 'text_stats', args = {}): ModelResponse => ({ ...response(''), toolCalls: [{ name, arguments: args }] })
 
 describe('bounded agent loop', () => {
+  it('clarifies one empty response within budget, without retrying after tool effects', async () => {
+    await expect(runAgent(fake([response(''), response()]), request(), new AbortController().signal)).resolves.toMatchObject({ calls: 2, inputTokens: 100, outputTokens: 60 })
+    const empty = fake([response(''), response('')])
+    await expect(runAgent(empty, request(), new AbortController().signal)).rejects.toThrow('пустой')
+    expect(empty.chat).toHaveBeenCalledTimes(2)
+    const tool = createTextTool('text_stats', 'Текст', 0); tool.execute = vi.fn(tool.execute)
+    const afterEffect = fake([call(), response('')])
+    await expect(runAgent(afterEffect, request({ tools: [tool] }), new AbortController().signal)).rejects.toThrow('пустой')
+    expect(tool.execute).toHaveBeenCalledTimes(1)
+    expect(afterEffect.chat).toHaveBeenCalledTimes(2)
+    await expect(runAgent(fake([response('')]), request({ limits: { ...defaultAgentLimits, maxCalls: 1 } }), new AbortController().signal)).rejects.toThrow('пустой')
+  })
   it('allows required tool calls before constraining the final response to JSON', async () => {
     const provider = fake([call(), response('Three words'), response('{"words":3}')])
     const outputSchema = { type: 'object', properties: { words: { type: 'number' } }, required: ['words'], additionalProperties: false }

@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import { join } from 'node:path'
 
 export interface CredentialsHost {
+  resolve(profileId: string, id: string): Promise<string>
   handle(value: unknown): Promise<unknown>
   assertNoSecrets(value: unknown): void
   redact(text: string): string

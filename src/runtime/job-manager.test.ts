@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
-import { createId } from '../domain/factories'
+import { createId, createNode, createEdge } from '../domain/factories'
 import { createExecutionExample } from '../execution/example'
 import { profileIds } from '../profiles/schema'
 import { JobManager } from './job-manager'
@@ -45,6 +45,26 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 describe('durable runtime jobs', () => {
+  it('resumes a Human wait without replaying an already completed connector effect', async () => {
+    const path = directory(), effect = vi.fn(async () => ({ approved: true, text: 'saved' }))
+    const project = createExecutionExample(), submission = { ...request(), project, entryNodeId: project.nodes[0]!.id }
+    const tool = createNode('tool')
+    tool.operation = { kind: 'connector', connectionId: createId(), action: 'files.write', fields: [] }
+    const edge = project.edges[0]!
+    project.nodes.push(tool)
+    project.edges[0] = { ...edge, targetNode: tool.id, targetPort: tool.ports[0]!.id }
+    project.edges.push(createEdge(tool.id, edge.targetNode, tool.ports[1]!.id, edge.targetPort))
+    const first = manager(path, { connector: () => effect }); first.start()
+    const job = first.submit(submission)
+    await status(first, job.id, 'waiting')
+    const question = first.get(owner, job.id).checkpoint!.frames.at(-1)!.human!.request
+    first.stop()
+    const second = manager(path, { connector: () => effect }); second.start()
+    await status(second, job.id, 'waiting')
+    expect(second.answer(owner, job.id, question.id, true).ok).toBe(true)
+    await status(second, job.id, 'succeeded')
+    expect(effect).toHaveBeenCalledTimes(1)
+  })
   it('publishes only on-disk state, accepts Human once, and preserves the actual result after reopening', async () => {
     const path = directory(), observations: [RuntimeJob, RuntimeJob][] = []
     const service = manager(path, { changed: job => observations.push([JSON.parse(readFileSync(join(path, `${job.id}.json`), 'utf8')) as RuntimeJob, job]) })

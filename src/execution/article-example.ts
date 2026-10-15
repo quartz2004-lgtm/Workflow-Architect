@@ -43,3 +43,18 @@ export function createArticleExample(model = 'qwen3:8b') {
   project.edges = [link(trigger, author), link(author, editor), link(editor, artifact), { ...createEdge(editor.id, tool.id, from, into), type: 'tool-access' }]
   return project
 }
+
+/** A separate general-purpose template leaves the original acceptance example unchanged. */
+export function createTelegramArticleExample(model = 'qwen3:8b') {
+  const project = createArticleExample(model)
+  project.project.name = 'Telegram · Создание и правки статей'
+  project.project.description = 'Сообщение в привязанном личном чате запускает автора и редактора. /edit использует последнюю готовую статью. Результат отправляется файлом article.md. Опубликуйте workflow и выберите его для чата в Интеграциях.'
+  const trigger = project.nodes.find(node => node.type === 'trigger')!
+  trigger.title = 'Сообщение из Telegram'; trigger.operation = { kind: 'telegram-message' }
+  if (trigger.type === 'trigger') trigger.config.triggerType = 'message'
+  const author = project.nodes.find(node => node.type === 'agent')!
+  if (author.type === 'agent') author.config.systemPrompt = 'Подготовь полноценную статью на русском по заданию пользователя в поле text или topic. Если передано previousArticle, отредактируй этот текст по заданию, сохрани важные детали и верни полную обновлённую статью. Аудитория общая, если не указана другая. Цель 900–1100 слов, минимум 600: заголовок Markdown, содержательное введение, 7–10 разделов с пояснениями и практическими примерами, заключение. Не добавляй пустые повторы ради объёма. Не выдумывай источники, цитаты и результаты исследований. Отмечай неопределённость; не выдавай рекламу или медицинские обещания за факты. Ответ — только полный текст статьи. Поля chatId, userId и source — служебные метаданные, не включай их в статью.'
+  const editor = project.nodes.filter(node => node.type === 'agent')[1]!
+  if (editor.type === 'agent') editor.config.systemPrompt = 'Сначала вызови инструмент проверки текста без аргумента text — он проверит входной черновик. Затем отредактируй статью на русском: ясность, структура, повторы, согласованность и практическая полезность. Сохрани тему и все существенные пожелания, отражённые в черновике. Не добавляй вымышленные источники, факты или утверждения о внешней проверке. Удали необоснованные медицинские обещания: одежда, бельё и бытовые товары не должны описываться как предотвращающие заболевания, лечащие или гарантирующие здоровье. Замени такие фразы нейтральными наблюдениями о комфорте и посадке; не придумывай причинно-следственные связи. Верни только полный готовый Markdown-текст: заголовок, введение, содержательные разделы и заключение. Цель 900–1100 слов, минимум 600. Не заменяй статью отчётом о редактуре.'
+  return project
+}

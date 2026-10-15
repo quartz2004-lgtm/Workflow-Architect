@@ -23,12 +23,17 @@ import type { ModelProvider } from '../ai/types'
 import { agentTools } from './ai-plan'
 import { resolveContract } from './compiler'
 import { compileContract } from './contracts'
+import { z } from 'zod'
+import { actionArgumentsSchemas } from '../integrations/schema'
+import { connectorArguments, type ConnectorExecutor } from './connector-operation'
+import type { AgentTool } from '../ai/agent'
 
 export type ProviderResolver = (model: string) => ModelProvider
 export async function executeAgentOperation(options: {
   node: WorkflowNode; project: Project; graph: Graph; input: JsonValue; data: ReadonlyMap<string, JsonValue>
   outputs: ReadonlyMap<string, ReadonlyMap<string, JsonValue>>; tokenBudget: number; timeoutMs: number
   provider: ProviderResolver; signal: AbortSignal; trace: (event: AgentTrace) => void
+  connector?: ConnectorExecutor; effectPrefix?: string
 }): Promise<JsonValue> {
   const { node, project, graph, input, data, outputs } = options
   if (node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.config.model) throw new Error('Недоступная операция Agent.')
@@ -42,11 +47,26 @@ export async function executeAgentOperation(options: {
   const previous = config.context?.memory === 'run' ? outputs.get(node.id)?.values().next().value : undefined
   const prompt = [config.promptId ? project.prompts.find(prompt => prompt.id === config.promptId)?.content : '', config.systemPrompt].filter(Boolean).join('\n\n')
   const system = [config.role, prompt, ...(config.behavioralRules ?? []), config.context?.knowledge, config.context?.policy].filter(Boolean).join('\n\n')
+  let externalCall = 0
   const tools = agentTools(graph, node).map((tool, index) => {
-    if (tool.operation?.kind !== 'text-statistics') throw new Error('Недоступный инструмент.')
+    if (tool.operation?.kind !== 'text-statistics' && tool.operation?.kind !== 'connector') throw new Error('Недоступный инструмент.')
     // Provider-facing names are short semantic aliases; durable permissions still use node UUIDs.
-    const name = `text_statistics_${index + 1}`
-    const builtIn = createTextTool(name, typeof input === 'string' ? input : JSON.stringify(input), tool.operation.minimumWords)
+    const name = tool.operation.kind === 'connector' ? `connector_${index + 1}` : `text_statistics_${index + 1}`
+    const operation = tool.operation
+    let builtIn: AgentTool
+    if (operation.kind === 'text-statistics') builtIn = createTextTool(name, typeof input === 'string' ? input : JSON.stringify(input), operation.minimumWords)
+    else {
+      const fixed = connectorArguments(operation, input, data)
+      const parameters = z.toJSONSchema(actionArgumentsSchemas[operation.action]) as Record<string, JsonValue>
+      delete parameters.$schema
+      if (Array.isArray(parameters.required)) parameters.required = parameters.required.filter(key => typeof key === 'string' && !Object.hasOwn(fixed, key))
+      builtIn = { name, description: `Выполнить ${operation.action}. Поля, заданные в настройках узла, фиксированы.`, parameters,
+        execute: async (args, signal) => {
+          if (!options.connector || !options.effectPrefix) throw new Error('Нет разрешённого runtime для подключения.')
+          return options.connector(operation.connectionId, `${options.effectPrefix}:tool:${externalCall++}`, operation.action, { ...args, ...fixed }, signal)
+        },
+      }
+    }
     if (tool.type !== 'tool') throw new Error('Ожидался Tool.')
     const links = graph.edges.filter(edge => edge.type === 'tool-access' && edge.sourceNode === node.id && edge.targetNode === tool.id)
     const before = [tool.config.input, ...links.flatMap(edge => [edge.contract, node.ports.find(port => port.id === edge.sourcePort)?.contract, tool.ports.find(port => port.id === edge.targetPort)?.contract])]

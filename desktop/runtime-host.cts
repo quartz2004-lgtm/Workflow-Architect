@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto'
 
 export interface RuntimeState { status: 'starting' | 'ready' | 'unavailable' | 'stopped'; message: string; pid?: number; damaged: { id: string; message: string }[] }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
-const rendererCommands = new Set(['submit', 'list', 'get', 'cancel', 'resume', 'remove', 'answer', 'ai'])
+const rendererCommands = new Set(['submit', 'list', 'get', 'cancel', 'resume', 'remove', 'answer', 'ai', 'integrations'])
 
 /** The private UtilityProcess channel is not exposed to arbitrary renderer IPC. */
 export class RuntimeHost {
@@ -28,7 +28,7 @@ export class RuntimeHost {
   private state: RuntimeState = { status: 'stopped', message: '', damaged: [] }
   private pending = new Map<string, Pending>()
   private startup?: Promise<void>
-  constructor(private readonly script: string, private readonly directory: string, private readonly notify: (message: unknown) => void, private readonly redact: (message: string) => string = value => value) {}
+  constructor(private readonly script: string, private readonly directory: string, private readonly notify: (message: unknown) => void, private readonly redact: (message: string) => string = value => value, private readonly resolveCredential?: (profileId: string, id: string) => Promise<string>) {}
   snapshot(): RuntimeState { return structuredClone(this.state) }
   private change(status: RuntimeState['status'], message: string, damaged = this.state.damaged) {
     this.state = { status, message: this.redact(message), damaged: damaged.map(item => ({ ...item, message: this.redact(item.message) })), ...(this.child?.pid ? { pid: this.child.pid } : {}) }
@@ -48,7 +48,12 @@ export class RuntimeHost {
         if (this.child !== child || !value || typeof value !== 'object') return
         const message = value as Record<string, unknown>
         if (message.version !== '0.3.1') return
-        if (message.kind === 'ready') {
+        if (message.kind === 'credential-resolve' && typeof message.requestId === 'string' && typeof message.profileId === 'string' && typeof message.credentialId === 'string') {
+          const requestId = message.requestId
+          void this.resolveCredential?.(message.profileId, message.credentialId).then(secret => {
+            if (this.child === child) child.postMessage({ version: '0.3.1', kind: 'credential-result', requestId, secret })
+          }).catch(() => { if (this.child === child) child.postMessage({ version: '0.3.1', kind: 'credential-result', requestId }) })
+        } else if (message.kind === 'ready') {
           clearTimeout(timer)
           const damaged = Array.isArray(message.damaged) ? message.damaged.filter((item): item is { id: string; message: string } => !!item && typeof item === 'object' && typeof item.id === 'string' && typeof item.message === 'string').slice(0, 500) : []
           this.change('ready', '', damaged); resolve()
@@ -102,7 +107,7 @@ export class RuntimeHost {
         this.pending.delete(requestId)
         this.change('unavailable', 'Runtime не отвечает. Переподключитесь, чтобы проверить сохранённое состояние.')
         reject(new Error('Нет подтверждения runtime. Результат команды неизвестен; проверьте сохранённую историю перед повтором.'))
-      }, 15000)
+      }, command && typeof command === 'object' && 'kind' in command && command.kind === 'integrations' ? 90000 : 15000)
       this.pending.set(requestId, { resolve, reject, timer })
       try { child.postMessage({ version: '0.3.1', requestId, command }) }
       catch (error) { clearTimeout(timer); this.pending.delete(requestId); reject(error instanceof Error ? error : new Error('Канал runtime недоступен.')) }

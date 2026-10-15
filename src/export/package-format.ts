@@ -23,7 +23,7 @@ import { projectSchema as legacyProjectSchema } from '../domain/legacy-schema'
 export type ExportFiles = Record<string, string>
 export const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 const metadataSchema = projectSchema.shape.project.extend({
-  schemaVersion: z.enum(['0.1', '0.2', '0.3']), mode: projectSchema.shape.settings.shape.defaultMode,
+  schemaVersion: z.enum(['0.1', '0.2', '0.3', '0.4']), mode: projectSchema.shape.settings.shape.defaultMode,
 })
 // Full version-specific validation follows after pairing, at the migration boundary.
 const workflowSchema = z.union([z.strictObject(projectSchema.shape).omit({ project: true }), legacyProjectSchema.omit({ project: true })])

@@ -66,6 +66,7 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | @eslint/js | 10.0.1 | MIT | Build/test |
 | @eslint/object-schema | 3.0.5 | Apache-2.0 | Build/test |
 | @eslint/plugin-kit | 0.7.3 | Apache-2.0 | Build/test |
+| @hono/node-server | 2.1.5 | MIT | Production dependency |
 | @humanfs/core | 0.19.2 | Apache-2.0 | Build/test |
 | @humanfs/node | 0.16.8 | Apache-2.0 | Build/test |
 | @humanfs/types | 0.15.0 | Apache-2.0 | Build/test |
@@ -90,6 +91,9 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | @malept/flatpak-bundler | 0.4.0 | MIT | Build/test |
 | fs-extra | 9.1.0 | MIT | Build/test |
 | @marijn/find-cluster-break | 1.0.4 | MIT | Production dependency |
+| @modelcontextprotocol/sdk | 1.32.1 | MIT | Production dependency |
+| @modelcontextprotocol/server-filesystem | 1.0.0 | SEE LICENSE IN LICENSE | Production dependency |
+| glob | 13.0.6 | BlueOak-1.0.0 | Production dependency |
 | @noble/hashes | 2.4.0 | MIT | Build/test |
 | @oxc-project/types | 0.153.0 | MIT | Build/test |
 | @peculiar/asn1-schema | 2.10.0 | MIT | Build/test |
@@ -158,10 +162,14 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | zustand | 4.5.7 | MIT | Production dependency |
 | @xyflow/system | 0.0.83 | MIT | Production dependency |
 | abbrev | 4.0.0 | ISC | Build/test |
+| accepts | 2.0.0 | MIT | Production dependency |
+| mime-db | 1.54.0 | MIT | Production dependency |
+| mime-types | 3.0.2 | MIT | Production dependency |
 | acorn | 8.19.0 | MIT | Build/test |
 | acorn-jsx | 5.3.2 | MIT | Build/test |
 | agent-base | 7.1.4 | MIT | Build/test |
 | ajv | 8.20.0 | MIT | Production dependency |
+| ajv-formats | 3.0.1 | MIT | Production dependency |
 | ansi-regex | 5.0.1 | MIT | Build/test |
 | ansi-styles | 4.3.0 | MIT | Build/test |
 | app-builder-lib | 26.15.3 | MIT | Build/test |
@@ -183,22 +191,26 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | asynckit | 0.4.0 | MIT | Build/test |
 | at-least-node | 1.0.0 | ISC | Build/test |
 | aws4 | 1.13.2 | MIT | Build/test |
-| balanced-match | 4.0.4 | MIT | Build/test |
+| balanced-match | 4.0.4 | MIT | Production dependency |
 | base64-js | 1.5.1 | MIT | Build/test |
 | baseline-browser-mapping | 2.11.27 | Apache-2.0 | Build/test |
 | bluebird | 3.7.2 | MIT | Build/test |
+| body-parser | 2.3.0 | MIT | Production dependency |
+| content-type | 2.1.0 | MIT | Production dependency |
 | boolean | 3.2.0 | MIT | Build/test |
-| brace-expansion | 5.0.12 | MIT | Build/test |
+| brace-expansion | 5.0.12 | MIT | Production dependency |
 | browserslist | 4.29.3 | MIT | Build/test |
 | buffer-from | 1.1.2 | MIT | Build/test |
 | builder-util | 26.15.3 | MIT | Build/test |
 | builder-util-runtime | 9.7.0 | MIT | Build/test |
+| bytes | 3.1.2 | MIT | Production dependency |
 | bytestreamjs | 2.0.1 | BSD-3-Clause | Build/test |
 | cacheable | 2.5.0 | MIT | Build/test |
 | cacheable-lookup | 5.0.4 | MIT | Build/test |
 | cacheable-request | 7.0.4 | MIT | Build/test |
 | keyv | 4.5.4 | MIT | Build/test |
-| call-bind-apply-helpers | 1.0.2 | MIT | Build/test |
+| call-bind-apply-helpers | 1.0.2 | MIT | Production dependency |
+| call-bound | 1.0.4 | MIT | Production dependency |
 | caniuse-lite | 1.0.30001815 | CC-BY-4.0 | Build/test |
 | chai | 6.3.0 | MIT | Build/test |
 | chalk | 4.1.2 | MIT | Build/test |
@@ -215,11 +227,16 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | commander | 5.1.0 | MIT | Build/test |
 | compare-version | 0.1.2 | MIT | Build/test |
 | concat-map | 0.0.1 | MIT | Build/test |
+| content-disposition | 2.0.1 | MIT | Production dependency |
+| content-type | 1.0.5 | MIT | Production dependency |
 | convert-source-map | 2.0.0 | MIT | Build/test |
+| cookie | 0.7.2 | MIT | Production dependency |
+| cookie-signature | 1.2.2 | MIT | Production dependency |
 | core-util-is | 1.0.3 | MIT | Build/test |
+| cors | 2.8.6 | MIT | Production dependency |
 | crelt | 1.0.7 | MIT | Production dependency |
 | cross-dirname | 0.1.0 | MIT | Build/test |
-| cross-spawn | 7.0.6 | MIT | Build/test |
+| cross-spawn | 7.0.6 | MIT | Production dependency |
 | csstype | 3.2.3 | MIT | Production dependency |
 | d3-color | 3.1.0 | ISC | Production dependency |
 | d3-dispatch | 3.0.1 | ISC | Production dependency |
@@ -230,7 +247,7 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | d3-timer | 3.0.1 | ISC | Production dependency |
 | d3-transition | 3.0.1 | ISC | Production dependency |
 | d3-zoom | 3.0.0 | ISC | Production dependency |
-| debug | 4.4.3 | MIT | Build/test |
+| debug | 4.4.3 | MIT | Production dependency |
 | decompress-response | 6.0.0 | MIT | Build/test |
 | mimic-response | 3.1.0 | MIT | Build/test |
 | deep-is | 0.1.4 | MIT | Build/test |
@@ -238,8 +255,10 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | define-data-property | 1.1.4 | MIT | Build/test |
 | define-properties | 1.2.1 | MIT | Build/test |
 | delayed-stream | 1.0.0 | MIT | Build/test |
+| depd | 2.0.0 | MIT | Production dependency |
 | detect-libc | 2.1.2 | Apache-2.0 | Build/test |
 | detect-node | 2.1.0 | MIT | Build/test |
+| diff | 8.0.4 | BSD-3-Clause | Production dependency |
 | dir-compare | 4.2.0 | MIT | Build/test |
 | balanced-match | 1.0.2 | MIT | Build/test |
 | brace-expansion | 1.1.21 | MIT | Build/test |
@@ -247,8 +266,9 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | dmg-builder | 26.15.3 | MIT | Build/test |
 | dotenv | 16.6.1 | BSD-2-Clause | Build/test |
 | dotenv-expand | 11.0.7 | BSD-2-Clause | Build/test |
-| dunder-proto | 1.0.1 | MIT | Build/test |
+| dunder-proto | 1.0.1 | MIT | Production dependency |
 | duplexer2 | 0.1.4 | BSD-3-Clause | Build/test |
+| ee-first | 1.1.1 | MIT | Production dependency |
 | ejs | 3.1.10 | Apache-2.0 | Build/test |
 | electron | 44.7.0 | MIT | Build/test |
 | electron-builder | 26.15.3 | MIT | Build/test |
@@ -262,16 +282,18 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | @types/node | 24.19.1 | MIT | Build/test |
 | undici-types | 7.24.6 | MIT | Build/test |
 | emoji-regex | 8.0.0 | MIT | Build/test |
+| encodeurl | 2.0.0 | MIT | Production dependency |
 | end-of-stream | 1.4.5 | MIT | Build/test |
 | env-paths | 3.0.0 | MIT | Build/test |
 | err-code | 2.0.3 | MIT | Build/test |
-| es-define-property | 1.0.1 | MIT | Build/test |
-| es-errors | 1.3.0 | MIT | Build/test |
+| es-define-property | 1.0.1 | MIT | Production dependency |
+| es-errors | 1.3.0 | MIT | Production dependency |
 | es-module-lexer | 2.3.2 | MIT | Build/test |
-| es-object-atoms | 1.1.2 | MIT | Build/test |
+| es-object-atoms | 1.1.2 | MIT | Production dependency |
 | es-set-tostringtag | 2.1.0 | MIT | Build/test |
 | es6-error | 4.1.1 | MIT | Build/test |
 | escalade | 3.2.0 | MIT | Build/test |
+| escape-html | 1.0.3 | MIT | Production dependency |
 | escape-string-regexp | 4.0.0 | MIT | Build/test |
 | eslint | 10.12.0 | MIT | Build/test |
 | eslint-plugin-react-hooks | 7.1.1 | MIT | Build/test |
@@ -285,8 +307,16 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | estraverse | 5.3.0 | BSD-2-Clause | Build/test |
 | estree-walker | 3.0.3 | MIT | Build/test |
 | esutils | 2.0.3 | BSD-2-Clause | Build/test |
+| etag | 1.8.1 | MIT | Production dependency |
+| eventsource | 3.0.7 | MIT | Production dependency |
+| eventsource-parser | 3.1.1 | MIT | Production dependency |
 | expect-type | 1.4.0 | Apache-2.0 | Build/test |
 | exponential-backoff | 3.1.3 | Apache-2.0 | Build/test |
+| express | 5.3.0 | MIT | Production dependency |
+| express-rate-limit | 8.7.1 | MIT | Production dependency |
+| content-type | 2.1.0 | MIT | Production dependency |
+| mime-db | 1.54.0 | MIT | Production dependency |
+| mime-types | 3.0.2 | MIT | Production dependency |
 | fake-indexeddb | 6.2.5 | Apache-2.0 | Build/test |
 | fast-deep-equal | 3.1.3 | MIT | Production dependency |
 | fast-json-stable-stringify | 2.1.0 | MIT | Build/test |
@@ -299,18 +329,21 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | balanced-match | 1.0.2 | MIT | Build/test |
 | brace-expansion | 2.1.7 | MIT | Build/test |
 | minimatch | 5.1.9 | ISC | Build/test |
+| finalhandler | 2.1.1 | MIT | Production dependency |
 | find-up | 5.0.0 | MIT | Build/test |
 | flat-cache | 6.1.23 | MIT | Build/test |
 | flatted | 3.4.4 | ISC | Build/test |
 | form-data | 4.0.6 | MIT | Build/test |
+| forwarded | 0.2.0 | MIT | Production dependency |
+| fresh | 2.0.0 | MIT | Production dependency |
 | fs-extra | 10.1.0 | MIT | Build/test |
 | fs.realpath | 1.0.0 | ISC | Build/test |
 | fsevents | 2.3.3 | MIT | Build/test |
-| function-bind | 1.1.2 | MIT | Build/test |
+| function-bind | 1.1.2 | MIT | Production dependency |
 | gensync | 1.0.0-beta.2 | MIT | Build/test |
 | get-caller-file | 2.0.5 | ISC | Build/test |
-| get-intrinsic | 1.3.0 | MIT | Build/test |
-| get-proto | 1.0.1 | MIT | Build/test |
+| get-intrinsic | 1.3.0 | MIT | Production dependency |
+| get-proto | 1.0.1 | MIT | Production dependency |
 | get-stream | 5.2.0 | MIT | Build/test |
 | glob | 7.2.3 | ISC | Build/test |
 | glob-parent | 6.0.2 | ISC | Build/test |
@@ -321,44 +354,52 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | semver | 7.8.5 | ISC | Build/test |
 | globals | 17.13.0 | MIT | Build/test |
 | globalthis | 1.0.4 | MIT | Build/test |
-| gopd | 1.2.0 | MIT | Build/test |
+| gopd | 1.2.0 | MIT | Production dependency |
 | got | 11.8.6 | MIT | Build/test |
 | graceful-fs | 4.2.11 | ISC | Build/test |
 | has-flag | 4.0.0 | MIT | Build/test |
 | has-property-descriptors | 1.0.2 | MIT | Build/test |
-| has-symbols | 1.1.0 | MIT | Build/test |
+| has-symbols | 1.1.0 | MIT | Production dependency |
 | has-tostringtag | 1.0.2 | MIT | Build/test |
 | hashery | 1.5.1 | MIT | Build/test |
-| hasown | 2.0.4 | MIT | Build/test |
+| hasown | 2.0.4 | MIT | Production dependency |
 | hermes-estree | 0.25.1 | MIT | Build/test |
 | hermes-parser | 0.25.1 | MIT | Build/test |
+| hono | 4.13.13 | MIT | Production dependency |
 | hookified | 1.15.1 | MIT | Build/test |
 | hosted-git-info | 4.1.0 | ISC | Build/test |
 | lru-cache | 6.0.0 | ISC | Build/test |
 | yallist | 4.0.0 | ISC | Build/test |
 | http-cache-semantics | 4.3.0 | BSD-2-Clause | Build/test |
+| http-errors | 2.0.1 | MIT | Production dependency |
 | http-proxy-agent | 7.0.2 | MIT | Build/test |
 | http2-wrapper | 1.0.3 | MIT | Build/test |
 | https-proxy-agent | 7.0.6 | MIT | Build/test |
+| iconv-lite | 0.7.3 | MIT | Production dependency |
 | idb | 8.0.4 | ISC | Production dependency |
 | ignore | 5.3.2 | MIT | Build/test |
 | immer | 11.1.21 | MIT | Production dependency |
 | imurmurhash | 0.1.4 | MIT | Build/test |
 | inflight | 1.0.6 | ISC | Build/test |
-| inherits | 2.0.4 | ISC | Build/test |
+| inherits | 2.0.4 | ISC | Production dependency |
+| ip-address | 10.7.4 | MIT | Production dependency |
+| ipaddr.js | 1.9.1 | MIT | Production dependency |
 | is-extglob | 2.1.1 | MIT | Build/test |
 | is-fullwidth-code-point | 3.0.0 | MIT | Build/test |
 | is-glob | 4.0.3 | MIT | Build/test |
+| is-promise | 4.0.0 | MIT | Production dependency |
 | isarray | 1.0.0 | MIT | Build/test |
 | isbinaryfile | 5.0.7 | MIT | Build/test |
-| isexe | 2.0.0 | ISC | Build/test |
+| isexe | 2.0.0 | ISC | Production dependency |
 | jake | 10.9.4 | Apache-2.0 | Build/test |
 | jiti | 2.7.0 | MIT | Build/test |
+| jose | 6.2.12 | MIT | Production dependency |
 | js-tokens | 4.0.0 | MIT | Build/test |
 | js-yaml | 4.3.2 | MIT | Build/test |
 | jsesc | 3.1.0 | MIT | Build/test |
 | json-buffer | 3.0.1 | MIT | Build/test |
 | json-schema-traverse | 1.0.0 | MIT | Production dependency |
+| json-schema-typed | 8.0.2 | BSD-2-Clause | Production dependency |
 | json-stable-stringify-without-jsonify | 1.0.1 | MIT | Build/test |
 | json-stringify-safe | 5.0.1 | ISC | Build/test |
 | json5 | 2.2.3 | MIT | Build/test |
@@ -384,19 +425,23 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | lru-cache | 5.1.1 | ISC | Build/test |
 | magic-string | 1.4.3 | MIT | Build/test |
 | matcher | 3.0.0 | MIT | Build/test |
-| math-intrinsics | 1.1.0 | MIT | Build/test |
+| math-intrinsics | 1.1.0 | MIT | Production dependency |
+| media-typer | 1.1.1 | MIT | Production dependency |
+| merge-descriptors | 2.0.0 | MIT | Production dependency |
 | mime | 2.6.0 | MIT | Build/test |
 | mime-db | 1.52.0 | MIT | Build/test |
 | mime-types | 2.1.35 | MIT | Build/test |
 | mimic-response | 1.0.1 | MIT | Build/test |
-| minimatch | 10.2.6 | BlueOak-1.0.0 | Build/test |
+| minimatch | 10.2.6 | BlueOak-1.0.0 | Production dependency |
 | minimist | 1.2.8 | MIT | Build/test |
-| minipass | 7.1.3 | BlueOak-1.0.0 | Build/test |
+| minipass | 7.1.3 | BlueOak-1.0.0 | Production dependency |
 | minizlib | 3.1.0 | MIT | Build/test |
 | mkdirp | 0.5.6 | MIT | Build/test |
-| ms | 2.1.3 | MIT | Build/test |
+| ms | 2.1.3 | MIT | Production dependency |
 | nanoid | 3.3.20 | MIT | Build/test |
 | natural-compare | 1.4.0 | MIT | Build/test |
+| negotiator | 1.1.0 | MIT | Production dependency |
+| content-type | 2.1.0 | MIT | Production dependency |
 | node-abi | 4.37.0 | MIT | Build/test |
 | semver | 7.8.5 | ISC | Build/test |
 | node-api-version | 0.2.1 | MIT | Build/test |
@@ -411,19 +456,27 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | node-releases | 2.0.57 | MIT | Build/test |
 | nopt | 9.0.0 | ISC | Build/test |
 | normalize-url | 6.1.0 | MIT | Build/test |
+| object-assign | 4.1.1 | MIT | Production dependency |
+| object-inspect | 1.13.4 | MIT | Production dependency |
 | object-keys | 1.1.1 | MIT | Build/test |
 | obug | 2.2.1 | MIT | Build/test |
-| once | 1.4.0 | ISC | Build/test |
+| on-finished | 2.4.1 | MIT | Production dependency |
+| once | 1.4.0 | ISC | Production dependency |
 | optionator | 0.9.4 | MIT | Build/test |
 | p-cancelable | 2.1.1 | MIT | Build/test |
 | p-limit | 3.1.0 | MIT | Build/test |
 | p-locate | 5.0.0 | MIT | Build/test |
+| parseurl | 1.3.3 | MIT | Production dependency |
 | path-exists | 4.0.0 | MIT | Build/test |
 | path-is-absolute | 1.0.1 | MIT | Build/test |
-| path-key | 3.1.1 | MIT | Build/test |
+| path-key | 3.1.1 | MIT | Production dependency |
+| path-scurry | 2.0.2 | BlueOak-1.0.0 | Production dependency |
+| lru-cache | 11.5.3 | BlueOak-1.0.0 | Production dependency |
+| path-to-regexp | 8.4.2 | MIT | Production dependency |
 | pe-library | 0.4.1 | MIT | Build/test |
 | picocolors | 1.1.1 | ISC | Build/test |
 | picomatch | 4.0.7 | MIT | Build/test |
+| pkce-challenge | 5.0.1 | MIT | Production dependency |
 | pkijs | 3.4.1 | BSD-3-Clause | Build/test |
 | @noble/hashes | 1.8.0 | MIT | Build/test |
 | playwright | 1.64.0 | Apache-2.0 | Build/test |
@@ -438,13 +491,17 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | progress | 2.0.3 | MIT | Build/test |
 | promise-retry | 2.0.1 | MIT | Build/test |
 | proper-lockfile | 4.1.2 | MIT | Build/test |
+| proxy-addr | 2.0.8 | MIT | Production dependency |
 | pump | 3.0.4 | MIT | Build/test |
 | punycode | 2.3.1 | MIT | Build/test |
 | pvtsutils | 1.3.6 | MIT | Build/test |
 | pvutils | 1.2.0 | MIT | Build/test |
 | qified | 0.10.1 | MIT | Build/test |
 | hookified | 2.2.0 | MIT | Build/test |
+| qs | 6.16.0 | BSD-3-Clause | Production dependency |
 | quick-lru | 5.1.1 | MIT | Build/test |
+| range-parser | 1.3.0 | MIT | Production dependency |
+| raw-body | 3.0.2 | MIT | Production dependency |
 | react | 19.3.0 | MIT | Production dependency |
 | react-dom | 19.3.0 | MIT | Production dependency |
 | read-binary-file-arch | 1.0.6 | MIT | Build/test |
@@ -458,15 +515,26 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | rimraf | 2.6.3 | ISC | Build/test |
 | roarr | 2.15.4 | BSD-3-Clause | Build/test |
 | rolldown | 1.2.13 | MIT | Build/test |
+| router | 2.2.0 | MIT | Production dependency |
 | safe-buffer | 5.1.2 | MIT | Build/test |
+| safer-buffer | 2.1.2 | MIT | Production dependency |
 | sanitize-filename | 1.6.4 | WTFPL OR ISC | Build/test |
 | sax | 1.6.1 | BlueOak-1.0.0 | Build/test |
 | scheduler | 0.28.0 | MIT | Production dependency |
 | semver | 6.3.1 | ISC | Build/test |
 | semver-compare | 1.0.0 | MIT | Build/test |
+| send | 1.2.1 | MIT | Production dependency |
+| mime-db | 1.54.0 | MIT | Production dependency |
+| mime-types | 3.0.2 | MIT | Production dependency |
 | serialize-error | 7.0.1 | MIT | Build/test |
-| shebang-command | 2.0.0 | MIT | Build/test |
-| shebang-regex | 3.0.0 | MIT | Build/test |
+| serve-static | 2.2.1 | MIT | Production dependency |
+| setprototypeof | 1.2.0 | ISC | Production dependency |
+| shebang-command | 2.0.0 | MIT | Production dependency |
+| shebang-regex | 3.0.0 | MIT | Production dependency |
+| side-channel | 1.1.1 | MIT | Production dependency |
+| side-channel-list | 1.0.1 | MIT | Production dependency |
+| side-channel-map | 1.0.1 | MIT | Production dependency |
+| side-channel-weakmap | 1.0.2 | MIT | Production dependency |
 | signal-exit | 3.0.7 | ISC | Build/test |
 | simple-update-notifier | 2.0.0 | MIT | Build/test |
 | semver | 7.8.5 | ISC | Build/test |
@@ -475,6 +543,7 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | source-map-support | 0.5.21 | MIT | Build/test |
 | sprintf-js | 1.1.3 | BSD-3-Clause | Build/test |
 | stat-mode | 1.0.0 | MIT | Build/test |
+| statuses | 2.0.2 | MIT | Production dependency |
 | std-env | 4.3.0 | MIT | Build/test |
 | string-width | 4.2.3 | MIT | Build/test |
 | string_decoder | 1.1.1 | MIT | Build/test |
@@ -493,16 +562,22 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | tinyglobby | 0.2.17 | MIT | Build/test |
 | tmp | 0.2.7 | MIT | Build/test |
 | tmp-promise | 3.0.3 | MIT | Build/test |
+| toidentifier | 1.0.1 | MIT | Production dependency |
 | truncate-utf8-bytes | 1.0.2 | WTFPL | Build/test |
 | ts-api-utils | 2.5.0 | MIT | Build/test |
 | tslib | 2.8.1 | 0BSD | Build/test |
 | type-check | 0.4.0 | MIT | Build/test |
 | type-fest | 0.13.1 | (MIT OR CC0-1.0) | Build/test |
+| type-is | 2.1.0 | MIT | Production dependency |
+| content-type | 2.1.0 | MIT | Production dependency |
+| mime-db | 1.54.0 | MIT | Production dependency |
+| mime-types | 3.0.2 | MIT | Production dependency |
 | typescript | 6.0.3 | Apache-2.0 | Build/test |
 | typescript-eslint | 8.71.1 | MIT | Build/test |
 | undici | 7.30.0 | MIT | Build/test |
 | undici-types | 8.9.0 | MIT | Build/test |
 | universalify | 2.0.1 | MIT | Build/test |
+| unpipe | 1.0.0 | MIT | Production dependency |
 | unzipper | 0.12.5 | MIT | Build/test |
 | fs-extra | 11.3.1 | MIT | Build/test |
 | update-browserslist-db | 1.3.4 | MIT | Build/test |
@@ -510,15 +585,16 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | use-sync-external-store | 1.7.0 | MIT | Production dependency |
 | utf8-byte-length | 1.0.5 | (WTFPL OR MIT) | Build/test |
 | util-deprecate | 1.0.2 | MIT | Build/test |
+| vary | 1.1.2 | MIT | Production dependency |
 | vite | 8.3.3 | MIT | Build/test |
 | vitest | 5.0.3 | MIT | Build/test |
 | w3c-keyname | 2.2.8 | MIT | Production dependency |
 | webcrypto-core | 1.9.2 | MIT | Build/test |
-| which | 2.0.2 | ISC | Build/test |
+| which | 2.0.2 | ISC | Production dependency |
 | why-is-node-running | 3.2.1 | MIT | Build/test |
 | word-wrap | 1.2.5 | MIT | Build/test |
 | wrap-ansi | 7.0.0 | MIT | Build/test |
-| wrappy | 1.0.2 | ISC | Build/test |
+| wrappy | 1.0.2 | ISC | Production dependency |
 | xmlbuilder | 15.1.1 | MIT | Build/test |
 | y18n | 5.0.8 | ISC | Build/test |
 | yallist | 3.1.1 | ISC | Build/test |
@@ -527,5 +603,6 @@ Generated from package-lock.json by npm run notices:generate. All locked package
 | yargs-parser | 21.1.1 | ISC | Build/test |
 | yocto-queue | 0.1.0 | MIT | Build/test |
 | zod | 4.6.5 | MIT | Production dependency |
+| zod-to-json-schema | 3.25.2 | ISC | Production dependency |
 | zod-validation-error | 4.0.2 | MIT | Build/test |
 | zustand | 5.0.15 | MIT | Production dependency |

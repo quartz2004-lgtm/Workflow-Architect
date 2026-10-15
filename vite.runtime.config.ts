@@ -23,7 +23,7 @@ export default defineConfig({
   build: {
     ssr: true, outDir: 'runtime-dist', emptyOutDir: true,
     rollupOptions: {
-      input: { runtime: 'src/runtime/utility-entry.ts', credentials: 'src/credentials/native-entry.ts' },
+      input: { runtime: 'src/runtime/utility-entry.ts', credentials: 'src/credentials/native-entry.ts', filesystem: 'src/integrations/filesystem-entry.ts' },
       external: ['electron', /^node:/],
       output: { format: 'cjs', entryFileNames: '[name].cjs', chunkFileNames: 'chunks/[name]-[hash].cjs', banner: `/*!\n${copyrightNotice}\n*/` },
     },

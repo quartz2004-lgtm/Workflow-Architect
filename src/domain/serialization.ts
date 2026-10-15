@@ -23,14 +23,14 @@ export class ProjectFormatError extends Error {}
 // Deliberately narrow: detect obvious credentials without claiming arbitrary prose is secret-free.
 export function assertNoObviousSecrets(value: unknown): void {
   const raw = JSON.stringify(value)
-  if (/\bsk-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAKIA[A-Z0-9]{16}\b/.test(raw)) {
+  if (/\bsk-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\b\d{5,20}:[A-Za-z0-9_-]{30,100}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAKIA[A-Z0-9]{16}\b/.test(raw)) {
     throw new ProjectFormatError('Обнаружен возможный секрет. Используйте имя переменной окружения или ссылку на credentials.')
   }
 }
 
 export function parseProject(value: unknown): Project {
-  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || !['0.2', '0.3'].includes(String(value.schemaVersion))) {
-    throw new ProjectFormatError('Неподдерживаемая версия проекта. Ожидается schemaVersion 0.3 (или архивный 0.2); старые проекты открывайте через импорт или локальное хранилище с резервной копией.')
+  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || !['0.2', '0.3', '0.4'].includes(String(value.schemaVersion))) {
+    throw new ProjectFormatError('Неподдерживаемая версия проекта. Ожидается schemaVersion 0.4 (или архивный 0.2/0.3); старые проекты открывайте через импорт или локальное хранилище с резервной копией.')
   }
   assertNoObviousSecrets(value)
   const result = projectSchema.safeParse(value)

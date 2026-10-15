@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { profileIds } from '../../src/profiles/schema'
-import { createArticleExample, articleBrief } from '../../src/execution/article-example'
+import { createArticleExample, createTelegramArticleExample, articleBrief } from '../../src/execution/article-example'
 import { jobSchema } from '../../src/runtime/job-schema'
 import { assistantTaskSchema, type AiCommand } from '../../src/ai/protocol'
 import { countWords } from '../../src/ai/agent'
@@ -71,6 +71,33 @@ test('real Ollama executes the two-agent article workflow and preserves its trac
     await page.getByRole('button', { name: /^Run ·/ }).click()
     await expect(page.getByRole('region', { name: 'Локальное выполнение' })).toContainText('История')
     await page.screenshot({ path: join(folder, 'article-history.png') })
+  } finally { await app.close() }
+})
+
+test('real Ollama creates and revises an article using the Telegram workflow input', async () => {
+  test.setTimeout(660000)
+  const { app, page } = await launch()
+  try {
+    const project = createTelegramArticleExample(model)
+    const run = async (input: Record<string, string>, label: string) => {
+      const id = randomUUID()
+      const request = JSON.stringify({ id, eventKey: id, profileId: profileIds[0], project, entryNodeId: project.nodes[0]!.id, input, background: true })
+      await page.evaluate(raw => window.workflowDesktop!.runtime.request({ kind: 'submit', request: JSON.parse(raw) as unknown }), request)
+      const get = async () => jobSchema.parse(await page.evaluate(({ id, profileId }) => window.workflowDesktop!.runtime.request({ kind: 'get', id, profileId }), { id, profileId: profileIds[0] }))
+      await expect.poll(async () => ['succeeded', 'failed', 'cancelled'].includes((await get()).status), { timeout: 310000, intervals: [2000] }).toBe(true)
+      const job = await get()
+      await writeFile(join(folder, `${label}-run.json`), JSON.stringify(job, null, 2))
+      expect(job.status, job.outcome?.error?.message ?? job.message).toBe('succeeded')
+      const article = job.outcome!.artifacts[0]!.content
+      expect(countWords(article)).toBeGreaterThanOrEqual(600)
+      expect(job.events.some(event => event.kind === 'ai' && event.trace.kind === 'tool-finish')).toBe(true)
+      await writeFile(join(folder, `${label}.md`), article)
+      return article
+    }
+    const article = await run({ text: 'Напиши статью «Как выбрать бельё для комфорта» для общей аудитории, от 600 слов.', source: 'telegram', chatId: '123456', userId: '123456' }, 'telegram-article')
+    const revised = await run({ text: 'Добавь отдельный раздел с заголовком «Чек-лист примерки». В нём пять конкретных проверок в движении. Сохрани остальные полезные разделы и объём от 600 слов.', previousArticle: article, task: 'Отредактируй предыдущую статью. Верни полный обновлённый текст.', source: 'telegram', chatId: '123456', userId: '123456' }, 'telegram-revised')
+    expect(revised).not.toBe(article)
+    expect(revised.toLowerCase()).toContain('чек-лист примерки')
   } finally { await app.close() }
 })
 

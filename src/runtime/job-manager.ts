@@ -27,6 +27,7 @@ import { AtomicStore, type StoreLimits } from './atomic-store'
 import { jobSchema, runtimeProfileSchema, submitJobSchema, summarizeJob, terminalJob, type JobSummary, type RuntimeJob, type SubmitJob } from './job-schema'
 import { recoveryDecision } from './recovery-policy'
 import type { ProviderResolver } from '../execution/agent-operation'
+import type { ConnectorExecutor } from '../execution/connector-operation'
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -50,7 +51,7 @@ export class JobManager {
   private stopped = false
   private fault = ''
   readonly damaged: { id: string; message: string }[] = []
-  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver } = {}) {
+  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver; connector?: (profileId: string) => ConnectorExecutor } = {}) {
     if (!Number.isInteger(options.concurrency ?? 2) || (options.concurrency ?? 2) < 1 || (options.concurrency ?? 2) > 4) throw new Error('Параллельность должна быть от 1 до 4.')
     this.disk = new AtomicStore(directory, jobSchema, options.limits)
     for (const id of this.disk.ids()) {
@@ -154,8 +155,15 @@ export class JobManager {
     const job = this.owned(profileId, id)
     if (job.status !== 'interrupted') throw new Error('Восстановление доступно только прерванному заданию.')
     // New adapters must explicitly establish recovery semantics before being retried.
-    const replaySafe = new Set(['manual', 'map', 'if', 'switch', 'loop', 'merge', 'human', 'artifact', 'subworkflow'])
-    const pure = graphEntries(job.plan.snapshot).every(({ graph }) => graph.nodes.every(node => node.status === 'disabled' || node.type === 'note' || (node.operation && replaySafe.has(node.operation.kind))))
+    const replaySafe = new Set(['manual', 'telegram-message', 'schedule', 'text-statistics', 'map', 'if', 'switch', 'loop', 'merge', 'human', 'artifact', 'subworkflow'])
+    // Completed steps are already checkpointed. Only the interrupted activation could be replayed.
+    const graphs = graphEntries(job.plan.snapshot)
+    const pure = !job.checkpoint || job.checkpoint.frames.every(frame => {
+      if (!frame.activation) return true
+      const graph = graphs.find(item => item.id === frame.graphId)?.graph
+      const operation = graph?.nodes.find(node => node.id === frame.activation!.nodeId)?.operation
+      return !!operation && replaySafe.has(operation.kind)
+    })
     const decision = recoveryDecision({ cancelled: job.cancelRequested, now: Date.now(), deadline: job.deadline, attempts: job.attempts,
       effect: pure ? 'pure' : 'unknown', idempotencySupported: false, policy: { maxAttempts: 3, initialDelayMs: 250, maxDelayMs: 1000 } })
     if (decision.kind === 'retry') this.commit({ ...job, status: 'queued', retryAt: Date.now() + decision.delayMs, message: 'Восстановление из сохранённой контрольной точки.' })
@@ -201,7 +209,7 @@ export class JobManager {
   private launch(job: RuntimeJob) {
     let events = [...job.events]
     try {
-      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { provider: this.options.provider?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
+      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { provider: this.options.provider?.(job.profileId), connector: this.options.connector?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
         const current = this.jobs.get(job.id)!
         const outcome = this.outcome(checkpoint, events)
         this.commit({ ...current, status: current.cancelRequested ? 'cancelled' : checkpoint.status, checkpoint, events, outcome })

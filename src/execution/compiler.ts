@@ -27,7 +27,7 @@ import { parallelRegion, validateAgent } from './ai-plan'
 
 export interface ExecutionDiagnostic { severity: 'error' | 'warning'; graphId: string | null; entityId: string; code: string; message: string }
 export interface ExecutionPlan {
-  readonly planVersion: '0.3' | '0.4'
+  readonly planVersion: '0.3' | '0.4' | '0.5'
   readonly id: string
   readonly createdAt: string
   readonly entryNodeId: string
@@ -61,7 +61,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     add(owner?.id ?? null, issue.entityId, issue.code, issue.message)
   }
   const entry = project.nodes.find(node => node.id === entryNodeId)
-  if (!entry || entry.type !== 'trigger' || entry.status === 'disabled' || entry.operation?.kind !== 'manual') add(null, entryNodeId, 'entry', 'Выберите настроенный ручной Trigger корневого графа.')
+  if (!entry || entry.type !== 'trigger' || entry.status === 'disabled' || !['manual', 'telegram-message', 'schedule'].includes(entry.operation?.kind ?? '')) add(null, entryNodeId, 'entry', 'Выберите настроенный Trigger корневого графа.')
   const contract = (definition: Contract | undefined, graphId: string | null, entityId: string) => {
     if (!definition) return
     try {
@@ -75,24 +75,24 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     const active = new Map(enabled.map(node => [node.id, node]))
     for (const node of enabled) {
       const operation = node.operation
-      const kinds: Partial<Record<WorkflowNode['type'], readonly string[]>> = { trigger: ['manual'], data: ['map'], logic: ['if', 'switch', 'loop', 'merge', 'parallel'], human: ['human'], artifact: ['artifact'], subworkflow: ['subworkflow'], agent: ['agent'], tool: ['text-statistics'] }
+      const kinds: Partial<Record<WorkflowNode['type'], readonly string[]>> = { trigger: ['manual', 'telegram-message', 'schedule'], data: ['map'], logic: ['if', 'switch', 'loop', 'merge', 'parallel'], human: ['human'], artifact: ['artifact'], subworkflow: ['subworkflow'], agent: ['agent'], tool: ['text-statistics', 'connector'] }
       if (!kinds[node.type]) { add(id, node.id, 'unsupported-node', `${node.type} пока не исполняется. Завершите формализацию или отключите узел.`); continue }
       if (!operation || !kinds[node.type]!.includes(operation.kind)) { add(id, node.id, 'missing-operation', 'Настройте поддерживаемую операцию этого узла.'); continue }
       try {
         if (operation.kind === 'agent') validateAgent(project, graph, node)
         if (operation.kind === 'parallel') parallelRegion(graph, node)
-        if (node.type === 'tool') {
+        if (node.type === 'tool' && operation.kind === 'text-statistics') {
           if (node.config.provider !== 'builtin' || node.config.reference !== 'text-statistics') throw new Error('Выберите builtin / text-statistics. Внешние API пока не исполняются.')
           if (node.config.authentication?.type && node.config.authentication.type !== 'none') throw new Error('Встроенный инструмент не использует credentials.')
           if (node.config.permissions?.length) throw new Error('Свободные permissions не исполняются встроенным инструментом.')
         }
       } catch (error) { add(id, node.id, 'ai-configuration', error instanceof Error ? error.message : String(error)) }
-      const sources: ValueSource[] = operation.kind === 'map' ? operation.fields.map(field => field.source)
+      const sources: ValueSource[] = operation.kind === 'map' || operation.kind === 'connector' ? operation.fields.map(field => field.source)
         : operation.kind === 'if' || operation.kind === 'loop' ? [operation.predicate.source]
         : operation.kind === 'switch' || operation.kind === 'artifact' ? [operation.source] : []
       for (const edge of graph.edges.filter(edge => edge.sourceNode === node.id && edge.type === 'flow' && edge.predicate)) sources.push(edge.predicate!.source)
       for (const source of sources) if (source.kind === 'data' && !node.ports.some(port => port.id === source.portId && port.direction === 'input' && port.kind === 'data')) add(id, node.id, 'data-source-port', 'Операция ссылается на отсутствующий вход Data.')
-      if (node.type === 'trigger' && node.config.triggerType !== 'manual') add(id, node.id, 'trigger-type', 'В 0.3.1 исполняется только ручной Trigger.')
+      if (node.type === 'trigger' && node.config.triggerType !== (operation.kind === 'telegram-message' ? 'message' : operation.kind)) add(id, node.id, 'trigger-type', 'Тип Trigger должен совпадать с выбранной операцией.')
       if (node.type === 'data' && node.config.dataType && node.config.dataType !== 'json') add(id, node.id, 'data-type', 'Доступна только обработка JSON; чтение файлов и баз пока не исполняется.')
       if (node.type === 'logic') {
         if (node.config.logicType && node.config.logicType !== operation.kind) add(id, node.id, 'logic-type', 'Тип Logic не совпадает с выбранной операцией.')
@@ -140,7 +140,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
       }
       if (edge.type === 'tool-access') {
         const source = active.get(edge.sourceNode), target = active.get(edge.targetNode)
-        if (source?.type !== 'agent' || target?.type !== 'tool' || target.operation?.kind !== 'text-statistics') add(id, edge.id, 'tool-access', 'Исполняемый Tool access идёт от включённого Agent к встроенному Tool.')
+        if (source?.type !== 'agent' || target?.type !== 'tool' || !['text-statistics', 'connector'].includes(target.operation?.kind ?? '')) add(id, edge.id, 'tool-access', 'Исполняемый Tool access идёт от включённого Agent к настроенному Tool.')
         if (edge.predicate || edge.condition?.trim()) add(id, edge.id, 'tool-condition', 'Tool access не исполняет условия.')
         if (!edge.sourcePort || !edge.targetPort) add(id, edge.id, 'explicit-ports', 'Для Tool access укажите оба порта.')
         contract(edge.contract, id, edge.id)
@@ -159,7 +159,7 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     if (hasUnguardedCycle(graph, active)) add(id, id ?? project.project.id, 'unbounded-cycle', 'Цикл должен проходить через выход тела явно ограниченного Loop.')
   }
   if (diagnostics.some(issue => issue.severity === 'error')) return { ok: false, diagnostics }
-  const plan: ExecutionPlan = { planVersion: '0.4', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs: 300000 } }
+  const plan: ExecutionPlan = { planVersion: '0.5', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs: 300000 } }
   deepFreeze(plan)
   return { ok: true, plan, diagnostics }
 }

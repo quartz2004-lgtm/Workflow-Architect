@@ -40,7 +40,7 @@ describe('execution compiler', () => {
     const result = compileProject(project, trigger.id)
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error('Fixture must compile')
-    expect(result.plan.planVersion).toBe('0.4')
+    expect(result.plan.planVersion).toBe('0.5')
     expect(JSON.parse(JSON.stringify(result.plan))).toEqual(result.plan)
     data.title = 'Changed after Run'; data.position.x = 999
     expect(result.plan.snapshot.nodes[1]?.title).not.toBe(data.title)
