@@ -62,6 +62,33 @@ afterEach(async () => {
 })
 async function ready(client: RunController) { await vi.waitFor(() => expect(client.store.getState().available).toBe(true)) }
 describe('desktop run projection', () => {
+  it('does not expose an old Human answer while reconnect is waiting for a fresh job projection', async () => {
+    const { bridge, manager, client } = fixture(); manager.start()
+    const run = client(); run.store.setState({ open: true }); run.connect(); await ready(run)
+    const project = createExecutionExample()
+    run.start(project, project.nodes[0]!.id, { approved: true, text: 'reconnect' })
+    await vi.waitFor(() => expect(run.store.getState().human).not.toBeNull())
+    const original = bridge.request
+    let release: (() => void) | undefined, hold = true, queued = true
+    bridge.request = async value => {
+      const result = await original(value), command = runtimeCommandSchema.parse(value)
+      if (command.kind === 'get') {
+        if (hold) { hold = false; await new Promise<void>(resolve => { release = resolve }) }
+        else if (queued) return { ...manager.get(command.profileId, command.id), status: 'queued' }
+      }
+      return result
+    }
+    run.native!.refresh()
+    await vi.waitFor(() => expect(release).toBeDefined())
+    run.native!.reconnect()
+    expect(run.store.getState().human).toBeNull()
+    release!()
+    await vi.waitFor(() => expect(run.store.getState().status).toBe('queued'))
+    expect(run.store.getState().human).toBeNull()
+    queued = false; run.native!.refresh()
+    await vi.waitFor(() => expect(run.store.getState().human).not.toBeNull())
+    expect(run.store.getState().status).toBe('waiting')
+  })
   it('reattaches after StrictMode-style cleanup and disposing a view never cancels its service job', async () => {
     const { manager, client, listeners } = fixture(); manager.start()
     const first = client(); first.connect(); first.dispose(); first.connect()

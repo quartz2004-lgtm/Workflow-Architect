@@ -119,7 +119,12 @@ export function createDesktopRunController(bridge: RuntimeBridge, profile: strin
   })
   const native: NativeRunControls = {
     store: nativeStore, refresh: () => { nativeStore.setState({ error: '' }); void refresh() },
-    reconnect: () => action(async () => { await bridge.reconnect(); await refresh() }),
+    reconnect: () => action(async () => {
+      // A ready service has not necessarily restored the selected Human checkpoint yet.
+      // Invalidate an in-flight projection and require a fresh job before enabling answers.
+      selection++; store.setState({ human: null, available: false })
+      await bridge.reconnect(); await refresh()
+    }),
     select: id => { if (!store.getState().actionPending) { selection++; store.setState({ ...emptyRunView(), open: true, jobId: id, available: nativeStore.getState().service.status === 'ready' }); void refresh() } },
     resume: () => selectedCommand('resume'), remove: () => selectedCommand('remove'), retrySubmission: sendSubmission,
     newRun: () => {
