@@ -218,8 +218,12 @@ export class TelegramHub {
             input = { ...input, task: 'Отредактируй предыдущую статью по запросу. Верни полный обновлённый текст.', previousArticle: article }
           }
           this.broker.safe(input)
+          // Intent classification awaited a model: the chat may have been revoked or updated.
+          const latest = this.sources.binding(binding.profileId, binding.id)
+          if (latest.connectionId !== binding.connectionId || latest.botId !== binding.botId || latest.chatId !== binding.chatId || latest.userId !== binding.userId) throw new Error('Привязка изменилась. Отправьте задание заново.')
+          this.broker.connections.capture(binding.profileId, binding.connectionId).signal.throwIfAborted()
           const job = this.jobs.submit({ id: record.id, profileId: binding.profileId, eventKey: `telegram:${record.botId}:${record.updateId}`, project: workflow.project, entryNodeId: workflow.entryNodeId, input, background: true })
-          this.sources.saveBinding({ ...binding, lastJobId: job.id })
+          this.sources.recordJob(binding.profileId, binding.id, job.id)
           this.sources.consumeDialogue(binding.profileId, binding.id)
           await this.reply(binding, `${record.updateId}:started`, `Задача принята: ${workflow.label}\n/status — состояние, /stop — остановка.`, signal)
         }

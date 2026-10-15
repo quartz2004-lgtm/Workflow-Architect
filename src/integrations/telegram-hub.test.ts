@@ -32,6 +32,7 @@ import { TelegramHub } from './telegram-hub'
 import { JobManager } from '../runtime/job-manager'
 import type { TelegramUpdate } from './telegram-api'
 import type { JsonTransport } from './network'
+import type { ModelProvider, ModelResponse } from '../ai/types'
 
 const cleanups: (() => void)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) cleanup(); await new Promise(resolve => setTimeout(resolve, 20)) })
@@ -67,6 +68,24 @@ function fixture() {
 }
 const message = (id: number, chat: number, text: string, type = 'private', from = chat): TelegramUpdate => ({ update_id: id, message: { message_id: id, from: { id: from, is_bot: false }, chat: { id: chat, type }, text } })
 describe('Telegram durable remote workflow', () => {
+  it('preserves a newer chat publication while a model classifies an earlier message', async () => {
+    const f = fixture(), { binding, workflow } = f.bind(profileIds[0], '101')
+    let resolveResponse!: (value: ModelResponse) => void
+    const response = new Promise<ModelResponse>(resolve => { resolveResponse = resolve })
+    const provider: ModelProvider = { id: 'test', costPerMillionInput: 0, costPerMillionOutput: 0, list: async () => [], inspect: async () => ({ tools: false, thinking: false, contextTokens: 8192 }), chat: vi.fn(() => response) }
+    const hub = new TelegramHub(f.broker, f.sources, f.inbox, f.jobs, () => ({ provider, model: 'test' }))
+    cleanups.push(() => hub.stop())
+    f.updates.push(message(90, 101, 'Long classification'))
+    hub.start()
+    await vi.waitFor(() => expect(provider.chat).toHaveBeenCalledOnce())
+    const newer = f.sources.publish(profileIds[0], 'New scenario', f.project, f.project.nodes[0]!.id)
+    f.sources.selectWorkflow(profileIds[0], binding.id, newer.id, workflow.id)
+    resolveResponse({ content: '{"kind":"create"}', toolCalls: [], inputTokens: 1, outputTokens: 1, finish: 'stop' })
+    await vi.waitFor(() => expect(f.jobs.list(profileIds[0])).toHaveLength(1))
+    expect(f.sources.binding(profileIds[0], binding.id).workflowId).toBe(newer.id)
+    expect(f.sources.binding(profileIds[0], binding.id).lastJobId).not.toBeNull()
+    expect(f.inbox.event('999999', 90)?.workflowId).toBe(workflow.id)
+  })
   it('offers a keyboard, freezes guided input across restart, and keeps navigation separate from Human', async () => {
     const f = fixture(), first = f.bind(profileIds[0], '101'), second = f.bind(profileIds[1], '202')
     const model = vi.fn(() => { throw new Error('Navigation must not call a model') })

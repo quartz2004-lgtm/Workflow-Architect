@@ -83,6 +83,11 @@ export class SourceStore {
     if (record.workflowId) this.workflow(record.profileId, record.workflowId)
     this.bindings.write(record.id, record, old ? 'replace' : 'create'); return record
   }
+  recordJob(profileId: string, bindingId: string, jobId: string) {
+    const current = this.binding(profileId, bindingId)
+    const record = telegramBindingSchema.parse({ ...current, lastJobId: jobId })
+    this.bindings.write(bindingId, record, 'replace'); return record
+  }
   dialogue(profileId: string, bindingId: string) {
     this.binding(profileId, bindingId)
     if (!this.dialogues.ids().includes(bindingId)) return null
