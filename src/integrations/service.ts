@@ -30,6 +30,7 @@ import { ScopedFiles } from './files'
 import type { JobManager } from '../runtime/job-manager'
 import type { ConnectionStore } from '../ai/connection-store'
 import type { IntegrationConnection } from './schema'
+import { checkTelegramWorkflow } from './telegram-preflight'
 
 export class IntegrationService {
   readonly connections: IntegrationConnections
@@ -91,8 +92,10 @@ export class IntegrationService {
       }
       case 'pair': return this.telegram.pair(command.profileId, command.id)
       case 'publish': return this.sources.publish(command.profileId, command.label, command.project, command.entryNodeId)
+      case 'preflight': return checkTelegramWorkflow(command.project, command.entryNodeId)
+      case 'activate': return this.sources.activate(command.profileId, command.bindingId, command.expectedWorkflowId, command.label, command.project, command.entryNodeId)
       case 'disable-workflow': this.sources.disableWorkflow(command.profileId, command.id); return null
-      case 'select-workflow': return this.sources.saveBinding({ ...this.sources.binding(command.profileId, command.bindingId), workflowId: command.workflowId })
+      case 'select-workflow': return this.sources.selectWorkflow(command.profileId, command.bindingId, command.workflowId)
       case 'remove-binding': this.sources.removeBinding(command.profileId, command.id); return null
       case 'schedule': return this.sources.saveSchedule({ version: '0.5', id: randomUUID(), profileId: command.profileId, workflowId: command.workflowId, intervalMinutes: command.intervalMinutes, input: command.input, enabled: true, nextAt: Date.now() + command.intervalMinutes * 60000 })
       case 'remove-schedule': this.sources.removeSchedule(command.profileId, command.id); return null

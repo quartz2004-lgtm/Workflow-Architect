@@ -24,6 +24,7 @@ import { publishedWorkflowSchema, telegramBindingSchema, scheduleSchema, type Pu
 export type { TelegramBinding } from './source-schema'
 import { compileProject } from '../execution/compiler'
 import { assertNoObviousSecrets } from '../domain/serialization'
+import { checkTelegramWorkflow } from './telegram-preflight'
 
 /** Published snapshots are immutable. Editing the Canvas never changes a remote command silently. */
 export class SourceStore {
@@ -48,6 +49,23 @@ export class SourceStore {
   allBindings() { return this.bindings.ids().map(id => this.bindings.read(id)) }
   listBindings(profileId: string) { z.enum(profileIds).parse(profileId); return this.allBindings().filter(item => item.profileId === profileId) }
   binding(profileId: string, id: string) { const record = this.bindings.read(id); if (record.profileId !== profileId) throw new Error('Чат недоступен этому профилю.'); return record }
+  selectWorkflow(profileId: string, bindingId: string, workflowId: string | null) {
+    const binding = this.binding(profileId, bindingId)
+    if (workflowId) {
+      const workflow = this.workflow(profileId, workflowId), check = checkTelegramWorkflow(workflow.project, workflow.entryNodeId)
+      if (!check.ok) throw new Error(check.errors.join('\n'))
+    }
+    return this.saveBinding({ ...binding, workflowId })
+  }
+  activate(profileId: string, bindingId: string, expectedWorkflowId: string | null, label: string, project: unknown, entryNodeId: string) {
+    const binding = this.binding(profileId, bindingId)
+    if (binding.workflowId !== expectedWorkflowId) throw new Error('Сценарий чата уже изменён. Обновите окно и повторите выбор.')
+    const check = checkTelegramWorkflow(project, entryNodeId)
+    if (!check.ok) throw new Error(check.errors.join('\n'))
+    const workflow = this.publish(profileId, label, project, entryNodeId)
+    // Snapshot first, pointer last: a failed write leaves the old chat assignment intact.
+    return { workflow, binding: this.saveBinding({ ...binding, workflowId: workflow.id }) }
+  }
   saveBinding(value: TelegramBinding) {
     const record = telegramBindingSchema.parse(value), all = this.allBindings(), old = all.find(item => item.id === record.id)
     if (old && old.profileId !== record.profileId) throw new Error('Владелец чата не может быть изменён.')
