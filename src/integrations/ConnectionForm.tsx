@@ -25,7 +25,7 @@ import { integrationConnectionSchema, type IntegrationConnection, type Connectio
 
 export const connectorLabels = { telegram: 'Telegram · сообщения и файлы', 'http-json': 'HTTP / JSON · веб-сервис', 'local-files': 'Файлы · папка статей', 'mcp-filesystem': 'MCP · файловые инструменты' }
 export function ConnectionForm({ profileId, saved }: { profileId: Profile['id']; saved(): void }) {
-  const [kind, setKind] = useState<ConnectionSettings['kind']>('telegram'), [label, setLabel] = useState('Мой Telegram'), [credentialId, setCredentialId] = useState(''), [root, setRoot] = useState(''), [baseUrl, setBaseUrl] = useState(''), [auth, setAuth] = useState<'none' | 'bearer' | 'header'>('none'), [header, setHeader] = useState('X-API-Key'), [write, setWrite] = useState(false)
+  const [kind, setKind] = useState<Exclude<ConnectionSettings['kind'], 'telegram'>>('http-json'), [label, setLabel] = useState('Мой сервис'), [credentialId, setCredentialId] = useState(''), [root, setRoot] = useState(''), [baseUrl, setBaseUrl] = useState(''), [auth, setAuth] = useState<'none' | 'bearer' | 'header'>('none'), [header, setHeader] = useState('X-API-Key'), [write, setWrite] = useState(false)
   const [credentials, setCredentials] = useState<CredentialView[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   useEffect(() => {
     let active = true
@@ -40,7 +40,7 @@ export function ConnectionForm({ profileId, saved }: { profileId: Profile['id'];
   const submit = async () => {
     setBusy(true); setError('')
     try {
-      const settings: ConnectionSettings = kind === 'telegram' ? { kind, credentialId } : kind === 'http-json' ? { kind, baseUrl, authentication: auth, credentialId: auth === 'none' ? null : credentialId, headerName: header, allowWrites: write } : kind === 'local-files' ? { kind, root, allowWrites: write } : { kind, root, tools: [] }
+      const settings: ConnectionSettings = kind === 'http-json' ? { kind, baseUrl, authentication: auth, credentialId: auth === 'none' ? null : credentialId, headerName: header, allowWrites: write } : kind === 'local-files' ? { kind, root, allowWrites: write } : { kind, root, tools: [] }
       const connection = integrationConnectionSchema.parse({ version: '0.5', id: createId(), profileId, revision: 0, enabled: true, label, settings })
       await integrationRequest({ action: 'save', connection }); saved()
     } catch (error) { setError(error instanceof z.ZodError ? 'Проверьте название, путь и выбор сохранённого подключения.' : error instanceof Error ? error.message : String(error)) }
@@ -48,10 +48,10 @@ export function ConnectionForm({ profileId, saved }: { profileId: Profile['id'];
   }
   return <form className="integration-form" onSubmit={event => { event.preventDefault(); void submit() }}>
     <h3>Новое подключение</h3>
-    <label>Сервис<select aria-label="Сервис" value={kind} onChange={event => { setKind(event.target.value as ConnectionSettings['kind']); setWrite(false) }}>{Object.entries(connectorLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+    <label>Сервис<select aria-label="Сервис" value={kind} onChange={event => { setKind(event.target.value as typeof kind); setWrite(false) }}>{Object.entries(connectorLabels).filter(([id]) => id !== 'telegram').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
     <label>Название<input required maxLength={100} value={label} onChange={event => setLabel(event.target.value)} /></label>
     {kind === 'http-json' && <><label>Базовый адрес HTTPS<input required type="url" value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder="https://service.example/api/" /></label><label>Авторизация<select value={auth} onChange={event => setAuth(event.target.value as typeof auth)}><option value="none">Без авторизации</option><option value="bearer">Bearer token</option><option value="header">API key в заголовке</option></select></label>{auth === 'header' && <label>Имя заголовка<input value={header} onChange={event => setHeader(event.target.value)} /></label>}</>}
-    {(kind === 'telegram' || kind === 'http-json' && auth !== 'none') && <label>Сохранённый секрет<select required value={credentialId} onChange={event => setCredentialId(event.target.value)}><option value="">Выберите из защищённых подключений</option>{credentials.map(item => <option key={item.id} value={item.id}>{item.label} · {item.service}</option>)}</select><small>Токен добавляется в «Защищённых подключениях». Здесь используется только его ссылка.</small></label>}
+    {(kind === 'http-json' && auth !== 'none') && <label>Сохранённый секрет<select required value={credentialId} onChange={event => setCredentialId(event.target.value)}><option value="">Выберите из защищённых подключений</option>{credentials.map(item => <option key={item.id} value={item.id}>{item.label} · {item.service}</option>)}</select><small>Токен добавляется в «Защищённых подключениях». Здесь используется только его ссылка.</small></label>}
     {(kind === 'local-files' || kind === 'mcp-filesystem') && <label>Разрешённая папка<input aria-label="Разрешённая папка" required value={root} onChange={event => setRoot(event.target.value)} placeholder="D:\Articles" /><small>Укажите существующую папку. Доступ к соседним папкам и ссылкам закрыт.</small></label>}
     {(kind === 'local-files' || kind === 'http-json') && <label className="integration-check"><input type="checkbox" checked={write} onChange={event => setWrite(event.target.checked)} />{kind === 'local-files' ? 'Разрешить создание и изменение файлов' : 'Разрешить POST, PUT, PATCH и DELETE'}</label>}
     {kind === 'mcp-filesystem' && <p className="muted">После сохранения нажмите «Проверить», изучите инструменты и разрешите нужные. По умолчанию ни один инструмент не разрешён.</p>}

@@ -99,13 +99,13 @@ export class IntegrationService {
         const check = checkTelegramWorkflow(workflow.project, workflow.entryNodeId)
         if (!check.ok) throw new Error(check.errors.join('\n'))
         const { signal } = this.connections.capture(command.profileId, binding.connectionId)
-        return this.broker.execute(command.profileId, binding.connectionId, `test-chat:${randomUUID()}`, 'telegram.send-message', { chatId: binding.chatId, text: `Подключение работает.\nАктивный сценарий: ${workflow.label}\nВерсия от ${workflow.createdAt}.\nОтправьте /run и описание задачи, чтобы проверить выполнение.` }, signal)
+        return this.telegram.testChat(command.profileId, binding.id, `Подключение работает.\nАктивный сценарий: ${workflow.label}\nВерсия от ${new Date(workflow.createdAt).toLocaleString('ru-RU')}.\nНажмите «Новый текст» и отправьте описание задачи, чтобы проверить выполнение.`, signal)
       }
       case 'publish': return this.sources.publish(command.profileId, command.label, command.project, command.entryNodeId)
       case 'preflight': return checkTelegramWorkflow(command.project, command.entryNodeId)
       case 'activate': return this.sources.activate(command.profileId, command.bindingId, command.expectedWorkflowId, command.label, command.project, command.entryNodeId)
       case 'disable-workflow': this.sources.disableWorkflow(command.profileId, command.id); return null
-      case 'select-workflow': return this.sources.selectWorkflow(command.profileId, command.bindingId, command.workflowId)
+      case 'select-workflow': return this.sources.selectWorkflow(command.profileId, command.bindingId, command.workflowId, command.expectedWorkflowId)
       case 'remove-binding': this.sources.removeBinding(command.profileId, command.id); return null
       case 'schedule': return this.sources.saveSchedule({ version: '0.5', id: randomUUID(), profileId: command.profileId, workflowId: command.workflowId, intervalMinutes: command.intervalMinutes, input: command.input, enabled: true, nextAt: Date.now() + command.intervalMinutes * 60000 })
       case 'remove-schedule': this.sources.removeSchedule(command.profileId, command.id); return null

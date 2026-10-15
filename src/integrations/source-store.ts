@@ -26,15 +26,24 @@ import { compileProject } from '../execution/compiler'
 import { assertNoObviousSecrets } from '../domain/serialization'
 import { checkTelegramWorkflow } from './telegram-preflight'
 
+const dialogueSchema = z.strictObject({
+  version: z.literal('0.5.1'), id: z.uuid(), profileId: z.enum(profileIds),
+  mode: z.enum(['create', 'edit']), promptUpdateId: z.number().int().nonnegative(),
+  workflowId: z.uuid(), previousJobId: z.uuid().nullable(), expiresAt: z.number().int().positive(),
+})
+type Dialogue = z.infer<typeof dialogueSchema>
+
 /** Published snapshots are immutable. Editing the Canvas never changes a remote command silently. */
 export class SourceStore {
   private workflows: AtomicStore<PublishedWorkflow>
   private bindings: AtomicStore<TelegramBinding>
   private schedules: AtomicStore<Schedule>
+  private dialogues: AtomicStore<Dialogue>
   constructor(directory: string) {
     this.workflows = new AtomicStore(join(directory, 'workflows'), publishedWorkflowSchema, { maxRecords: 100 })
     this.bindings = new AtomicStore(join(directory, 'bindings'), telegramBindingSchema, { maxRecords: 20 })
     this.schedules = new AtomicStore(join(directory, 'schedules'), scheduleSchema, { maxRecords: 100 })
+    this.dialogues = new AtomicStore(join(directory, 'telegram-dialogues'), dialogueSchema, { maxRecords: 20 })
   }
   listWorkflows(profileId: string) { z.enum(profileIds).parse(profileId); return this.workflows.ids().map(id => this.workflows.read(id)).filter(item => item.profileId === profileId) }
   workflow(profileId: string, id: string) { const record = this.workflows.read(id); if (record.profileId !== profileId || !record.enabled) throw new Error('Workflow не опубликован для этого профиля.'); return record }
@@ -49,8 +58,9 @@ export class SourceStore {
   allBindings() { return this.bindings.ids().map(id => this.bindings.read(id)) }
   listBindings(profileId: string) { z.enum(profileIds).parse(profileId); return this.allBindings().filter(item => item.profileId === profileId) }
   binding(profileId: string, id: string) { const record = this.bindings.read(id); if (record.profileId !== profileId) throw new Error('Чат недоступен этому профилю.'); return record }
-  selectWorkflow(profileId: string, bindingId: string, workflowId: string | null) {
+  selectWorkflow(profileId: string, bindingId: string, workflowId: string | null, expectedWorkflowId?: string | null) {
     const binding = this.binding(profileId, bindingId)
+    if (expectedWorkflowId !== undefined && binding.workflowId !== expectedWorkflowId) throw new Error('Сценарий чата уже изменён. Обновите окно и повторите выбор.')
     if (workflowId) {
       const workflow = this.workflow(profileId, workflowId), check = checkTelegramWorkflow(workflow.project, workflow.entryNodeId)
       if (!check.ok) throw new Error(check.errors.join('\n'))
@@ -73,7 +83,26 @@ export class SourceStore {
     if (record.workflowId) this.workflow(record.profileId, record.workflowId)
     this.bindings.write(record.id, record, old ? 'replace' : 'create'); return record
   }
-  removeBinding(profileId: string, id: string) { this.binding(profileId, id); this.bindings.remove(id) }
+  dialogue(profileId: string, bindingId: string) {
+    this.binding(profileId, bindingId)
+    if (!this.dialogues.ids().includes(bindingId)) return null
+    const record = this.dialogues.read(bindingId)
+    if (record.profileId !== profileId) throw new Error('Диалог недоступен этому профилю.')
+    return record
+  }
+  beginDialogue(profileId: string, bindingId: string, mode: Dialogue['mode'], promptUpdateId: number) {
+    const binding = this.binding(profileId, bindingId), old = this.dialogue(profileId, bindingId)
+    if (old?.promptUpdateId === promptUpdateId) return old
+    if (!binding.workflowId) throw new Error('Включите сценарий для этого чата в приложении: Интеграции → Telegram.')
+    this.workflow(profileId, binding.workflowId)
+    const record = dialogueSchema.parse({ version: '0.5.1', id: bindingId, profileId, mode, promptUpdateId, workflowId: binding.workflowId, previousJobId: binding.lastJobId, expiresAt: Date.now() + 10 * 60 * 1000 })
+    this.dialogues.write(bindingId, record, old ? 'replace' : 'create'); return record
+  }
+  consumeDialogue(profileId: string, bindingId: string, promptUpdateId?: number) {
+    const record = this.dialogue(profileId, bindingId)
+    if (record && (promptUpdateId === undefined || record.promptUpdateId === promptUpdateId)) this.dialogues.remove(bindingId)
+  }
+  removeBinding(profileId: string, id: string) { this.consumeDialogue(profileId, id); this.bindings.remove(id) }
   allSchedules() { return this.schedules.ids().map(id => this.schedules.read(id)) }
   saveSchedule(value: Schedule) { const record = scheduleSchema.parse(value); this.workflow(record.profileId, record.workflowId); assertNoObviousSecrets(record.input); this.schedules.write(record.id, record, 'create'); return record }
   advanceSchedule(record: Schedule, nextAt: number) { this.schedules.write(record.id, { ...record, nextAt }, 'replace') }

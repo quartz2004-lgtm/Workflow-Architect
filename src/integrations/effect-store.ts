@@ -69,4 +69,5 @@ export class EffectStore {
     return structuredClone(await work)
   }
   listUnknown(profileId: string) { z.enum(profileIds).parse(profileId); return [...this.records.values()].filter(record => record.profileId === profileId && record.status !== 'succeeded').map(({ id, key, status }) => ({ id, key, status })) }
+  status(profileId: string, key: string) { z.enum(profileIds).parse(profileId); return this.records.get(`${profileId}:${key}`)?.status ?? null }
 }

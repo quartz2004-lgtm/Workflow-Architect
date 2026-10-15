@@ -25,6 +25,7 @@ const cursorSchema = z.strictObject({ id: z.uuid(), botId: z.string(), offset: z
 export const incomingSchema = z.strictObject({
   id: z.uuid(), botId: z.string(), updateId: z.number().int().nonnegative(), profileId: z.enum(profileIds), bindingId: z.uuid(), workflowId: z.uuid().nullable(), previousJobId: z.uuid().nullable(),
   text: z.string().max(4096), callbackId: z.string().max(200).nullable(), status: z.enum(['pending', 'done', 'failed']), error: z.string().max(4000),
+  guided: z.strictObject({ mode: z.enum(['create', 'edit', 'expired', 'changed']), promptUpdateId: z.number().int().nonnegative() }).nullable().default(null),
 })
 export type Incoming = z.infer<typeof incomingSchema>
 export class TelegramInbox {
@@ -47,6 +48,7 @@ export class TelegramInbox {
     }
   }
   offset(botId: string) { return this.cursorIndex.get(botId)?.offset ?? 0 }
+  event(botId: string, updateId: number) { const record = this.events.get(`${botId}:${updateId}`); return record ? structuredClone(record) : null }
   advance(botId: string, offset: number) {
     const old = this.cursorIndex.get(botId)
     if (old && old.offset >= offset) return
@@ -54,7 +56,7 @@ export class TelegramInbox {
     this.cursors.write(record.id, record, old ? 'replace' : 'create')
     this.cursorIndex.set(botId, record)
   }
-  register(value: Omit<Incoming, 'id' | 'status' | 'error'>): Incoming {
+  register(value: Omit<Incoming, 'id' | 'status' | 'error' | 'guided'> & { guided?: Incoming['guided'] }): Incoming {
     const key = `${value.botId}:${value.updateId}`, duplicate = this.events.get(key)
     if (duplicate) return structuredClone(duplicate)
     const record = incomingSchema.parse({ ...value, id: randomUUID(), status: 'pending', error: '' })

@@ -74,6 +74,7 @@ describe('Telegram activation preflight', () => {
       expect(store.workflow(profileId, first.workflow.id).label).toBe('First')
       const bad = store.publish(profileId, 'Local', invalid, invalid.nodes[0]!.id)
       expect(() => store.selectWorkflow(profileId, binding.id, bad.id)).toThrow('/approved')
+      expect(() => store.selectWorkflow(profileId, binding.id, first.workflow.id, first.workflow.id)).toThrow('уже изменён')
       expect(new SourceStore(root).binding(profileId, binding.id).workflowId).toBe(second.workflow.id)
     } finally { rmSync(root, { recursive: true, force: true }) }
   })

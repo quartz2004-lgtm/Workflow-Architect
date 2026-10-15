@@ -24,11 +24,15 @@ import type { TelegramApi, TelegramUpdate } from './telegram-api'
 import { JobManager } from '../runtime/job-manager'
 import type { ModelProvider } from '../ai/types'
 import type { JsonValue } from '../domain/execution-config'
+import type { RuntimeJob } from '../runtime/job-schema'
 
 const intentSchema = z.strictObject({ kind: z.enum(['create', 'edit', 'status', 'file', 'help']), text: z.string().max(4096) })
 type Intent = z.infer<typeof intentSchema>
 interface Pairing { code: string; profileId: string; connectionId: string; botId: string; username: string; expiresAt: number }
-const help = 'Workflow Architect\nОтправьте тему или задание — запущу опубликованный workflow. Для изменения последней статьи: /edit ваши правки.\n/workflows — доступные сценарии\n/run ID задание — запустить сценарий\n/status — состояние\n/stop — остановить задачу\n/file — получить последний результат\n/answer текст — ответить узлу Human\n/help — эта справка\nКоманды терминала и произвольный код через чат не исполняются.'
+const keyboard = [['Новый текст', 'Правки'], ['Сценарий', 'Статус', 'Последний файл'], ['Остановить', 'Помощь']]
+const navigation = new Set(keyboard.flat())
+const statuses: Record<RuntimeJob['status'], string> = { queued: 'в очереди', running: 'выполняется', waiting: 'ждёт вашего ответа', succeeded: 'готово', failed: 'ошибка', cancelled: 'отменено', interrupted: 'прервано' }
+const help = 'Workflow Architect\n«Новый текст» → отправьте тему и пожелания.\n«Правки» → опишите изменения последнего результата.\n«Сценарий» — что включено для этого чата.\n«Статус» — ход задачи, «Последний файл» — результат.\n«Остановить» — отменить ожидание темы или остановить задачу.\nКоманды также работают: /run задание, /edit правки, /status, /file, /stop.\nНа текстовый вопрос Human: /answer ваш ответ; на вопрос подтверждения — кнопки под вопросом.\n/help — вернуть меню. Команды терминала и произвольный код через чат не исполняются.'
 export class TelegramHub {
   private pairings = new Map<string, Pairing>()
   private pollers = new Map<string, AbortController>()
@@ -111,22 +115,44 @@ export class TelegramHub {
       if (old && old.profileId !== pair.profileId) throw new Error('Чат уже связан с другим профилем. Сначала отзовите старую привязку в приложении.')
       const binding = this.sources.saveBinding({ version: '0.5', id: old?.id ?? randomUUID(), profileId: pair.profileId as TelegramBinding['profileId'], connectionId: pair.connectionId, botId, chatId, userId, workflowId: old?.workflowId ?? null, lastJobId: old?.lastJobId ?? null })
       this.pairings.delete(pair.code)
-      await this.reply(binding, `pair:${update.update_id}`, 'Чат привязан к вашему профилю Workflow Architect. Выберите опубликованный workflow в приложении.\n' + help, signal)
+      await this.menu(binding, `pair:${update.update_id}`, 'Чат привязан. Вернитесь в приложение → Интеграции → Telegram, выберите сценарий и нажмите «Включить для этого чата».\n' + help, signal)
       return
     }
     const binding = this.sources.allBindings().find(item => item.botId === botId && item.chatId === chatId && item.userId === userId)
     if (!binding) return // Do not retain strangers' messages or reveal an application's existence.
     try { this.broker.safe(text) }
     catch { await this.reply(binding, `${update.update_id}:secret`, 'Сообщение похоже на секрет подключения. Не отправляйте токены боту; используйте защищённое хранилище в приложении.', signal); return }
-    this.inbox.register({ botId, updateId: update.update_id, profileId: binding.profileId, bindingId: binding.id, workflowId: binding.workflowId, previousJobId: binding.lastJobId, text, callbackId: update.callback_query?.id ?? null })
+    const duplicate = this.inbox.event(botId, update.update_id)
+    if (duplicate) {
+      if (duplicate.guided && duplicate.bindingId === binding.id) this.sources.consumeDialogue(binding.profileId, binding.id, duplicate.guided.promptUpdateId)
+      return
+    }
+    const dialogue = !update.callback_query && !text.startsWith('/') && !navigation.has(text) ? this.sources.dialogue(binding.profileId, binding.id) : null
+    const guided: Incoming['guided'] = dialogue ? { mode: dialogue.workflowId !== binding.workflowId ? 'changed' : dialogue.expiresAt <= Date.now() ? 'expired' : dialogue.mode, promptUpdateId: dialogue.promptUpdateId } : null
+    this.inbox.register({ botId, updateId: update.update_id, profileId: binding.profileId, bindingId: binding.id, workflowId: dialogue?.workflowId ?? binding.workflowId, previousJobId: dialogue ? dialogue.previousJobId : binding.lastJobId, text, callbackId: update.callback_query?.id ?? null, guided })
+    // Persist intent and the selected snapshot before consuming the conversation prompt.
+    if (dialogue) this.sources.consumeDialogue(binding.profileId, binding.id, dialogue.promptUpdateId)
   }
   private reply(binding: TelegramBinding, key: string, text: string, signal: AbortSignal) {
     return this.broker.execute(binding.profileId, binding.connectionId, `telegram:${binding.botId}:${key}`, 'telegram.send-message', { chatId: binding.chatId, text: text.slice(0, 4096) }, signal)
   }
+  private async menu(binding: TelegramBinding, key: string, text: string, signal: AbortSignal) {
+    this.sources.binding(binding.profileId, binding.id)
+    this.broker.safe(text)
+    const { api, signal: grant } = this.broker.telegram(binding.profileId, binding.connectionId)
+    return this.broker.effects.perform(binding.profileId, `telegram:${binding.botId}:menu:${key}`, { chatId: binding.chatId, text, keyboard }, () => api.menu(binding.chatId, text.slice(0, 4096), keyboard, AbortSignal.any([signal, grant])))
+  }
+  async testChat(profileId: string, bindingId: string, text: string, signal: AbortSignal) {
+    const binding = this.sources.binding(profileId, bindingId)
+    return this.menu(binding, `test:${randomUUID()}`, text, signal)
+  }
   private async intent(record: Incoming, signal: AbortSignal): Promise<Intent> {
     const text = record.text
+    if (record.guided?.mode === 'expired') throw new Error('Время ожидания темы или правок истекло. Нажмите «Новый текст» или «Правки» и отправьте сообщение ещё раз.')
+    if (record.guided?.mode === 'changed') throw new Error('Сценарий чата изменился. Нажмите «Сценарий», затем заново выберите «Новый текст» или «Правки».')
+    if (record.guided) return { kind: record.guided.mode, text }
     if (text.startsWith('/edit ')) return { kind: 'edit', text: text.slice(6).trim() }
-    if (text.startsWith('/run ')) return { kind: 'create', text }
+    if (text.startsWith('/run ')) return { kind: 'create', text: text.slice(5).trim() }
     if (!this.model) return { kind: 'create', text }
     const { provider, model } = this.model(record.profileId)
     const output = await provider.chat({ model, messages: [
@@ -148,11 +174,22 @@ export class TelegramHub {
         const answer = this.jobs.answer(binding.profileId, current.id, waiting.request.id, parsed[2] === '1')
         if (!answer.ok) throw new Error(answer.message)
         await this.reply(binding, `${record.updateId}:answer`, 'Ответ сохранён.', signal)
-      } else if (text === '/help' || text === '/start') await this.reply(binding, `${record.updateId}:help`, help, signal)
+      } else if (text === '/help' || text === '/start' || text === 'Помощь') await this.menu(binding, `${record.updateId}:help`, help, signal)
+      else if (text === 'Новый текст' || text === 'Правки') {
+        if (current && ['queued', 'running', 'waiting'].includes(current.status)) throw new Error('Задача ещё выполняется или ждёт вашего ответа. Нажмите «Статус». Ответьте на вопрос Human или нажмите «Остановить» перед новой задачей.')
+        if (text === 'Правки' && !current?.outcome?.artifacts.at(-1)?.content) throw new Error('Пока нет готового текста для правок. Нажмите «Новый текст» и отправьте тему.')
+        const dialogue = this.sources.beginDialogue(binding.profileId, binding.id, text === 'Правки' ? 'edit' : 'create', record.updateId)
+        const workflow = this.sources.workflow(binding.profileId, dialogue.workflowId)
+        await this.menu(binding, `${record.updateId}:prompt`, `Сценарий: ${workflow.label}\n${text === 'Правки' ? 'Что изменить в последнем результате? Отправьте пожелания одним сообщением.' : 'Отправьте тему и пожелания одним сообщением: для кого текст, объём и стиль.'}\nЖду 10 минут. «Остановить» отменяет ожидание.`, signal)
+      } else if (text === 'Сценарий' || text === '/scenario') {
+        const workflow = binding.workflowId ? this.sources.listWorkflows(binding.profileId).find(item => item.id === binding.workflowId) : null
+        await this.menu(binding, `${record.updateId}:scenario`, workflow?.enabled ? `Сценарий: ${workflow.label}\nВерсия от ${new Date(workflow.createdAt).toLocaleString('ru-RU')}\nПравки в Canvas не меняют эту версию. Обновление: приложение → Интеграции → Telegram → «Подтвердить и обновить сценарий чата».` : 'Для этого чата нет включённого сценария. В приложении откройте Интеграции → Telegram, выберите сценарий и нажмите «Включить для этого чата».', signal)
+      }
       else if (text === '/workflows') await this.reply(binding, `${record.updateId}:workflows`, this.sources.listWorkflows(binding.profileId).filter(item => item.enabled).map(item => `${item.label}\n/run ${item.id} задание`).join('\n\n') || 'Опубликуйте workflow в приложении.', signal)
-      else if (text === '/stop') {
+      else if (text === '/stop' || text === 'Остановить') {
+        this.sources.consumeDialogue(binding.profileId, binding.id)
         if (current) this.jobs.cancel(binding.profileId, current.id)
-        await this.reply(binding, `${record.updateId}:stop`, current ? 'Остановка сохранена.' : 'Нет текущей задачи.', signal)
+        await this.reply(binding, `${record.updateId}:stop`, 'Ожидание темы или правок отменено. ' + (current && ['queued', 'running', 'waiting'].includes(current.status) ? 'Остановка задачи сохранена.' : 'Активной задачи нет.'), signal)
       } else if (text.startsWith('/answer ')) {
         const waiting = current?.checkpoint?.frames.at(-1)?.human
         if (!current || !waiting || waiting.request.mode !== 'input') throw new Error('Нет ожидающего текстового вопроса Human.')
@@ -160,18 +197,19 @@ export class TelegramHub {
         if (!answer.ok) throw new Error(answer.message)
         await this.reply(binding, `${record.updateId}:answer`, 'Ответ сохранён.', signal)
       } else {
-        const intent: Intent = text === '/status' ? { kind: 'status', text } : text === '/file' ? { kind: 'file', text } : text.startsWith('/') && !text.startsWith('/edit ') && !text.startsWith('/run ') ? { kind: 'help', text } : await this.intent(record, signal)
-        if (intent.kind === 'status') await this.reply(binding, `${record.updateId}:status`, current ? `Задача ${current.id}\nСостояние: ${current.status}\n${current.message}` : 'Нет текущей задачи.', signal)
+        const intent: Intent = text === '/status' || text === 'Статус' ? { kind: 'status', text } : text === '/file' || text === 'Последний файл' ? { kind: 'file', text } : text.startsWith('/') && !text.startsWith('/edit ') && !text.startsWith('/run ') ? { kind: 'help', text } : await this.intent(record, signal)
+        if (intent.kind === 'status') await this.reply(binding, `${record.updateId}:status`, current ? `Сценарий: ${current.plan.snapshot.project.name}\nСостояние: ${statuses[current.status]}\n${current.message}${current.status === 'waiting' ? '\nОтветьте на вопрос Human выше в чате или нажмите «Остановить».' : ''}` : 'Нет текущей задачи. Нажмите «Новый текст», чтобы начать.', signal)
         else if (intent.kind === 'file') await this.file(binding, `${record.updateId}:file`, signal)
-        else if (intent.kind === 'help') await this.reply(binding, `${record.updateId}:help`, help, signal)
+        else if (intent.kind === 'help') await this.menu(binding, `${record.updateId}:help`, help, signal)
         else {
           // One active article per private conversation prevents ambiguous edits and approvals.
           if (current && ['queued', 'running', 'waiting'].includes(current.status) && current.id !== record.id) throw new Error('Предыдущая задача ещё выполняется. Используйте /status или /stop.')
           const explicit = /^\/run ([a-f0-9-]{36})\s+([\s\S]+)$/i.exec(text)
           const workflowId = explicit?.[1] ?? record.workflowId
-          if (!workflowId) throw new Error('Выберите workflow для этого чата в приложении или используйте /run ID задание.')
+          if (!workflowId) throw new Error('В приложении откройте Интеграции → Telegram, выберите сценарий и нажмите «Включить для этого чата». Затем нажмите «Новый текст» в боте.')
           const workflow = this.sources.workflow(binding.profileId, workflowId)
           text = explicit?.[2] ?? intent.text
+          if (!text.trim()) throw new Error('Задание пустое. Нажмите «Новый текст» и отправьте тему или «Правки» и опишите изменения.')
           let input: JsonValue = { text, source: 'telegram', chatId: binding.chatId, userId: binding.userId }
           if (intent.kind === 'edit') {
             const previous = record.previousJobId ? this.jobs.get(binding.profileId, record.previousJobId) : null
@@ -182,6 +220,7 @@ export class TelegramHub {
           this.broker.safe(input)
           const job = this.jobs.submit({ id: record.id, profileId: binding.profileId, eventKey: `telegram:${record.botId}:${record.updateId}`, project: workflow.project, entryNodeId: workflow.entryNodeId, input, background: true })
           this.sources.saveBinding({ ...binding, lastJobId: job.id })
+          this.sources.consumeDialogue(binding.profileId, binding.id)
           await this.reply(binding, `${record.updateId}:started`, `Задача принята: ${workflow.label}\n/status — состояние, /stop — остановка.`, signal)
         }
       }
@@ -189,7 +228,11 @@ export class TelegramHub {
     } catch (error) {
       const message = this.error(error)
       this.inbox.finish(record, message)
-      try { const binding = this.sources.binding(record.profileId, record.bindingId); await this.reply(binding, `${record.updateId}:error`, message, signal) } catch { /* The durable inbox retains the failure for the desktop. */ }
+      try {
+        const binding = this.sources.binding(record.profileId, record.bindingId)
+        const workflow = this.sources.listWorkflows(record.profileId).find(item => item.id === record.workflowId)
+        await this.reply(binding, `${record.updateId}:error`, `${workflow ? `Сценарий: ${workflow.label}\n` : ''}${message}\n«Сценарий» — проверить настройку, «Помощь» — доступные действия.`, signal)
+      } catch { /* The durable inbox retains the failure for the desktop. */ }
     }
   }
   private async file(binding: TelegramBinding, key: string, signal: AbortSignal) {
@@ -207,7 +250,10 @@ export class TelegramHub {
         try {
           const job = this.jobs.get(binding.profileId, binding.lastJobId), { api, signal } = this.broker.telegram(binding.profileId, binding.connectionId)
           if (['succeeded', 'failed', 'cancelled', 'interrupted'].includes(job.status)) {
-            await this.reply(binding, `job:${job.id}:${job.status}`, `Задача ${job.status === 'succeeded' ? 'готова' : job.status}. ${job.outcome?.error?.message ?? job.message}`, signal)
+            const key = `job:${job.id}:${job.status}`, delivery = this.broker.effects.status(binding.profileId, `telegram:${binding.botId}:${key}`)
+            // Existing 0.5.0 deliveries retain their old fingerprint; never resend on upgrade.
+            if (delivery && delivery !== 'succeeded') throw new Error('Доставка уведомления не подтверждена. Проверьте чат; нажмите «Статус» для нового запроса.')
+            if (!delivery) await this.reply(binding, key, `Сценарий: ${job.plan.snapshot.project.name}\nСостояние: ${statuses[job.status]}.\n${job.outcome?.error?.message ?? job.message}\n${job.status === 'succeeded' ? '«Последний файл» — получить результат, «Правки» — изменить его.' : 'Проверьте подробности в истории Run приложения. После исправления нажмите «Новый текст»; автоматический повтор не выполняется.'}`, signal)
             if (job.status === 'succeeded' && job.outcome?.artifacts.length) await this.file(binding, `job:${job.id}:file`, signal)
           } else if (job.status === 'waiting') {
             const waiting = job.checkpoint?.frames.at(-1)?.human?.request

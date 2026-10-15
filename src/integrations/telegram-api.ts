@@ -42,6 +42,10 @@ export class TelegramApi {
     const result = await this.call('sendMessage', { chat_id: chatId, text, ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}) }, signal)
     return z.object({ message_id: z.number().int() }).parse(result)
   }
+  async menu(chatId: string, text: string, keyboard: string[][], signal: AbortSignal) {
+    const result = await this.call('sendMessage', { chat_id: chatId, text, reply_markup: { keyboard: keyboard.map(row => row.map(text => ({ text }))), resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Выберите действие или напишите задание' } }, signal)
+    return z.object({ message_id: z.number().int() }).parse(result)
+  }
   async callback(id: string, text: string, signal: AbortSignal) { await this.call('answerCallbackQuery', { callback_query_id: id, text }, signal); return { answered: true } }
   async document(chatId: string, filename: string, content: string, signal: AbortSignal, caption?: string) {
     const token = await this.resolveToken(); signal.throwIfAborted()

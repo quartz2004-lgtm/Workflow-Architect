@@ -35,12 +35,13 @@ export function TelegramScenario({ profileId, binding, workflows, autosave, refr
   const entries = project.nodes.filter(node => node.type === 'trigger' && ['manual', 'telegram-message'].includes(node.operation?.kind ?? ''))
   const selectedEntry = entries.some(node => node.id === entry) ? entry : entries[0]?.id ?? ''
   const preflight = useMemo(() => selectedEntry ? checkTelegramWorkflow(project, selectedEntry) : null, [project, selectedEntry])
+  const enabled = workflows.some(item => item.id === binding.workflowId && item.enabled)
   useEffect(() => {
     let alive = true
-    if (binding.workflowId) void integrationRequest({ action: 'workflow-details', profileId, id: binding.workflowId }).then(value => { if (alive) setActive(publishedWorkflowSchema.parse(value)) }).catch(error => { if (alive) { setActive(null); setError(String(error)) } })
+    if (binding.workflowId && enabled) void integrationRequest({ action: 'workflow-details', profileId, id: binding.workflowId }).then(value => { if (alive) setActive(publishedWorkflowSchema.parse(value)) }).catch(error => { if (alive) { setActive(null); setError(String(error)) } })
     return () => { alive = false }
-  }, [profileId, binding.workflowId])
-  const current = active?.id === binding.workflowId ? active : null
+  }, [profileId, binding.workflowId, enabled])
+  const current = enabled && active?.id === binding.workflowId ? active : null
   const sameProject = current?.project.project.id === project.project.id
   const differs = sameProject && JSON.stringify(current?.project) !== JSON.stringify(project)
   const act = async (work: () => Promise<void>) => {
@@ -51,7 +52,7 @@ export function TelegramScenario({ profileId, binding, workflows, autosave, refr
   }
   return <section className="integration-card telegram-scenario">
     <h3>3. Сценарий для этого чата</h3>
-    <div className="telegram-active" role="status"><small>СЕЙЧАС В TELEGRAM</small><strong>{current?.label ?? (binding.workflowId ? 'Загружаем активный сценарий…' : 'Сценарий ещё не включён')}</strong>{current && <span>Версия от {new Date(current.createdAt).toLocaleString('ru-RU')}</span>}</div>
+    <div className="telegram-active" role="status"><small>СЕЙЧАС В TELEGRAM</small><strong>{current?.label ?? (binding.workflowId ? enabled ? error ? 'Не удалось загрузить сценарий. Закройте и откройте окно повторно.' : 'Загружаем активный сценарий…' : 'Прежняя версия отключена. Включите сценарий ниже.' : 'Сценарий ещё не включён')}</strong>{current && <span>Версия от {new Date(current.createdAt).toLocaleString('ru-RU')}</span>}</div>
     {differs && <p className="telegram-warning">На Canvas есть изменения. В Telegram продолжает работать предыдущая версия. Обновите её кнопкой ниже, когда изменения готовы.</p>}
     <p>На Canvas: <strong>{project.project.name}</strong></p>
     {entries.length > 1 && <label>Вход сценария<select value={selectedEntry} onChange={event => setEntry(event.target.value)}>{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>}
@@ -66,8 +67,8 @@ export function TelegramScenario({ profileId, binding, workflows, autosave, refr
       setNotice('Сценарий включён для этого чата. Новые сообщения используют эту версию.')
     }) }}>{sameProject && !differs && current?.entryNodeId === selectedEntry ? 'Эта версия уже активна' : current ? 'Подтвердить и обновить сценарий чата' : 'Включить для этого чата'}</button>
     <details className="telegram-templates"><summary>Начать с готового сценария</summary><p className="muted">Откроется новый проект; текущий будет сохранён. После просмотра нажмите «Включить для этого чата».</p><div className="inline-actions"><button disabled={busy} onClick={() => { void act(() => switchProject(editor, autosave, createTelegramArticleExample())) }}>Статьи и правки · нужна Ollama</button><button disabled={busy} onClick={() => { void act(() => switchProject(editor, autosave, createTelegramHumanExample())) }}>Подтверждение и файл · без ИИ</button></div></details>
-    <details><summary>Выбрать ранее опубликованную версию</summary><label>Опубликованный сценарий<select value={choice} onChange={event => setChoice(event.target.value)}><option value="">Выберите сценарий</option>{workflows.filter(item => item.enabled).map(item => <option key={item.id} value={item.id}>{item.label} · {new Date(item.createdAt).toLocaleString()}</option>)}</select></label><button disabled={busy || !choice} onClick={() => { void act(async () => { await integrationRequest({ action: 'select-workflow', profileId, bindingId: binding.id, workflowId: choice }); setNotice('Активный сценарий изменён.') }) }}>Подтвердить выбор для этого чата</button></details>
-    {binding.workflowId && <section className="telegram-test"><h4>4. Проверьте связь</h4><p className="muted">Отправим сообщение с названием активного сценария. Затем запустите задачу из Telegram.</p><button disabled={busy} onClick={() => { void act(async () => { await integrationRequest({ action: 'test-chat', profileId, id: binding.id }); setNotice('Telegram подтвердил отправку тестового сообщения. Откройте чат и запустите пробную задачу.') }) }}>Отправить тестовое сообщение</button></section>}
+    <details><summary>Выбрать ранее опубликованную версию</summary><label>Опубликованный сценарий<select value={choice} onChange={event => setChoice(event.target.value)}><option value="">Выберите сценарий</option>{workflows.filter(item => item.enabled).map(item => <option key={item.id} value={item.id}>{item.label} · {new Date(item.createdAt).toLocaleString()}</option>)}</select></label><button disabled={busy || !choice} onClick={() => { void act(async () => { await integrationRequest({ action: 'select-workflow', profileId, bindingId: binding.id, workflowId: choice, expectedWorkflowId: binding.workflowId }); setNotice('Активный сценарий изменён.') }) }}>Подтвердить выбор для этого чата</button></details>
+    {enabled && <section className="telegram-test"><h4>4. Проверьте связь</h4><p className="muted">Отправим сообщение с названием активного сценария и кнопками управления. В Telegram нажмите «Новый текст», затем отправьте задачу.</p><button disabled={busy} onClick={() => { void act(async () => { await integrationRequest({ action: 'test-chat', profileId, id: binding.id }); setNotice('Telegram подтвердил отправку тестового сообщения. Откройте чат и запустите пробную задачу.') }) }}>Отправить тестовое сообщение</button></section>}
     {error && <p role="alert" className="field-error">{error}</p>}{notice && <p role="status">{notice}</p>}
   </section>
 }
