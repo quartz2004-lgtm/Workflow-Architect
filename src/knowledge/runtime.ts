@@ -1,0 +1,68 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+import { z } from 'zod'
+import type { Project } from '../domain/schema'
+import type { JsonValue } from '../domain/execution-config'
+import { graphEntries } from '../domain/graphs'
+import { assertValueBudget } from '../execution/values'
+import { buildContextPacket, contextPacketSchema, type ContextPacket } from './context'
+import type { KnowledgeService } from './service'
+import type { AgentKnowledge } from '../domain/knowledge-config'
+
+export const preparedKnowledgeSchema = z.array(z.strictObject({
+  nodeId: z.uuid(), collectionIds: z.array(z.uuid()).max(4), packet: contextPacketSchema,
+})).max(100).refine(items => new Set(items.map(item => item.nodeId)).size === items.length, 'Повторный пакет узла.')
+export type PreparedKnowledge = z.infer<typeof preparedKnowledgeSchema>
+export type KnowledgeResolver = (nodeId: string) => ContextPacket
+export interface RuntimeKnowledge {
+  prepare(profileId: string, runId: string, project: Project, input: JsonValue): PreparedKnowledge
+  resolve(profileId: string, runId: string, prepared: PreparedKnowledge, nodeId: string): ContextPacket
+}
+
+export function prepareContext(knowledge: Pick<KnowledgeService, 'capture'>, profileId: string, runId: string, config: AgentKnowledge, task: string): ContextPacket {
+  if (config.imageIds.length) throw new Error('Импорт фотографий ещё не подключён к runtime. Изображения не будут молча пропущены.')
+  const query = config.query || task
+  if (query.length > 4000) throw new Error('Исходная задача слишком длинна для поискового запроса. Укажите отдельный запрос в источниках Agent.')
+  return buildContextPacket({ profileId: projectProfile(profileId), runId, task, query, sku: config.sku || undefined,
+    sourceIds: config.sourceIds, maxBytes: config.maxBytes, maxExcerpts: config.maxExcerpts }, knowledge.capture(profileId, config.collections))
+}
+
+/** Native reader only. The desktop main process remains the sole collection writer. */
+export class KnowledgeRuntime implements RuntimeKnowledge {
+  constructor(private readonly knowledge: Pick<KnowledgeService, 'capture' | 'assertAllowed'>) {}
+  prepare(profileId: string, runId: string, project: Project, input: JsonValue): PreparedKnowledge {
+    const result: PreparedKnowledge = []
+    for (const { graph } of graphEntries(project)) for (const node of graph.nodes) {
+      if (node.status === 'disabled' || node.operation?.kind !== 'agent' || !node.operation.knowledge) continue
+      const config = node.operation.knowledge
+      if (!config.collections.length && !config.imageIds.length) continue
+      const task = typeof input === 'string' ? input : JSON.stringify(input)
+      const packet = prepareContext(this.knowledge, profileId, runId, config, task)
+      result.push({ nodeId: node.id, collectionIds: config.collections.map(item => item.collectionId), packet })
+    }
+    assertValueBudget(result, 4 * 1024 * 1024, true)
+    return preparedKnowledgeSchema.parse(result)
+  }
+  resolve(profileId: string, runId: string, prepared: PreparedKnowledge, nodeId: string): ContextPacket {
+    const entry = prepared.find(item => item.nodeId === nodeId)
+    if (!entry || entry.packet.profileId !== profileId || entry.packet.runId !== runId) throw new Error('Пакет источников не принадлежит этому узлу, профилю или запуску.')
+    this.knowledge.assertAllowed(profileId, entry.collectionIds)
+    return structuredClone(entry.packet)
+  }
+}
+const projectProfile = (profileId: string) => contextPacketSchema.shape.profileId.parse(profileId)

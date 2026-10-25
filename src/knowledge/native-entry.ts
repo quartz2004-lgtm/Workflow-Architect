@@ -21,6 +21,8 @@ import { KnowledgeService } from './service'
 import { KnowledgeError, scanSource } from './importer'
 import { knowledgeCommandSchema } from './schema'
 import { assertValueBudget } from '../execution/values'
+import { randomUUID } from 'node:crypto'
+import { prepareContext } from './runtime'
 
 export function createNativeKnowledge(directory: string) {
   const service = new KnowledgeService(directory)
@@ -31,6 +33,11 @@ export function createNativeKnowledge(directory: string) {
       const command = knowledgeCommandSchema.parse(value)
       let result: unknown = null
       switch (command.kind) {
+        case 'context-preview': {
+          try { result = prepareContext(service, command.profileId, randomUUID(), command.settings, command.task) }
+          catch (error) { throw new KnowledgeError(error instanceof Error ? error.message : 'Не удалось подготовить контекст.') }
+          break
+        }
         case 'list': result = await service.list(command.profileId); break
         case 'choose-folder': {
           const selection = await dialog.showOpenDialog({ title: 'Подключить папку базы SOAR', properties: ['openDirectory', 'dontAddToRecent'] })

@@ -26,11 +26,13 @@ import { runStatusLabels } from './view-state'
 export { runStatusLabels } from './view-state'
 import './run-panel.css'
 import { articleBrief } from './article-example'
+import { ContextPacketView } from '../knowledge/ContextPacketView'
 
-const eventLabels = { ai: 'Вызов ИИ / инструмента', status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
+const eventLabels = { knowledge: 'Пакет источников Agent', ai: 'Вызов ИИ / инструмента', status: 'Статус', 'step-start': 'Вход узла', 'step-finish': 'Результат узла', 'human-request': 'Вопрос человеку', 'human-answer': 'Ответ человека', artifact: 'Артефакт', failure: 'Ошибка' }
 const stringify = (value: unknown) => JSON.stringify(value, null, 2)
 const preview = (value: unknown) => { const text = stringify(value); return text.length > 20000 ? `${text.slice(0, 20000)}\n… Предпросмотр сокращён. Сохраните журнал для полного значения.` : text }
 function eventContent(event: RunEvent) {
+  if (event.kind === 'knowledge') return event.packet
   if (event.kind === 'ai') return event.trace
   if (event.kind === 'step-start') return { input: event.input, data: event.data }
   if (event.kind === 'step-finish') return { output: event.output, ports: event.ports }
@@ -78,7 +80,7 @@ export function RunPanel() {
       {!!state.artifacts.length && <section aria-label="Артефакты запуска"><h3>Артефакты · {state.artifacts.length}</h3>{state.artifacts.map(artifact => <details className="run-artifact" key={artifact.id}><summary>{artifact.filename} · {label(artifact.activation.nodeId)}</summary><pre>{artifact.content.slice(0, 20000)}{artifact.content.length > 20000 ? '\n… Предпросмотр сокращён. Файл сохранится полностью.' : ''}</pre><button onClick={() => downloadBlob(artifact.filename, new Blob([artifact.content], { type: artifact.format === 'json' ? 'application/json;charset=utf-8' : 'text/plain;charset=utf-8' }))}>Сохранить {artifact.filename}</button></details>)}</section>}
       <section aria-label="Журнал запуска"><div className="run-journal-heading"><h3>Журнал · {state.events.length}</h3><button disabled={!state.events.length} onClick={() => downloadText(`run-${state.runId}.json`, stringify({ runId: state.runId, planId: state.planId, status: state.status, message: state.message, events: state.events, outcome: state.outcome }))}>Сохранить журнал</button></div>
         {!state.events.length && <p className="muted">Здесь появятся входы, результаты и ошибки каждого выполненного шага.</p>}
-        {state.events.slice(currentPage * 50, (currentPage + 1) * 50).map(event => <details className={`run-event run-event-${event.kind}`} key={event.sequence}><summary><span>{event.sequence.toString().padStart(2, '0')}</span> {eventLabels[event.kind]} · {'activation' in event && event.activation ? label(event.activation.nodeId) : event.kind === 'status' ? runStatusLabels[event.status] : ''}</summary><pre>{preview(eventContent(event))}</pre>{'activation' in event && event.activation && <p className="muted">Путь: {event.activation.path.map(label).join(' → ') || 'Корневой граф'} · call {event.activation.callId.slice(0, 8)}</p>}</details>)}
+        {state.events.slice(currentPage * 50, (currentPage + 1) * 50).map(event => <details className={`run-event run-event-${event.kind}`} key={event.sequence}><summary><span>{event.sequence.toString().padStart(2, '0')}</span> {eventLabels[event.kind]} · {'activation' in event && event.activation ? label(event.activation.nodeId) : event.kind === 'status' ? runStatusLabels[event.status] : ''}</summary>{event.kind === 'knowledge' ? <><p className="muted">Пакет подготовлен для этого запуска. Отправка модели отражается следующим событием «Вызов ИИ» этого узла.</p><ContextPacketView packet={event.packet} /></> : <pre>{preview(eventContent(event))}</pre>}{'activation' in event && event.activation && <p className="muted">Путь: {event.activation.path.map(label).join(' → ') || 'Корневой граф'} · call {event.activation.callId.slice(0, 8)}</p>}</details>)}
         {lastPage > 0 && <div className="inline-actions"><button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Предыдущие</button><span>{currentPage + 1} / {lastPage + 1}</span><button disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Следующие</button><button onClick={() => setPage(null)}>К последним</button></div>}
       </section>
     </div>

@@ -108,6 +108,9 @@ export class KnowledgeService {
       return { collectionId: collection.id, snapshot: structuredClone(snapshot) }
     })
   }
+  assertAllowed(profileId: string, collectionIds: readonly string[]): void {
+    for (const id of collectionIds) if (!this.read(profileId, id).enabled) throw new KnowledgeError('Доступ к знаниям отозван. Запрос модели не выполнен.')
+  }
   change(profileId: string, id: string, revision: number, action: 'enable' | 'prune' | 'remove', enabled?: boolean) {
     const collection = this.version(profileId, id, revision)
     if (action === 'remove') { this.store.remove(id); return }

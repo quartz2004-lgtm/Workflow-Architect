@@ -68,7 +68,7 @@ export class ExecutionRun {
   private readonly abort = new AbortController()
   private aiUsage: AiUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, toolCalls: 0 }
   private reservedTokens = 0
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor } = {}) {
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor; runId?: string; knowledge?: import('../knowledge/runtime').KnowledgeResolver } = {}) {
     if (!['0.3', '0.4', '0.5'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
@@ -76,7 +76,7 @@ export class ExecutionRun {
     // Recompile at the execution boundary; supplied limits and mutable plan objects are not trusted.
     this.plan = { ...verified.plan, id: plan.id, createdAt: plan.createdAt }
     if (persistence.deadline !== undefined && (!Number.isSafeInteger(persistence.deadline) || persistence.deadline <= 0)) throw new Error('Некорректный deadline запуска.')
-    this.id = createId()
+    this.id = persistence.runId === undefined ? createId() : idSchema.parse(persistence.runId)
     if (persistence.checkpoint !== undefined) {
       const saved = parseCheckpoint(persistence.checkpoint, this.plan)
       if (['succeeded', 'failed', 'cancelled'].includes(saved.status)) throw new Error('Завершённый запуск нельзя возобновить.')
@@ -85,6 +85,7 @@ export class ExecutionRun {
         const operation = graph?.nodes.find(node => node.id === frame.activation?.nodeId)?.operation?.kind
         if (operation === 'agent' || operation === 'parallel' || operation === 'connector') throw new Error('Прерванный запрос ИИ или сервиса не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
       }
+      if (persistence.runId && persistence.runId !== saved.runId) throw new Error('Контрольная точка относится к другому запуску.')
       this.id = saved.runId; this.status = saved.status; this.cancelled = saved.cancelled
       this.sequence = saved.sequence; this.steps = saved.steps; this.deadline = saved.deadline
       this.eventBytes = saved.eventBytes; this.artifacts = saved.artifacts; this.restored = saved.frames
@@ -340,8 +341,16 @@ export class ExecutionRun {
     this.reservedTokens += reserved
     let consumed = 0
     try {
+      const settings = node.operation.knowledge
+      const needsKnowledge = settings && (settings.collections.length || settings.imageIds.length)
+      const knowledge = needsKnowledge ? this.persistence.knowledge?.(node.id) : undefined
+      if (knowledge) {
+        if (knowledge.runId !== this.id) throw new Error('Пакет источников относится к другому запуску.')
+        this.emit({ kind: 'knowledge', activation, packet: knowledge })
+      }
       this.save()
       return await executeAgentOperation({ node, project: this.plan.snapshot, graph: context.graph, input, data, outputs: context.outputs,
+        knowledge, beforeModel: knowledge ? () => { this.persistence.knowledge!(node.id) } : undefined,
         connector: this.persistence.connector, effectPrefix: `${this.id}:${activation.id}`,
         tokenBudget: reserved, timeoutMs: this.deadline - Date.now(), provider: this.persistence.provider, signal,
         trace: trace => {

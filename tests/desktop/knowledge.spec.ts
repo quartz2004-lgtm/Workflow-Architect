@@ -20,6 +20,8 @@ import { mkdtemp, mkdir, writeFile, rename, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { profileIds } from '../../src/profiles/schema'
+import { createNode, createProject } from '../../src/domain/factories'
+import { defaultAgentLimits } from '../../src/domain/agent-config'
 
 test('knowledge wizard: exact preview, update, backup, isolated restore and restart without source or network', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workflow-knowledge-desktop-')), source = join(directory, 'soar'), backup = join(directory, 'backup.json')
@@ -34,7 +36,7 @@ test('knowledge wizard: exact preview, update, backup, isolated restore and rest
     await page.getByRole('button', { name: 'Пропустить настройку' }).click()
     await page.getByRole('button', { name: 'Знания SOAR', exact: true }).click()
     let dialog = page.getByRole('dialog', { name: 'Знания SOAR' })
-    await expect(dialog).toContainText('модель ещё не читает')
+    await expect(dialog).toContainText('Знания агента')
     await dialog.getByRole('button', { name: 'Подключить папку', exact: true }).click()
     await dialog.getByLabel('Папка источника', { exact: true }).fill(source)
     await dialog.getByRole('button', { name: 'Прочитать список файлов' }).click()
@@ -49,6 +51,31 @@ test('knowledge wizard: exact preview, update, backup, isolated restore and rest
     await article.getByRole('button', { name: /source\/current\/CARE-v1.md/ }).click()
     await expect(dialog.getByRole('region', { name: 'Просмотр документа' })).toContainText('Synthetic local knowledge.')
     await dialog.getByRole('button', { name: 'Закрыть документ' }).click()
+    await dialog.getByRole('button', { name: 'Закрыть диалог' }).click()
+    const project = createProject('Knowledge inspector'), agent = createNode('agent')
+    agent.title = 'Source reader'; agent.operation = { kind: 'agent', limits: defaultAgentLimits, minimumWords: 0, requireTools: false }
+    project.nodes.push(agent)
+    await page.getByRole('button', { name: 'Открыть проекты' }).click()
+    const projects = page.getByRole('dialog', { name: 'Локальные проекты' })
+    await projects.getByLabel('Файл проекта').setInputFiles({ name: 'knowledge.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(project)) })
+    await projects.getByRole('button', { name: 'Открыть импорт' }).click()
+    await page.locator('.react-flow__node').filter({ hasText: 'Source reader' }).click()
+    await page.locator('.knowledge-fields > summary').click()
+    await page.getByRole('button', { name: 'Выбрать коллекции' }).click()
+    await page.locator('.knowledge-fields input[type=checkbox]').first().check()
+    await page.getByLabel('Поисковый запрос', { exact: true }).fill('Care')
+    await page.getByLabel('Поисковый запрос', { exact: true }).press('Tab')
+    await page.getByRole('button', { name: 'Проверить источники без запуска ИИ' }).click()
+    await expect(page.locator('.knowledge-context')).toContainText('Выдержки: 1')
+    await page.locator('.knowledge-context > details > summary').click()
+    await expect(page.locator('.knowledge-context')).toContainText('Synthetic local knowledge.')
+    await page.locator('.knowledge-context > details > pre').scrollIntoViewIfNeeded()
+    await page.mouse.move(500, 100)
+    await expect(page.locator('.field-help-panel')).toHaveCount(0)
+    await page.screenshot({ path: 'desktop-results/knowledge-inspector-context.png' })
+    expect(await page.locator('.knowledge-fields').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    await page.getByRole('button', { name: 'Знания SOAR', exact: true }).click()
+    dialog = page.getByRole('dialog', { name: 'Знания SOAR' })
     await page.screenshot({ path: 'desktop-results/knowledge-desktop.png' })
     await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setSize(1000, 700) })
     await page.screenshot({ path: 'desktop-results/knowledge-compact.png' })

@@ -23,6 +23,8 @@ import { ConnectionStore } from '../ai/connection-store'
 import { AssistantService } from '../ai/assistant-service'
 import { IntegrationService } from '../integrations/service'
 import { CredentialChannel } from '../integrations/credential-channel'
+import { KnowledgeService } from '../knowledge/service'
+import { KnowledgeRuntime } from '../knowledge/runtime'
 
 const port = process.parentPort
 if (!port || !process.argv[2]) throw new Error('Runtime must be started by its desktop parent.')
@@ -31,6 +33,7 @@ const credentials = new CredentialChannel(send)
 const connections = new ConnectionStore(join(process.argv[2], '..', 'ai-connections'))
 const assistant = new AssistantService(connections)
 const manager: JobManager = new JobManager(process.argv[2], {
+  knowledge: new KnowledgeRuntime(new KnowledgeService(join(process.argv[2], '..', '..', 'knowledge'))),
   connector: profileId => (connectionId, key, action, args, signal) => integrations.broker.execute(profileId, connectionId, key, action, args, signal),
   provider: profileId => model => connections.resolve(profileId, model),
   changed: job => send({ version: '0.3.1', kind: 'changed', jobId: job.id, profileId: job.profileId }),
