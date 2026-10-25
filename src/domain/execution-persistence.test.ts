@@ -54,7 +54,7 @@ describe('project execution format 0.5', () => {
   it('imports legacy JSON, YAML and ZIP pair with durable original snapshots', async () => {
     const backups = createBackupRepository()
     const before = (await backups.list()).length
-    const expected = { ...legacy, schemaVersion: '0.5' }
+    const expected = { ...legacy, schemaVersion: '0.6' }
     expect(await importText(raw, 'legacy.json')).toEqual(expected)
     expect(await importText(stringify(legacy), 'legacy.yaml')).toEqual(expected)
     const { project, ...workflow } = legacy
@@ -71,7 +71,7 @@ describe('project execution format 0.5', () => {
     expect(backup).not.toHaveBeenCalled()
     await expect(migrateProjectSnapshot(raw, async () => { throw new Error('Backup storage full') })).rejects.toThrow('Backup storage full')
     const report = recoverProject(JSON.stringify(injected))
-    expect(report.project?.schemaVersion).toBe('0.5')
+    expect(report.project?.schemaVersion).toBe('0.6')
     expect(report.project?.nodes.every(node => !node.operation)).toBe(true)
     expect(report.issues.some(issue => issue.path.endsWith('.operation'))).toBe(true)
   })
@@ -83,11 +83,11 @@ describe('project execution format 0.5', () => {
     const repository = createRepository(name)
     expect((await repository.list())[0]?.damaged).toBe(false)
     const current = await loadProject(repository)
-    expect(current?.schemaVersion).toBe('0.5')
+    expect(current?.schemaVersion).toBe('0.6')
     expect(await db.get('projects', legacy.project.id)).toBe(raw)
     await repository.adopt?.(current!)
     await repository.save(current!)
-    expect(JSON.parse(await db.get('projects', legacy.project.id)).schemaVersion).toBe('0.5')
+    expect(JSON.parse(await db.get('projects', legacy.project.id)).schemaVersion).toBe('0.6')
     db.close()
   })
   it('roundtrips operations, undoes edits and remaps branch ports without rewriting literals', async () => {

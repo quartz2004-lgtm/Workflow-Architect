@@ -21,7 +21,7 @@ import { editorialBudgetSchema, editorialIssueSchema, editorialTaskSchema, edito
 const time = z.iso.datetime()
 const metrics = z.strictObject({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative(), durationMs: z.number().int().nonnegative() })
 export const editorialSettingsSchema = z.strictObject({
-  model: z.string().min(1).max(200), modelDigest: z.string().min(1).max(200),
+  model: z.string().min(1).max(200), modelDigest: z.string().regex(/^[a-f0-9]{64}$/),
   contextTokens: z.number().int().min(2048).max(32768),
   maxOutputTokens: z.number().int().min(128).max(8192),
   temperature: z.number().min(0).max(2),

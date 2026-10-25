@@ -23,7 +23,7 @@ import type { EditorialSettings, EditorialState } from './engine-schema'
 
 const id = '00000000-0000-4000-8000-000000000001'
 const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: id, runId: id, task: 'Тема', query: 'Тема', excerpts: [], gaps: [], budgetBytes: 4000 }
-const settings: EditorialSettings = { model: 'local-model', modelDigest: 'test-digest', contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, callTimeoutMs: 1000 }
+const settings: EditorialSettings = { model: 'local-model', modelDigest: 'a'.repeat(64), contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, callTimeoutMs: 1000 }
 const article = `# Выбор\n\n## Посадка\n${'Пример '.repeat(60)}\n\n## Проверка\n${'Движение '.repeat(60)}`
 const ready = JSON.stringify({ verdict: 'ready-for-human', comments: [] })
 const reply = (content: string, finish: 'stop' | 'length' = 'stop'): ModelResponse => ({ content, finish, toolCalls: [], inputTokens: 100, outputTokens: 100 })
@@ -33,6 +33,7 @@ function provider(responses: ModelResponse[]): ModelProvider & { requests: Model
   return {
     id: 'ollama', costPerMillionInput: 0, costPerMillionOutput: 0, requests,
     list: async () => ['local-model'], inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }),
+    identity: async () => 'a'.repeat(64),
     async chat(request) { requests.push(structuredClone(request)); const response = responses.shift(); if (!response) throw new Error('Unexpected call'); return response },
   }
 }
@@ -51,7 +52,7 @@ describe('durable bounded editorial stages', () => {
     expect(state.versions[0]!.text).toBe(article)
     expect(state.calls.map(call => call.stage)).toEqual(['planner', 'writer', 'reviewer'])
     expect(saved.map(item => item.calls.at(-1)?.status)).toEqual(['pending', 'complete', 'pending', 'complete', 'pending', 'complete'])
-    expect(state.calls.every(call => call.settings.modelDigest === 'test-digest' && call.metrics?.outputTokens === 100)).toBe(true)
+    expect(state.calls.every(call => call.settings.modelDigest === 'a'.repeat(64) && call.metrics?.outputTokens === 100)).toBe(true)
     expect(model.requests.every(request => request.messages.length === 2 && request.tools.length === 0)).toBe(true)
     expect(state.spentTokens).toBe(600)
   })

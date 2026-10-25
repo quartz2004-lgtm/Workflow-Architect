@@ -34,6 +34,7 @@ export function agentTools(graph: Graph, node: WorkflowNode): WorkflowNode[] {
 
 export function validateAgent(project: Project, graph: Graph, node: WorkflowNode): void {
   if (node.type !== 'agent' || node.operation?.kind !== 'agent') throw new Error('Ожидалась операция Agent.')
+  if (node.operation.editorial) throw new Error('Редакционный режим ещё не подключён к runtime этой сборки.')
   const config = node.config
   if (config.model?.provider !== 'ollama' || !localModelNameSchema.safeParse(config.model.name).success) throw new Error('Выберите провайдера ollama и локальную модель Agent.')
   if (!config.role?.trim()) throw new Error('Укажите роль Agent.')

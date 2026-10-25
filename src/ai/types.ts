@@ -51,5 +51,6 @@ export interface ModelProvider {
   readonly costPerMillionOutput: number
   list(signal: AbortSignal): Promise<string[]>
   inspect(model: string, signal: AbortSignal): Promise<ModelCapabilities>
+  identity?(model: string, signal: AbortSignal): Promise<string>
   chat(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse>
 }

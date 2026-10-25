@@ -106,6 +106,7 @@ export async function advanceEditorial(options: {
     signal.throwIfAborted()
     const capabilities = await Promise.race([options.provider.inspect(settings.model, signal), abortPromise])
     signal.throwIfAborted()
+    if (!options.provider.identity || await Promise.race([options.provider.identity(settings.model, signal), abortPromise]) !== settings.modelDigest) throw new Error('Установленная модель изменилась или её digest недоступен. Создайте новое задание с актуальной моделью.')
     if (pictures.length && !capabilities.vision) throw new Error('Выбранная модель не видит фотографии. Выберите модель с Vision или уберите фото из задания.')
     if (reservedTokens > capabilities.contextTokens) throw new Error('Контекст установленной модели меньше необходимого для задания.')
     const response: ModelResponse = await Promise.race([options.provider.chat({

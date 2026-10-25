@@ -16,6 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { z } from 'zod'
+export { editorialBudgetSchema, defaultEditorialBudget } from '../domain/editorial-config'
 
 /** Shared by manual input and delivery adapters; transport metadata stays outside. */
 export const editorialTaskSchema = z.strictObject({
@@ -44,12 +45,6 @@ export function normalizeEditorialTask(input: unknown): EditorialTask {
   })
 }
 
-export const editorialBudgetSchema = z.strictObject({
-  maxRevisions: z.number().int().min(1).max(3),
-  timeoutMs: z.number().int().min(1000).max(3600000),
-  maxTotalTokens: z.number().int().min(1024).max(262144),
-})
-export const defaultEditorialBudget = editorialBudgetSchema.parse({ maxRevisions: 3, timeoutMs: 1800000, maxTotalTokens: 131072 })
 
 export const editorialIssueSchema = z.strictObject({
   code: z.enum(['incomplete', 'empty', 'volume', 'structure', 'source-reference', 'knowledge-gap', 'editorial']),

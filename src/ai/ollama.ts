@@ -90,6 +90,14 @@ export class OllamaProvider implements ModelProvider {
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 2048) throw new Error('Не удалось определить контекст модели.')
     return { tools: data.capabilities.includes('tools'), thinking: data.capabilities.includes('thinking'), vision: data.capabilities.includes('vision'), contextTokens: Math.min(contextTokens, 32768) }
   }
+  /** Digest identifies installed weights; a mutable model tag alone is insufficient evidence. */
+  async identity(model: string, signal: AbortSignal): Promise<string> {
+    const name = localModelNameSchema.parse(model)
+    const data = z.object({ models: z.array(z.object({ name: z.string(), digest: z.string().regex(/^[a-f0-9]{64}$/) })).max(1000) }).parse(await this.request('/api/tags', undefined, signal))
+    const matches = data.models.filter(item => item.name === name || (!name.includes(':') && item.name === `${name}:latest`))
+    if (matches.length !== 1) throw new Error('Не удалось однозначно определить установленную версию модели. Обновите список моделей и выберите её заново.')
+    return matches[0]!.digest
+  }
   async chat(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse> {
     localModelNameSchema.parse(request.model)
     const images = modelImagesSchema.parse(request.messages.flatMap(message => message.images ?? []))
