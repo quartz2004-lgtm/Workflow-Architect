@@ -19,6 +19,7 @@ import { useState } from 'react'
 import { knowledgeRequest } from './client'
 import { mediaListSchema, mediaRecordSchema, type MediaRecord, type MediaView } from './media-schema'
 import type { KnowledgeCollection } from './schema'
+import { ProductSelector } from './ProductSelector'
 
 export function MediaLibrary({ profileId }: { profileId: KnowledgeCollection['profileId'] }) {
   const [items, setItems] = useState<MediaView[] | null>(null), [selected, setSelected] = useState<MediaRecord | null>(null)
@@ -39,9 +40,11 @@ export function MediaLibrary({ profileId }: { profileId: KnowledgeCollection['pr
   })
   return <section className="knowledge-step knowledge-media" aria-label="Фотографии товаров">
     <div className="knowledge-heading"><h3>Фотографии товаров</h3><span>Локально · JPEG / PNG</span></div>
-    <p>Добавьте снимок и точный SKU. Исходник не меняется; здесь хранится копия до 512 px без EXIF. Для запроса выберите фотографии в «Знаниях агента». Модель должна поддерживать Vision.</p>
+    <p>Выберите товар из базы и добавьте его фотографию. После импорта прикрепите её в «Знаниях агента» — сама по себе загрузка ещё не передаёт фото модели. Для анализа нужна модель с поддержкой изображений (Vision).</p>
     <label>Название фотографии<input value={label} maxLength={120} onChange={event => setLabel(event.target.value)} placeholder="Вид спереди · детали отделки" /></label>
-    <label>SKU фотографии<input value={sku} maxLength={200} onChange={event => setSku(event.target.value)} placeholder="Точный код товара" /></label>
+    <ProductSelector profileId={profileId} value={sku} onChange={setSku} />
+    <details><summary>Указать код товара вручную</summary><label>SKU фотографии<input value={sku} maxLength={200} onChange={event => setSku(event.target.value)} placeholder="Точный код товара" /></label></details>
+    {!sku && <p className="muted">Для фото нужен конкретный товар. Общие референсы и снимки нескольких товаров пока не поддерживаются.</p>}
     <div className="knowledge-actions"><button disabled={busy || !label.trim() || !sku.trim()} onClick={() => void add()}>Выбрать JPEG / PNG…</button><button disabled={busy} onClick={() => void perform(refresh)}>Показать фотографии</button></div>
     {error && <p role="alert" className="knowledge-error">{error}</p>}
     {items?.length === 0 && <p>Фотографий в этом профиле пока нет.</p>}
