@@ -948,3 +948,6 @@ Technical complexity must not prevent a person without technical training from u
 - Show what setup actually changed; never imply training or successful execution that did not happen.
 - Simple and advanced interfaces use the same domain model and command path.
 - Technical checks and usability acceptance are separate evidence. Do not claim user testing from automated checks alone.
+- Cover the full lifecycle, including graph authoring, import/export, publication, profile changes, updates and recovery; do not limit usability work to the editorial scenario. Maintain the journey register in docs/ROADMAP.md.
+- Distinguish planned, implemented in a branch, technically verified, user-accepted and released work. A future UX milestone is not permission to defer a blocker in the current user journey.
+- Before accepting a feature, verify its visible promises and help against actual behavior. Record user acceptance per participant, including developer assistance; a guided walkthrough is not independent acceptance.
