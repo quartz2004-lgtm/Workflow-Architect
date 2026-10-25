@@ -270,7 +270,7 @@ export class TelegramHub {
                 chatId: binding.chatId, filename: `review-v${waiting.editorial.number}-${waiting.editorial.digest.slice(0, 12)}.md`, content: waiting.editorial.text,
               }, signal)
             }
-            const text = `${waiting.editorial ? `Прочитайте файл review-v${waiting.editorial.number}-${waiting.editorial.digest.slice(0, 12)}.md. Это версия для проверки, ещё не одобренная вами.\nSHA256: ${waiting.editorial.digest}\n` : ''}${waiting.question}\nОтвет до ${waiting.expiresAt}.${waiting.mode === 'input' ? '\n/answer ваш ответ' : ''}`.slice(0, 4096)
+            const text = `${waiting.editorial ? `Прочитайте файл review-v${waiting.editorial.number}-${waiting.editorial.digest.slice(0, 12)}.md. Это версия для проверки, ещё не одобренная вами. Модель могла пропустить ошибку: сверьте свойства товара и рекомендации с источниками.\nSHA256: ${waiting.editorial.digest}\n` : ''}${waiting.question}\nОтвет до ${waiting.expiresAt}.${waiting.mode === 'input' ? '\n/answer ваш ответ' : ''}`.slice(0, 4096)
             this.broker.safe(text)
             await this.broker.effects.perform(binding.profileId, `telegram:${binding.botId}:human:${waiting.id}`, { chatId: binding.chatId, text }, async () => api.message(binding.chatId, text, signal, waiting.mode === 'approval' ? [[{ text: 'Подтвердить', callback_data: `h:${waiting.id}:1` }, { text: 'Отклонить', callback_data: `h:${waiting.id}:0` }]] : undefined))
           }
