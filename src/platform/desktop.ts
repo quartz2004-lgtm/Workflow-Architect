@@ -20,6 +20,7 @@ import type { Autosave } from '../persistence/autosave'
 declare global {
   interface Window {
     workflowDesktop?: {
+      knowledge?: { request(command: unknown): Promise<unknown> }
       onBeforeClose: (save: () => Promise<boolean>) => void
       credentials: { request(command: unknown): Promise<unknown> }
       runtime: {
