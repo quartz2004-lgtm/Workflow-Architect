@@ -1,0 +1,46 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+.knowledge-dialog { width: min(1080px, 94vw); }
+.knowledge-dialog .modal-body { display: grid; gap: var(--space-5); }
+.knowledge-dialog p { color: var(--muted); line-height: 1.65; }
+.knowledge-dialog h3 { margin: 0 0 12px; }
+.knowledge-intro { border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; background: linear-gradient(125deg, var(--surface), var(--panel)); border-top-color: var(--emerald); }
+.knowledge-intro h3 { font-size: 24px; margin-top: 12px; }
+.knowledge-eyebrow { color: var(--emerald); font: 11px var(--mono); letter-spacing: .13em; }
+.knowledge-intro .knowledge-boundary { padding: 12px 16px; border-left: 2px solid var(--amber); color: var(--text); background: var(--canvas); }
+.knowledge-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.knowledge-step, .knowledge-collection, .knowledge-document, .knowledge-empty { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.knowledge-heading { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.knowledge-heading > span { color: var(--emerald); font-size: 12px; }
+.knowledge-step > label:not(.knowledge-consent) { display: grid; gap: 8px; margin: 12px 0; color: var(--muted); }
+.knowledge-step input:not([type=checkbox]) { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--canvas); color: var(--text); }
+.knowledge-files { display: grid; gap: 4px; max-height: 260px; overflow: auto; padding: 8px; margin: 12px 0; background: var(--canvas); border-radius: var(--radius-small); }
+.knowledge-files label, .knowledge-files button { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px; overflow-wrap: anywhere; min-width: 0; }
+.knowledge-files label:hover { background: var(--surface-hover); }
+.knowledge-files small { margin-left: auto; color: var(--muted); white-space: nowrap; }
+.knowledge-consent { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; line-height: 1.5; }
+.knowledge-consent input { margin-top: 4px; }
+.knowledge-preview { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-strong); }
+.knowledge-dialog .knowledge-error { color: var(--error); border-left: 2px solid var(--error); padding: 12px; }
+.knowledge-location, .knowledge-caption { font: 11px/1.6 var(--mono); overflow-wrap: anywhere; }
+.knowledge-snapshot { border-top: 1px solid var(--border); padding: 16px 0; }
+.knowledge-dialog summary { cursor: pointer; line-height: 1.6; }
+.knowledge-document pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 450px; overflow: auto; padding: 16px; background: var(--canvas); font: 12px/1.7 var(--mono); }
+.knowledge-facts { max-height: 280px; overflow: auto; }
+.knowledge-dialog button:focus-visible, .knowledge-dialog summary:focus-visible, .knowledge-dialog input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 700px) { .knowledge-intro, .knowledge-step, .knowledge-collection { padding: 14px; } .knowledge-files small { white-space: normal; } }

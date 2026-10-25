@@ -1,7 +1,7 @@
 {
   "name": "workflow-architect",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.5.2",
   "type": "module",
   "engines": {
     "node": ">=24.0.0"
@@ -20,6 +20,7 @@
     "desktop:prepare": "npm run docs:almanac && npm run build && npm run runtime:build && tsc -p desktop/tsconfig.json && node scripts/stage-desktop.mjs",
     "desktop:start": "electron .desktop-app",
     "docs:almanac": "node scripts/build-almanac.mjs",
+    "docs:roadmap": "node scripts/build-roadmap.mjs",
     "schemas:generate": "node scripts/generate-metaschemas.mjs",
     "desktop:build": "npm run desktop:prepare && electron-builder --config electron-builder.yml --win --x64",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",

@@ -21,6 +21,7 @@ import { join, resolve, relative, isAbsolute, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { RuntimeHost } from './runtime-host.cjs'
 import { loadCredentials, type CredentialsHost } from './credentials-host.cjs'
+import { loadKnowledge } from './knowledge-host.cjs'
 
 const origin = 'workflow://app'
 const entry = `${origin}/index.html`
@@ -35,6 +36,7 @@ let pending: string | undefined
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 let runtime: RuntimeHost | undefined
 let credentials: CredentialsHost | undefined
+let knowledge: ReturnType<typeof loadKnowledge> | undefined
 let tray: Tray | undefined
 let quitRequested = false
 let exiting = false
@@ -47,6 +49,10 @@ ipcMain.handle('workflow:credentials-request', (event, value: unknown) => {
   if (!trusted(event.sender, event.senderFrame)) throw new Error('Недоверенный отправитель credentials.')
   if (!credentials) return { ok: false, message: 'Защищённое хранилище недоступно. Перезапустите приложение.' }
   return credentials.handle(value)
+})
+ipcMain.handle('workflow:knowledge-request', (event, value: unknown) => {
+  if (!trusted(event.sender, event.senderFrame)) throw new Error('Недоверенный отправитель знаний.')
+  return knowledge?.handle(value) ?? { ok: false, message: 'Хранилище знаний недоступно. Перезапустите приложение.' }
 })
 for (const channel of ['workflow:runtime-request', 'workflow:runtime-state', 'workflow:runtime-reconnect']) ipcMain.handle(channel, async (event, value: unknown) => {
   if (!trusted(event.sender, event.senderFrame)) throw new Error('Недоверенный отправитель runtime.')
@@ -176,6 +182,7 @@ else {
   })
   void app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark'
+    try { knowledge = loadKnowledge(app.getAppPath(), join(app.getPath('userData'), 'knowledge')) } catch { /* Editor remains available; IPC reports the storage error. */ }
     Menu.setApplicationMenu(null)
     try { credentials = await loadCredentials(app.getAppPath(), join(app.getPath('userData'), 'credentials')) }
     catch { /* No plaintext fallback. The editor and non-secret operations remain available. */ }
