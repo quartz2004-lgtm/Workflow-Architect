@@ -41,6 +41,16 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it.each(['unavailable', 'changed'])('preserves a %s model failure without generating text', async mode => {
+    const model = provider([])
+    if (mode === 'unavailable') model.inspect = async () => { throw new Error('Ollama недоступна') }
+    else model.identity = async () => 'b'.repeat(64)
+    const state = await advanceEditorial({ state: await start(), packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('needs-editing')
+    expect(state.calls[0]!.status).toBe('failed')
+    expect(state.issues[0]!.message).toContain(mode === 'unavailable' ? 'недоступна' : 'изменилась')
+    expect(model.requests).toEqual([])
+  })
   it('sends the original task and previous article once while retaining the frozen packet digest', async () => {
     const task = { text: 'Добавь вывод', minimumWords: 100, previousArticle: 'UNIQUE_PREVIOUS_ARTICLE' }
     const captured = { ...packet, task: JSON.stringify(task), stageInput: task }

@@ -52,6 +52,18 @@ function plan(telegram = false) {
 }
 
 describe('editorial runtime route', () => {
+  it('cancels even while initial model identity ignores its AbortSignal', async () => {
+    const fixture = model()
+    let started!: () => void
+    const identified = new Promise<void>(resolve => { started = resolve })
+    fixture.provider.identity = async () => { started(); return new Promise<string>(() => {}) }
+    const run = new ExecutionRun(plan(), () => {}, { runId: id, provider: () => fixture.provider, knowledge: () => packet })
+    const pending = run.start('Статья')
+    await identified
+    run.cancel()
+    expect((await pending).status).toBe('cancelled')
+    expect(fixture.calls).toEqual([])
+  })
   it.each([false, true])('runs one contract from Manual/Telegram (%s) and approves exact version before artifact', async telegram => {
     const compiled = plan(telegram), fixture = model(), events: RunEvent[] = []
     let checkpoint: RunCheckpoint | undefined

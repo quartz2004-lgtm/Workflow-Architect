@@ -110,6 +110,24 @@ describe('Telegram durable remote workflow', () => {
     await f.hub.notify(); await f.hub.notify()
     expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(2)
     expect(f.jobs.get(profileIds[0], jobId).outcome!.artifacts[0]!.content).toBe(article)
+    f.updates.push(message(302, 101, '/edit Добавь вывод, сохрани остальные разделы'))
+    await vi.waitFor(() => expect(f.sources.binding(profileIds[0], binding.id).lastJobId).not.toBe(jobId))
+    const editedId = f.sources.binding(profileIds[0], binding.id).lastJobId!
+    await vi.waitFor(() => expect(f.jobs.get(profileIds[0], editedId).status).toBe('waiting'))
+    const edited = f.jobs.get(profileIds[0], editedId), next = edited.checkpoint!.frames.at(-1)!.human!.request
+    expect(Object.values(edited.checkpoint!.editorial!)[0]!.task.previousArticle).toBe(article)
+    expect(next.editorial!.id).not.toBe(request.editorial!.id)
+    expect(next.editorial!.taskId).not.toBe(request.editorial!.taskId)
+    expect(edited.outcome?.artifacts ?? []).toEqual([])
+    await f.hub.notify(); await f.hub.notify()
+    expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(3)
+    f.updates.push({ update_id: 303, callback_query: { id: 'editorial-stale', from: { id: 101, is_bot: false }, data: `h:${request.id}:1`, message: { message_id: 1, chat: { id: 101, type: 'private' } } } })
+    await vi.waitFor(() => expect(f.inbox.event('999999', 303)?.error).toContain('Подтверждение устарело'))
+    expect(f.jobs.get(profileIds[0], editedId).status).toBe('waiting')
+    f.updates.push({ update_id: 304, callback_query: { id: 'editorial-new', from: { id: 101, is_bot: false }, data: `h:${next.id}:1`, message: { message_id: 2, chat: { id: 101, type: 'private' } } } })
+    await vi.waitFor(() => expect(f.jobs.get(profileIds[0], editedId).status).toBe('succeeded'))
+    await f.hub.notify(); await f.hub.notify()
+    expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(4)
   })
   it('delivers the bound profile snapshot to Agent and preserves its evidence for Telegram runs', async () => {
     let knowledge!: KnowledgeService

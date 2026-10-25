@@ -23,6 +23,7 @@ import type { EditorialState } from '../editorial/engine-schema'
 import { advanceEditorial, createEditorialState } from '../editorial/engine'
 import { normalizeEditorialTask } from '../editorial/schema'
 import type { EditorialResult } from '../editorial/result'
+import { abortable } from '../shared/abortable'
 
 /** Same durable editorial route for a manual task and a Telegram message. */
 export async function executeEditorialOperation(options: {
@@ -38,9 +39,9 @@ export async function executeEditorialOperation(options: {
   if (state && JSON.stringify(state.task) !== JSON.stringify(task)) throw new Error('Задание изменилось после сохранённой контрольной точки.')
   if (!state) {
     if (!provider.identity) throw new Error('Подключение не предоставляет digest установленной модели.')
-    const signal = AbortSignal.any([options.signal, AbortSignal.timeout(Math.max(1, Math.min(30000, options.deadline - Date.now())))])
+    const signal = AbortSignal.any([options.signal, ...(provider.signal ? [provider.signal] : []), AbortSignal.timeout(Math.max(1, Math.min(30000, options.deadline - Date.now())))])
     options.beforeModel()
-    const modelDigest = await provider.identity(node.config.model.name, signal)
+    const modelDigest = await abortable(() => provider.identity!(node.config.model!.name, signal), signal)
     state = await createEditorialState(task, packet, {
       model: node.config.model.name, modelDigest, contextTokens: operation.limits.contextTokens,
       maxOutputTokens: operation.limits.maxOutputTokens,
