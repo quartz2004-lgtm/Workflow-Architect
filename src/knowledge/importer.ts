@@ -43,7 +43,9 @@ export async function sourceRoot(path: string) {
     const parent = resolve(cursor, '..'); if (parent === cursor) break; cursor = parent
   }
   if (!(await lstat(root)).isDirectory()) throw new KnowledgeError('Источник должен быть папкой.')
-  return root
+  // Windows may supply an 8.3 alias (RUNNER~1). Compare canonical paths on both
+  // sides of the containment check, after rejecting symbolic ancestors.
+  return realpath(root)
 }
 async function safeFile(root: string, path: string) {
   if (!allowedKnowledgePath(path)) throw new KnowledgeError(`Путь исключён из импорта: ${path}`)

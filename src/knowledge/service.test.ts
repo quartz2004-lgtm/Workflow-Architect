@@ -16,7 +16,8 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, writeFile, rm, rename, readFile, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, rename, readFile, symlink, realpath } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { profileIds } from '../profiles/schema'
@@ -39,6 +40,14 @@ async function fixture() {
   return { root, sourcePath, storage, service, id, input, preview }
 }
 describe('local knowledge snapshots', () => {
+  it.runIf(process.platform === 'win32')('accepts Windows short path aliases while preserving canonical containment', async () => {
+    const f = await fixture()
+    const shortPath = execFileSync('powershell.exe', ['-NoProfile', '-Command', '(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:WORKFLOW_TEST_SOURCE).ShortPath'], { env: { ...process.env, WORKFLOW_TEST_SOURCE: f.sourcePath }, encoding: 'utf8', windowsHide: true }).trim()
+    const scan = await scanSource(shortPath)
+    expect(scan.sourcePath).toBe(await realpath(f.sourcePath))
+    const preview = await f.service.prepare({ ...f.input, sourcePath: shortPath })
+    expect(preview.snapshot.documents).toHaveLength(3)
+  })
   it.runIf(process.env.WORKFLOW_KNOWLEDGE_SOURCE)('imports the explicitly supplied real source without changing it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'wa-knowledge-real-')); directories.push(root)
     const service = new KnowledgeService(root), scan = await scanSource(process.env.WORKFLOW_KNOWLEDGE_SOURCE!)
