@@ -46,7 +46,14 @@ export type ContextRequest = z.input<typeof contextRequestSchema>
 export interface ContextSource { collectionId: string; snapshot: KnowledgeSnapshot }
 interface Fragment { locator: string; content: string; sourceIds: string[]; skus: string[]; references?: string[] }
 const normalize = (text: string) => text.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е')
-const words = (text: string) => [...new Set(normalize(text).match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])]
+// Lightweight inflection matching, not semantic inference. Identifiers retain
+// their separate exact-match path; no stemming for mixed alphanumeric tokens.
+function lexicalKey(word: string): string {
+  if (!/^[а-я]{5,}$/u.test(word)) return word
+  const stem = word.replace(/(?:иями|ами|ями|ого|ему|ому|ыми|ими|иях|ах|ях|ов|ев|ей|ый|ий|ой|ая|яя|ое|ее|ые|ие|ых|их|ую|юю|а|я|ы|и|у|ю|е|о)$/u, '')
+  return stem.length >= 4 ? stem : word
+}
+const words = (text: string) => [...new Set((normalize(text).match(/[\p{L}\p{N}_-]{3,}/gu) ?? []).map(lexicalKey))]
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 const pointer = (key: string) => key.replaceAll('~', '~0').replaceAll('/', '~1')
 const skuKeys = new Set(['sku', 'canonical_sku', 'product_sku', 'skus', 'applies_to_skus'])
@@ -137,8 +144,8 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
       if (skuMatch) foundSku = true
       const idMatches = request.sourceIds.filter(id => fragment.sourceIds.includes(id))
       idMatches.forEach(id => foundIds.add(id))
-      const haystack = normalize(`${document.path}\n${fragment.content}`)
-      const lexical = tokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0)
+      const haystack = new Set(words(`${document.path}\n${fragment.content}`))
+      const lexical = tokens.reduce((total, token) => total + Number(haystack.has(token)), 0)
       const exact = skuMatch || idMatches.length > 0
       const { references = [], ...evidence } = fragment
       candidates.push({ score: Number(skuMatch) * 10000 + idMatches.length * 1000 + lexical, exact,

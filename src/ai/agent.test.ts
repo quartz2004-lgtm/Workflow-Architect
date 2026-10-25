@@ -133,6 +133,11 @@ describe('bounded agent loop', () => {
     expect(provider.chat).not.toHaveBeenCalled()
     await expect(runAgent(fake([{ ...response(), outputTokens: 9000 }]), request(), signal)).rejects.toThrow('лимит токенов')
   })
+  it('does not silently shrink the requested answer when source context uses its reserve', async () => {
+    const provider = fake([response()])
+    await expect(runAgent(provider, request({ input: 'x'.repeat(1600), limits: { ...defaultAgentLimits, contextTokens: 4096, maxOutputTokens: 2048 } }), new AbortController().signal)).rejects.toThrow('Резерв ответа автоматически не уменьшается')
+    expect(provider.chat).not.toHaveBeenCalled()
+  })
   it('cancels a non-cooperative provider and never executes its late tool call', async () => {
     const provider = fake([]), controller = new AbortController()
     let finish!: (value: ModelResponse) => void

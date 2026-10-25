@@ -88,8 +88,8 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
       const textMessages = messages.map(message => ({ ...message, images: undefined }))
       const inputBound = new TextEncoder().encode(JSON.stringify({ messages: textMessages, tools: tools.map(tool => tool.definition), schema })).byteLength + 1024 + imageContextReserve(images)
       const remaining = limits.maxTotalTokens - inputTokens - outputTokens
-      const maxOutputTokens = Math.min(limits.maxOutputTokens, remaining - inputBound, contextTokens - inputBound)
-      if (maxOutputTokens < 64) throw new Error('Недостаточно бюджета токенов или контекста для следующего вызова. Сократите контекст или увеличьте лимит.')
+      const maxOutputTokens = limits.maxOutputTokens
+      if (inputBound + maxOutputTokens > remaining || inputBound + maxOutputTokens > contextTokens) throw new Error(`Недостаточно бюджета токенов или контекста: входу требуется до ${inputBound}, ответу зарезервировано ${maxOutputTokens}. Сократите контекст или увеличьте лимит. Резерв ответа автоматически не уменьшается.`)
       const reservedCost = (inputBound * provider.costPerMillionInput + maxOutputTokens * provider.costPerMillionOutput) / 1000000
       if (costUsd + reservedCost > limits.maxCostUsd) throw new Error('Следующий запрос превышает лимит расходов.')
       trace({ kind: 'model-start', call, model })
