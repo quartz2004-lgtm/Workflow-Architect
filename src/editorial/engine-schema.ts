@@ -25,7 +25,7 @@ export const editorialSettingsSchema = z.strictObject({
   contextTokens: z.number().int().min(2048).max(32768),
   maxOutputTokens: z.number().int().min(128).max(8192),
   temperature: z.number().min(0).max(2),
-  callTimeoutMs: z.number().int().min(1000).max(300000),
+  callTimeoutMs: z.number().int().min(1000).max(900000),
 })
 export const editorialCallSchema = z.strictObject({
   id: z.uuid(), stage: z.enum(['planner', 'writer', 'reviewer']), revision: z.number().int().min(0).max(3),

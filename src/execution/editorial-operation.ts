@@ -45,7 +45,7 @@ export async function executeEditorialOperation(options: {
       model: node.config.model.name, modelDigest, contextTokens: operation.limits.contextTokens,
       maxOutputTokens: operation.limits.maxOutputTokens,
       temperature: typeof node.config.model.parameters?.temperature === 'number' ? node.config.model.parameters.temperature : 0.3,
-      callTimeoutMs: operation.limits.timeoutMs,
+      callTimeoutMs: budget.stageTimeoutMs ?? operation.limits.timeoutMs,
     }, { ...budget, maxTotalTokens: Math.min(budget.maxTotalTokens, options.tokenBudget) })
     state.deadline = Math.min(state.deadline, options.deadline)
     await options.save(state)

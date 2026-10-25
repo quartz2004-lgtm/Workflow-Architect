@@ -21,6 +21,7 @@ import { z } from 'zod'
 export const editorialBudgetSchema = z.strictObject({
   maxRevisions: z.number().int().min(1).max(3),
   timeoutMs: z.number().int().min(1000).max(3600000),
+  stageTimeoutMs: z.number().int().min(1000).max(900000).optional(),
   maxTotalTokens: z.number().int().min(1024).max(262144),
 })
-export const defaultEditorialBudget = editorialBudgetSchema.parse({ maxRevisions: 3, timeoutMs: 1800000, maxTotalTokens: 131072 })
+export const defaultEditorialBudget = editorialBudgetSchema.parse({ maxRevisions: 3, timeoutMs: 1800000, stageTimeoutMs: 600000, maxTotalTokens: 131072 })
