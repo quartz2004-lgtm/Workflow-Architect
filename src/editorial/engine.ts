@@ -63,6 +63,11 @@ export async function advanceEditorial(options: {
   }
   if (!['planner', 'writer', 'reviewer'].includes(state.phase)) return state
   if (options.signal.aborted) { state.phase = 'cancelled'; return persist() }
+  if (packet.gaps.length) {
+    state.phase = 'needs-editing'
+    state.issues = packet.gaps.map(gap => ({ code: 'knowledge-gap', origin: 'program', message: gap.detail }))
+    return persist()
+  }
   if (Date.now() >= state.deadline || state.calls.length >= 7 || state.spentTokens >= state.budget.maxTotalTokens) {
     state.phase = 'needs-editing'; state.issues.push(issue('Исчерпан общий бюджет редакционной задачи. Уже полученные версии сохранены.')); return persist()
   }
@@ -80,11 +85,14 @@ export async function advanceEditorial(options: {
   }
   const prompt = JSON.stringify({
     task: state.task, knowledge,
-    ...(stage !== 'planner' ? { plan: state.plan } : {}),
+    ...(stage === 'writer' ? { plan: state.plan } : {}),
     ...(state.versions.length ? { draft: state.versions.at(-1)!.text, remarks: state.issues } : {}),
   })
-  const system = [policy, instructions[stage], packet.handoff?.instructions].filter(Boolean).join('\n\n')
-  const settings = { ...state.settings, temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }
+  const system = [policy, instructions[stage], packet.handoff?.instructions,
+    'Состав ткани сам по себе не доказывает характеристики готового изделия. Не приписывай товару расположение или форму швов, посадку, долговечность, отсутствие раздражения и гарантированный комфорт, если это прямо не подтверждено досье. Общие советы по примерке отделяй от описания конкретной модели.',
+    ...(stage === 'writer' ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
+  ].filter(Boolean).join('\n\n')
+  const settings = { ...state.settings, maxOutputTokens: stage === 'writer' ? state.settings.maxOutputTokens : Math.min(state.settings.maxOutputTokens, 1536), temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }
   const pictures = images?.map(item => item.image) ?? []
   const reservedTokens = new TextEncoder().encode(JSON.stringify({ system, prompt })).byteLength + 2048 + imageContextReserve(pictures) + settings.maxOutputTokens
   if (reservedTokens > settings.contextTokens || reservedTokens + state.spentTokens > state.budget.maxTotalTokens) {

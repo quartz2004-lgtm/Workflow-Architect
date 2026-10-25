@@ -25,6 +25,7 @@ import { profileIds } from '../../src/profiles/schema'
 test('editorial starter, ordinary task, source preview and exact Human file in native UI', async () => {
   const article = `# Комфорт SOAR\n\n## Посадка\n${'Пример '.repeat(310)}\n\n## Движение\n${'Проверка '.repeat(310)}`
   const stages: string[] = []
+  const prompts: string[] = []
   const server = createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json')
     if (request.url === '/api/tags') { response.end(JSON.stringify({ models: [{ name: 'editorial-fixture', digest: 'a'.repeat(64) }] })); return }
@@ -34,6 +35,7 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     const system = body.messages[0]!.content
     const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') ? 'writer' : 'reviewer'
     stages.push(stage)
+    prompts.push(body.messages[1]!.content)
     const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? article : '{"verdict":"ready-for-human","comments":[]}'
     response.end(JSON.stringify({ model: 'editorial-fixture', done: true, done_reason: 'stop', prompt_eval_count: 100, eval_count: 300, message: { role: 'assistant', content } }))
   })
@@ -88,5 +90,16 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await artifact.scrollIntoViewIfNeeded()
     expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
     await page.screenshot({ path: 'desktop-results/editorial-compact.png' })
+    await panel.getByRole('button', { name: 'Доработать этот текст' }).click()
+    await expect(panel.getByRole('region', { name: 'Текст для доработки' })).toContainText('Прежнее одобрение не переносится')
+    await panel.getByLabel('Что подготовить?').fill('Добавь полезный вывод, сохрани остальные разделы')
+    await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
+    await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
+    expect(JSON.parse(prompts[3]!).task.previousArticle).toBe(article)
+    expect(stages).toHaveLength(6)
+    await expect(panel.locator('.run-artifact')).toHaveCount(0)
+    await human.getByRole('button', { name: 'Отклонить', exact: true }).click()
+    await expect(panel.getByRole('region', { name: 'Редакционный процесс' })).toContainText('Вы отклонили эту версию')
+    await expect(panel.locator('.run-artifact')).toHaveCount(0)
   } finally { await app.close(); await new Promise<void>(done => server.close(() => done())) }
 })

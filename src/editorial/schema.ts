@@ -29,6 +29,15 @@ export const editorialTaskSchema = z.strictObject({
 })
 export type EditorialTask = z.infer<typeof editorialTaskSchema>
 
+/** The full previous article is stored in task evidence, not charged again to the source packet. */
+export function editorialKnowledgeRequest(task: EditorialTask) {
+  const title = task.previousArticle?.split('\n').find(line => /^#\s+/.test(line))?.replace(/^#\s+/, '').slice(0, 300)
+  return {
+    task: JSON.stringify({ schemaVersion: task.schemaVersion, text: task.text, audience: task.audience, minimumWords: task.minimumWords, language: task.language }),
+    query: [task.text, title].filter(Boolean).join('\n'),
+  }
+}
+
 /** Read only explicitly supported legacy fields, never stringify a Telegram envelope. */
 export function normalizeEditorialTask(input: unknown, minimumWords = 600): EditorialTask {
   if (typeof input === 'string') return editorialTaskSchema.parse({ schemaVersion: '0.5.4', text: input, audience: 'Общая аудитория', minimumWords, language: 'Русский' })

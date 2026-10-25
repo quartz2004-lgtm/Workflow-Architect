@@ -16,7 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { describe, expect, it } from 'vitest'
-import { defaultEditorialBudget, editorialBudgetSchema, normalizeEditorialTask } from './schema'
+import { defaultEditorialBudget, editorialBudgetSchema, editorialKnowledgeRequest, normalizeEditorialTask } from './schema'
 import { checkEditorialText } from './quality'
 import { approveEditorialVersion, createEditorialVersion, isEditorialApprovalCurrent } from './versions'
 
@@ -25,6 +25,14 @@ const text = `# Посадка\n\n## Выбор\n${'Пример '.repeat(60)}\n
 const taskId = '00000000-0000-4000-8000-000000000001', id = '00000000-0000-4000-8000-000000000002'
 
 describe('editorial input and bounded policy', () => {
+  it('keeps a long original article out of the source budget while searching its subject for edits', () => {
+    const previousArticle = `# Комфорт SOAR\n${'Длинный текст '.repeat(3000)}`
+    const input = normalizeEditorialTask({ text: 'Добавь вывод', previousArticle })
+    const request = editorialKnowledgeRequest(input)
+    expect(request.query).toBe('Добавь вывод\nКомфорт SOAR')
+    expect(request.task).not.toContain('Длинный текст')
+    expect(input.previousArticle).toBe(previousArticle)
+  })
   it('uses the same content for manual and Telegram, without leaking routing metadata', () => {
     expect(normalizeEditorialTask('Посадка')).toEqual(normalizeEditorialTask({ text: 'Посадка', chatId: 'private-chat', userId: 'private-user', source: 'telegram' }))
     expect(normalizeEditorialTask({ text: 'Добавь пример', previousArticle: text }).previousArticle).toBe(text)

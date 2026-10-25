@@ -68,6 +68,8 @@ describe('durable bounded editorial stages', () => {
     expect(saved.map(item => item.calls.at(-1)?.status)).toEqual(['pending', 'complete', 'pending', 'complete', 'pending', 'complete'])
     expect(state.calls.every(call => call.settings.modelDigest === 'a'.repeat(64) && call.metrics?.outputTokens === 100)).toBe(true)
     expect(model.requests.every(request => request.messages.length === 2 && request.tools.length === 0)).toBe(true)
+    expect(JSON.parse(model.requests[2]!.messages[1]!.content)).not.toHaveProperty('plan')
+    expect(model.requests.map(request => request.maxOutputTokens)).toEqual([1536, 2048, 1536])
     expect(state.spentTokens).toBe(600)
   })
 
@@ -85,14 +87,15 @@ describe('durable bounded editorial stages', () => {
     expect(state.issues.some(item => item.code === 'volume')).toBe(true)
   })
 
-  it('does not let a positive model review erase formal failures or knowledge gaps', async () => {
+  it('stops before generation when the frozen source packet is incomplete', async () => {
     const missing = { ...packet, gaps: [{ kind: 'missing-sku' as const, detail: 'Товар отсутствует' }] }
     let state = await createEditorialState({ text: 'Тема', minimumWords: 100 }, missing, settings)
-    const model = provider([reply('План'), reply(article, 'length'), reply(ready)])
+    const model = provider([])
     for (let i = 0; i < 3; i++) state = await advanceEditorial({ state, packet: missing, provider: model, signal: signal(), save: async () => {} })
-    expect(state.phase).toBe('writer')
-    expect(state.versions[0]!.issues.map(item => item.code)).toEqual(['incomplete', 'knowledge-gap'])
-    expect(state.versions[0]!.text).toBe(article)
+    expect(state.phase).toBe('needs-editing')
+    expect(state.issues.map(item => item.code)).toEqual(['knowledge-gap'])
+    expect(state.versions).toEqual([])
+    expect(model.requests).toEqual([])
   })
 
   it('preserves a concrete semantic objection independently from program checks', async () => {
