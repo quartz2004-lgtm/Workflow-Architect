@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { assertValueBudget } from '../execution/values'
 import { localConnectionSchema, localModelNameSchema, type LocalConnection } from './schema'
 import type { ModelCapabilities, ModelProvider, ModelRequest, ModelResponse } from './types'
+import { modelImagesSchema } from './images'
 
 const toolCall = z.object({ function: z.object({ name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/), arguments: z.record(z.string(), z.json()) }) })
 const replySchema = z.object({
@@ -40,7 +41,7 @@ export class OllamaProvider implements ModelProvider {
   private async request(path: '/api/tags' | '/api/show' | '/api/chat', body: unknown, signal: AbortSignal): Promise<unknown> {
     signal.throwIfAborted()
     const serialized = body === undefined ? undefined : JSON.stringify(body)
-    if (serialized && new TextEncoder().encode(serialized).byteLength > 512 * 1024) throw new Error('Запрос модели превышает 512 KiB.')
+    if (serialized && new TextEncoder().encode(serialized).byteLength > 2 * 1024 * 1024) throw new Error('Запрос модели превышает 2 MiB.')
     let response: Response
     try {
       response = await this.transport(this.base + path, {
@@ -87,13 +88,16 @@ export class OllamaProvider implements ModelProvider {
     const contexts = Object.entries(data.model_info).filter(([key, value]) => key.endsWith('.context_length') && typeof value === 'number').map(([, value]) => value as number)
     const contextTokens = contexts.length ? Math.min(...contexts) : 2048
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 2048) throw new Error('Не удалось определить контекст модели.')
-    return { tools: data.capabilities.includes('tools'), thinking: data.capabilities.includes('thinking'), contextTokens: Math.min(contextTokens, 32768) }
+    return { tools: data.capabilities.includes('tools'), thinking: data.capabilities.includes('thinking'), vision: data.capabilities.includes('vision'), contextTokens: Math.min(contextTokens, 32768) }
   }
   async chat(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse> {
     localModelNameSchema.parse(request.model)
+    const images = modelImagesSchema.parse(request.messages.flatMap(message => message.images ?? []))
+    if (images.length && request.messages.some(message => message.images?.length && message.role !== 'user')) throw new Error('Изображения допустимы только в пользовательском сообщении.')
     const data = replySchema.parse(await this.request('/api/chat', {
       model: request.model, stream: false, think: false, keep_alive: '5m',
       messages: request.messages.map(message => ({ role: message.role, content: message.content,
+        ...(message.images?.length ? { images: message.images.map(image => image.data) } : {}),
         ...(message.toolName ? { tool_name: message.toolName } : {}),
         ...(message.toolCalls?.length ? { tool_calls: message.toolCalls.map(call => ({ type: 'function', function: call })) } : {}),
       })),
