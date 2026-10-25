@@ -28,6 +28,7 @@ import { jobSchema, runtimeProfileSchema, submitJobSchema, summarizeJob, termina
 import { recoveryDecision } from './recovery-policy'
 import type { ProviderResolver } from '../execution/agent-operation'
 import type { ConnectorExecutor } from '../execution/connector-operation'
+import type { RuntimeKnowledge } from '../knowledge/runtime'
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -51,7 +52,7 @@ export class JobManager {
   private stopped = false
   private fault = ''
   readonly damaged: { id: string; message: string }[] = []
-  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver; connector?: (profileId: string) => ConnectorExecutor } = {}) {
+  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver; connector?: (profileId: string) => ConnectorExecutor; knowledge?: RuntimeKnowledge } = {}) {
     if (!Number.isInteger(options.concurrency ?? 2) || (options.concurrency ?? 2) < 1 || (options.concurrency ?? 2) > 4) throw new Error('Параллельность должна быть от 1 до 4.')
     this.disk = new AtomicStore(directory, jobSchema, options.limits)
     for (const id of this.disk.ids()) {
@@ -69,6 +70,10 @@ export class JobManager {
   }
   private verify(job: RuntimeJob, id: string) {
     if (job.id !== id || fingerprint(requestData(job)) !== job.fingerprint) throw new Error('Нарушена целостность задания.')
+    if (job.recordVersion === '0.5.3') {
+      if (!job.preparedKnowledge || createHash('sha256').update(canonical(job.preparedKnowledge)).digest('hex') !== job.knowledgeDigest) throw new Error('Нарушена целостность пакета знаний.')
+      if (job.preparedKnowledge.some(entry => entry.packet.runId !== job.id || entry.packet.profileId !== job.profileId)) throw new Error('Пакет знаний относится к другому запуску.')
+    } else if (job.preparedKnowledge || job.knowledgeDigest) throw new Error('Пакет знаний требует recordVersion 0.5.3.')
     const compiled = compileProject(job.plan.snapshot, job.plan.entryNodeId)
     if (!compiled.ok) throw new Error('Сохранённый план больше не проходит проверку исполнения.')
     if (job.checkpoint) {
@@ -125,8 +130,12 @@ export class JobManager {
       return structuredClone(duplicate)
     }
     if (this.jobs.has(request.id)) throw new Error('ID задания уже используется.')
+    const configuredKnowledge = graphEntries(compiled.plan.snapshot).some(({ graph }) => graph.nodes.some(node => node.status !== 'disabled' && node.operation?.kind === 'agent' && node.operation.knowledge && (node.operation.knowledge.collections.length || node.operation.knowledge.imageIds.length)))
+    if (configuredKnowledge && !this.options.knowledge) throw new Error('Runtime не поддерживает выбранные источники Agent.')
+    const preparedKnowledge = this.options.knowledge?.prepare(request.profileId, request.id, compiled.plan.snapshot, request.input) ?? []
+    const knowledgeDigest = createHash('sha256').update(canonical(preparedKnowledge)).digest('hex')
     const timestamp = nowISO()
-    const job = jobSchema.parse({ recordVersion: '0.3.1', id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
+    const job = jobSchema.parse({ recordVersion: '0.5.3', preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
       createdAt: timestamp, updatedAt: timestamp, background: request.background, plan: compiled.plan, input: request.input,
       status: 'queued', cancelRequested: false, attempts: 0, deadline: Date.now() + compiled.plan.limits.timeoutMs, retryAt: 0,
       message: '', checkpoint: null, events: [], outcome: null })
@@ -209,7 +218,9 @@ export class JobManager {
   private launch(job: RuntimeJob) {
     let events = [...job.events]
     try {
-      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { provider: this.options.provider?.(job.profileId), connector: this.options.connector?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
+      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { runId: job.recordVersion === '0.5.3' ? job.id : undefined,
+        knowledge: this.options.knowledge ? nodeId => this.options.knowledge!.resolve(job.profileId, job.id, job.preparedKnowledge ?? [], nodeId) : undefined,
+        provider: this.options.provider?.(job.profileId), connector: this.options.connector?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
         const current = this.jobs.get(job.id)!
         const outcome = this.outcome(checkpoint, events)
         this.commit({ ...current, status: current.cancelRequested ? 'cancelled' : checkpoint.status, checkpoint, events, outcome })

@@ -20,6 +20,7 @@ import { Modal } from '../shared/Modal'
 import { knowledgeRequest } from './client'
 import { knowledgeDocumentSchema, knowledgeListSchema, knowledgePreviewSchema, knowledgeScanSchema, type KnowledgeCollection, type KnowledgeDocument, type KnowledgePreview, type KnowledgeScan, type KnowledgeView } from './schema'
 import './knowledge.css'
+import { MediaLibrary } from './MediaLibrary'
 
 const date = (value: string) => new Date(value).toLocaleString('ru-RU')
 export function KnowledgeDialog({ profileId, profileName, close }: { profileId: KnowledgeCollection['profileId']; profileName: string; close: () => void }) {
@@ -50,7 +51,7 @@ export function KnowledgeDialog({ profileId, profileName, close }: { profileId: 
     setSelected(editing ? [...editing.selectedPaths] : next.files.filter(file => file.recommended).map(file => file.path))
   }
   return <Modal title="Знания SOAR" close={busy ? () => {} : close} wide className="knowledge-dialog">
-    <section className="knowledge-intro"><span className="knowledge-eyebrow">LOCAL KNOWLEDGE · 0.5.2</span><h3>Знания остаются рядом</h3><p>Профиль «{profileName}». Подключите папку один раз и сохраняйте проверенные версии. Источник остаётся у вас, рабочий снимок доступен без интернета.</p><p className="knowledge-boundary">Этот этап хранит и проверяет базу. Автоматический подбор знаний в запросы Mistral появится в 0.5.3; сейчас модель ещё не читает эти коллекции.</p></section>
+    <section className="knowledge-intro"><span className="knowledge-eyebrow">LOCAL KNOWLEDGE · 0.5.3</span><h3>Знания остаются рядом</h3><p>Профиль «{profileName}». Подключите папку один раз и сохраняйте проверенные версии. Источник остаётся у вас, рабочий снимок доступен без интернета.</p><p className="knowledge-boundary">Чтобы модель использовала базу, выберите коллекции в узле Agent → «Знания агента». Перед запуском можно проверить поиск без ИИ. Пакет источников сохраняется в истории Run; подключение папки само по себе не добавляет её во все запросы.</p></section>
     {!native ? <p role="status">Подключение локальных папок доступно в Windows-приложении. Откройте установленную версию Workflow Architect.</p> : <>
       <div className="knowledge-actions"><button disabled={busy} onClick={() => start(null)}>Подключить папку</button><button disabled={busy} onClick={() => void perform(async () => { const id = await knowledgeRequest({ kind: 'restore', profileId }); if (id) { await refresh(); setNotice('Копия восстановлена отдельной коллекцией. Разрешите использование и заново выберите папку для обновлений.') } })}>Восстановить копию</button><button disabled={busy} onClick={() => void perform(refresh)}>Обновить список</button></div>
       {error && <p role="alert" className="knowledge-error">{error}</p>}{notice && <p role="status">{notice}</p>}{busy && <p role="status">Проверяем и сохраняем…</p>}
@@ -86,6 +87,7 @@ export function KnowledgeDialog({ profileId, profileName, close }: { profileId: 
       </article>)}
       {confirm && <section className="knowledge-step" role="alert"><h3>{confirm.kind === 'remove' ? 'Удалить коллекцию и её историю?' : 'Удалить историю, оставив текущий снимок?'}</h3><p>«{confirm.collection.label}». Исходные файлы SOAR останутся на месте. Для возврата удалённых снимков понадобится резервная копия.</p><button disabled={busy} onClick={() => void perform(async () => { await knowledgeRequest({ kind: confirm.kind, profileId, id: confirm.collection.id, revision: confirm.collection.revision }); setConfirm(null); setDocument(null); await refresh() })}>Подтвердить удаление</button><button disabled={busy} onClick={() => setConfirm(null)}>Отмена</button></section>}
       {document && <section ref={documentRef} className="knowledge-document" aria-label="Просмотр документа"><div className="knowledge-heading"><h3>{document.path}</h3><button onClick={() => setDocument(null)}>Закрыть документ</button></div><p className="knowledge-caption">ID {document.id}<br />SHA256 {document.hash}</p><p>Область и согласование показаны только из явных полей. «Не указано» означает неизвестное; согласование не заменяет доказательство свойства.</p>{document.facts.length > 0 && <details><summary>Исходные ID, SKU и область утверждений ({document.facts.length})</summary><div className="knowledge-facts">{document.facts.map((fact, index) => <p key={index}><strong>{fact.sourceId}</strong> · SKU {fact.sku ?? 'не указан'}<br />Согласование: {fact.approval ?? 'не указано'}<br />Область: {fact.scope ?? 'не указана'}</p>)}</div></details>}<pre>{document.content}</pre></section>}
+    <MediaLibrary key={profileId} profileId={profileId} />
     </>}
   </Modal>
 }

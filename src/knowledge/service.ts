@@ -20,6 +20,7 @@ import { access } from 'node:fs/promises'
 import { AtomicStore } from '../runtime/atomic-store'
 import { knowledgeBackupSchema, knowledgeCollectionSchema, knowledgeDocumentViewSchema, knowledgeLimits, type KnowledgeCollection, type KnowledgeSnapshot, type KnowledgeView } from './schema'
 import { documentId, importSnapshot, KnowledgeError, verifySnapshot } from './importer'
+import type { ContextSource } from './context'
 
 type Candidate = { token: string; expiresAt: string; collection: KnowledgeCollection; expectedRevision: number | undefined }
 export const snapshotView = (snapshot: KnowledgeSnapshot) => ({ ...snapshot, documents: snapshot.documents.map(document => knowledgeDocumentViewSchema.parse(Object.fromEntries(Object.entries(document).filter(([key]) => key !== 'content')))) })
@@ -95,6 +96,20 @@ export class KnowledgeService {
     const document = collection.snapshots.find(snapshot => snapshot.id === snapshotId)?.documents.find(doc => doc.id === documentId)
     if (!document) throw new KnowledgeError('Документ не найден в выбранном снимке.')
     return document
+  }
+  /** Freeze explicit selections before a run. Never fall back to another profile or newer version. */
+  capture(profileId: string, selections: readonly { collectionId: string; snapshotId?: string }[]): ContextSource[] {
+    if (selections.length > 4 || new Set(selections.map(item => item.collectionId)).size !== selections.length) throw new KnowledgeError('Выберите не более четырёх разных коллекций.')
+    return selections.map(selection => {
+      const collection = this.read(profileId, selection.collectionId)
+      if (!collection.enabled) throw new KnowledgeError('Доступ к знаниям отозван. Разрешите использование выбранной коллекции.')
+      const snapshot = selection.snapshotId ? collection.snapshots.find(item => item.id === selection.snapshotId) : collection.snapshots[0]
+      if (!snapshot) throw new KnowledgeError('Выбранный снимок знаний больше недоступен. Выберите версию явно.')
+      return { collectionId: collection.id, snapshot: structuredClone(snapshot) }
+    })
+  }
+  assertAllowed(profileId: string, collectionIds: readonly string[]): void {
+    for (const id of collectionIds) if (!this.read(profileId, id).enabled) throw new KnowledgeError('Доступ к знаниям отозван. Запрос модели не выполнен.')
   }
   change(profileId: string, id: string, revision: number, action: 'enable' | 'prune' | 'remove', enabled?: boolean) {
     const collection = this.version(profileId, id, revision)

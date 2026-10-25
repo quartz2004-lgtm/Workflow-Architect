@@ -40,6 +40,24 @@ async function fixture() {
   return { root, sourcePath, storage, service, id, input, preview }
 }
 describe('local knowledge snapshots', () => {
+  it('captures only authorised snapshots and keeps a run independent of source updates and pruning', async () => {
+    const f = await fixture()
+    const selection = [{ collectionId: f.id, snapshotId: f.preview.snapshot.id }]
+    const captured = f.service.capture(profileIds[0], selection)
+    expect(() => f.service.capture(profileIds[1], selection)).toThrow('профиле')
+    expect(() => f.service.capture(profileIds[0], [...selection, ...selection])).toThrow('разных')
+    await writeFile(join(f.sourcePath, 'source/current/CARE-v1.md'), '# New care\nNew conditions')
+    const next = await f.service.prepare({ ...f.input, id: f.id, revision: 0 })
+    f.service.commit(profileIds[0], next.token)
+    f.service.change(profileIds[0], f.id, 1, 'prune')
+    expect(() => f.service.capture(profileIds[0], selection)).toThrow('снимок')
+    expect(captured[0]!.snapshot.documents.find(doc => doc.path.endsWith('CARE-v1.md'))!.content).toBe('# Care\nNo heat.')
+    await rename(f.sourcePath, `${f.sourcePath}-offline`)
+    expect(f.service.capture(profileIds[0], [{ collectionId: f.id }])[0]!.snapshot.id).toBe(next.snapshot.id)
+    f.service.change(profileIds[0], f.id, 2, 'enable', false)
+    expect(() => f.service.capture(profileIds[0], [{ collectionId: f.id }])).toThrow('отозван')
+    expect(f.service.capture(profileIds[0], [])).toEqual([])
+  })
   it.runIf(process.platform === 'win32')('accepts Windows short path aliases while preserving canonical containment', async () => {
     const f = await fixture()
     const shortPath = execFileSync('powershell.exe', ['-NoProfile', '-Command', '(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:WORKFLOW_TEST_SOURCE).ShortPath'], { env: { ...process.env, WORKFLOW_TEST_SOURCE: f.sourcePath }, encoding: 'utf8', windowsHide: true }).trim()

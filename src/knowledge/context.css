@@ -1,0 +1,31 @@
+/*
+Copyright (C) 2026  quartz2004
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://gnu.org>.
+*/
+
+.knowledge-fields { margin-block: var(--space-4); border-block: 1px solid var(--border); padding-block: var(--space-4); }
+.knowledge-fields > summary { color: var(--text); cursor: pointer; font-weight: 600; padding-block: 8px; }
+.knowledge-fields > button { margin-block: 8px; }
+.knowledge-context { min-width: 0; font-size: 12px; line-height: 1.65; }
+.knowledge-context > details { border: 1px solid var(--border); border-radius: var(--radius-small); margin-block: 10px; padding: 12px; background: var(--canvas); }
+.knowledge-context summary { cursor: pointer; overflow-wrap: anywhere; color: var(--text); }
+.knowledge-context pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; font: 11px/1.65 var(--mono); padding: 12px; background: var(--surface); }
+.knowledge-context [role=status] { border-left: 2px solid var(--amber); padding: 12px; background: var(--surface); }
+.knowledge-context ul { padding-left: 18px; }
+.knowledge-context summary:focus-visible, .knowledge-fields summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.knowledge-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.knowledge-image-grid figure { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
+.knowledge-image-grid img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; border-radius: var(--radius-small); }
+.knowledge-image-grid figcaption { margin-top: 10px; overflow-wrap: anywhere; }

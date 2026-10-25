@@ -21,6 +21,7 @@ import { compileContract } from '../execution/contracts'
 import { assertValueBudget } from '../execution/values'
 import { agentLimitsSchema, localModelNameSchema, type AgentLimits } from './schema'
 import type { ModelMessage, ModelProvider, ModelResponse, ModelTool } from './types'
+import { imageContextReserve, modelImagesSchema, type ModelImage } from './images'
 
 export interface AgentTool extends ModelTool { execute(args: Record<string, JsonValue>, signal: AbortSignal): Promise<JsonValue> }
 export type AgentTrace =
@@ -31,6 +32,7 @@ export type AgentTrace =
 export interface AgentRequest {
   model: string; system: string; input: JsonValue; limits: AgentLimits; temperature: number
   tools: AgentTool[]; requiredTools?: string[]; outputSchema?: Record<string, JsonValue>; minimumWords?: number
+  images?: ModelImage[]
 }
 export interface AgentResult { output: JsonValue; inputTokens: number; outputTokens: number; costUsd: number; calls: number; toolCalls: number }
 export const countWords = (text: string): number => text.match(/[\p{L}\p{N}]+(?:['’‐-][\p{L}\p{N}]+)*/gu)?.length ?? 0
@@ -54,6 +56,7 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
   const system = z.string().min(1).max(24000).parse(raw.system)
   const temperature = z.number().finite().min(0).max(2).parse(raw.temperature)
   const minimumWords = z.number().int().min(0).max(5000).parse(raw.minimumWords ?? 0)
+  const images = modelImagesSchema.parse(raw.images ?? [])
   if (raw.tools.length > 24 || new Set(raw.tools.map(tool => tool.name)).size !== raw.tools.length) throw new Error('Некорректный список инструментов.')
   const tools = raw.tools.map(tool => {
     z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/).parse(tool.name)
@@ -73,18 +76,20 @@ export async function runAgent(provider: ModelProvider, raw: AgentRequest, signa
   const usedTools = new Set<string>()
   let finalizing = tools.length === 0, correctedToolChoice = false, correctedLength = false, correctedEmpty = false
   const toolPolicy = requiredTools.length ? `\n\nRuntime requirement: before writing any final answer, call every required tool: ${requiredTools.join(', ')}. Your FIRST response must be a tool call, not the article or final answer. After receiving tool results, produce the complete final answer following the instructions above.` : ''
-  const messages: ModelMessage[] = [{ role: 'system', content: system + toolPolicy }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input) }]
+  const messages: ModelMessage[] = [{ role: 'system', content: system + toolPolicy }, { role: 'user', content: typeof raw.input === 'string' ? raw.input : JSON.stringify(raw.input), ...(images.length ? { images } : {}) }]
   try {
     const capabilities = await abortable(() => provider.inspect(model, combined), combined)
     if (tools.length && !capabilities.tools) throw new Error('Модель не поддерживает вызовы инструментов.')
+    if (images.length && !capabilities.vision) throw new Error('Модель не поддерживает изображения (Vision). Выберите совместимую локальную модель.')
     const contextTokens = Math.min(capabilities.contextTokens, limits.contextTokens)
     for (let call = 1; call <= limits.maxCalls; call++) {
       combined.throwIfAborted()
       // A conservative UTF-8 byte bound plus framing reserve; never silently trim user context.
-      const inputBound = new TextEncoder().encode(JSON.stringify({ messages, tools: tools.map(tool => tool.definition), schema })).byteLength + 1024
+      const textMessages = messages.map(message => ({ ...message, images: undefined }))
+      const inputBound = new TextEncoder().encode(JSON.stringify({ messages: textMessages, tools: tools.map(tool => tool.definition), schema })).byteLength + 1024 + imageContextReserve(images)
       const remaining = limits.maxTotalTokens - inputTokens - outputTokens
-      const maxOutputTokens = Math.min(limits.maxOutputTokens, remaining - inputBound, contextTokens - inputBound)
-      if (maxOutputTokens < 64) throw new Error('Недостаточно бюджета токенов или контекста для следующего вызова. Сократите контекст или увеличьте лимит.')
+      const maxOutputTokens = limits.maxOutputTokens
+      if (inputBound + maxOutputTokens > remaining || inputBound + maxOutputTokens > contextTokens) throw new Error(`Недостаточно бюджета токенов или контекста: входу требуется до ${inputBound}, ответу зарезервировано ${maxOutputTokens}. Сократите контекст или увеличьте лимит. Резерв ответа автоматически не уменьшается.`)
       const reservedCost = (inputBound * provider.costPerMillionInput + maxOutputTokens * provider.costPerMillionOutput) / 1000000
       if (costUsd + reservedCost > limits.maxCostUsd) throw new Error('Следующий запрос превышает лимит расходов.')
       trace({ kind: 'model-start', call, model })

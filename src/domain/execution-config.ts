@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import { z } from 'zod'
 import { agentLimitsSchema } from './agent-config'
 import { connectorActionSchema } from './connector-actions'
+import { agentKnowledgeSchema } from './knowledge-config'
 
 /** Declarative data, never JavaScript. Empty JSON Pointer selects the entire value. */
 export const jsonPointerSchema = z.string().max(1000).refine(value => value === '' || (value.startsWith('/') && !/~(?![01])/u.test(value)), 'Ожидается JSON Pointer: /field или пустая строка.')
@@ -46,7 +47,7 @@ export const executionConfigSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('connector'), connectionId: z.uuid(), action: connectorActionSchema, fields: fieldsSchema }),
   z.strictObject({ kind: z.literal('telegram-message') }),
   z.strictObject({ kind: z.literal('schedule') }),
-  z.strictObject({ kind: z.literal('agent'), limits: agentLimitsSchema, minimumWords: z.number().int().min(0).max(5000), requireTools: z.boolean() }),
+  z.strictObject({ kind: z.literal('agent'), limits: agentLimitsSchema, minimumWords: z.number().int().min(0).max(5000), requireTools: z.boolean(), knowledge: agentKnowledgeSchema.optional() }),
   z.strictObject({ kind: z.literal('text-statistics'), minimumWords: z.number().int().min(0).max(5000) }),
   z.strictObject({ kind: z.literal('parallel'), joinNodeId: z.uuid(), concurrency: z.number().int().min(1).max(4) }),
   z.strictObject({ kind: z.literal('manual') }),

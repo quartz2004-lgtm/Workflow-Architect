@@ -36,7 +36,7 @@ for (const [name, Constructor, id] of [
   const imports = []
   source = source.replace(/require\("(ajv\/dist\/runtime\/[^"]+)"\)\.default/g, (_match, path) => {
     const name = `runtime${imports.length}`
-    imports.push(`import ${name} from '${path}.js';`)
+    imports.push(`import ${name}Module from '${path}.js';\nconst ${name} = typeof ${name}Module === 'function' ? ${name}Module : ${name}Module.default;`)
     return name
   })
   if (source.includes('require(')) throw new Error('Unrecognized runtime dependency in standalone schema')

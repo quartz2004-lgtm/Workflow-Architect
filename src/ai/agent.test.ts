@@ -32,6 +32,22 @@ const request = (changes: Partial<AgentRequest> = {}): AgentRequest => ({ model:
 const call = (name = 'text_stats', args = {}): ModelResponse => ({ ...response(''), toolCalls: [{ name, arguments: args }] })
 
 describe('bounded agent loop', () => {
+  it('rejects images for a text-only model before generation and reserves visual context separately', async () => {
+    const images = [{ data: `iVBORw0KGgoA${'A'.repeat(100000)}`, width: 512, height: 512 }]
+    const unsupported = fake([response()])
+    await expect(runAgent(unsupported, request({ images }), new AbortController().signal)).rejects.toThrow('Vision')
+    expect(unsupported.chat).not.toHaveBeenCalled()
+    const vision = fake([response()])
+    vision.inspect.mockResolvedValue({ tools: true, thinking: false, contextTokens: 32768, ...{ vision: true } })
+    await expect(runAgent(vision, request({ images, limits: { ...defaultAgentLimits, contextTokens: 8192, maxOutputTokens: 1000 } }), new AbortController().signal)).resolves.toMatchObject({ calls: 1 })
+    const sent = (vision.chat.mock.calls as unknown as [import('./types').ModelRequest, AbortSignal][])[0]![0]
+    expect(sent.messages[1]!.images).toEqual(images)
+    expect(sent.maxOutputTokens).toBe(1000)
+    const tooSmall = fake([response()])
+    tooSmall.inspect.mockResolvedValue({ tools: true, thinking: false, contextTokens: 32768, ...{ vision: true } })
+    await expect(runAgent(tooSmall, request({ images, limits: { ...defaultAgentLimits, contextTokens: 2048 } }), new AbortController().signal)).rejects.toThrow('бюджета')
+    expect(tooSmall.chat).not.toHaveBeenCalled()
+  })
   it('clarifies one empty response within budget, without retrying after tool effects', async () => {
     await expect(runAgent(fake([response(''), response()]), request(), new AbortController().signal)).resolves.toMatchObject({ calls: 2, inputTokens: 100, outputTokens: 60 })
     const empty = fake([response(''), response('')])
@@ -116,6 +132,11 @@ describe('bounded agent loop', () => {
     await expect(runAgent(provider, request(), signal)).rejects.toThrow('расходов')
     expect(provider.chat).not.toHaveBeenCalled()
     await expect(runAgent(fake([{ ...response(), outputTokens: 9000 }]), request(), signal)).rejects.toThrow('лимит токенов')
+  })
+  it('does not silently shrink the requested answer when source context uses its reserve', async () => {
+    const provider = fake([response()])
+    await expect(runAgent(provider, request({ input: 'x'.repeat(1600), limits: { ...defaultAgentLimits, contextTokens: 4096, maxOutputTokens: 2048 } }), new AbortController().signal)).rejects.toThrow('Резерв ответа автоматически не уменьшается')
+    expect(provider.chat).not.toHaveBeenCalled()
   })
   it('cancels a non-cooperative provider and never executes its late tool call', async () => {
     const provider = fake([]), controller = new AbortController()

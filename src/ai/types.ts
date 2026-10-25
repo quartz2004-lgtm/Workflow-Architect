@@ -16,6 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import type { JsonValue } from '../domain/execution-config'
+import type { ModelImage } from './images'
 
 export interface ModelToolCall { name: string; arguments: Record<string, JsonValue> }
 export interface ModelMessage {
@@ -23,6 +24,7 @@ export interface ModelMessage {
   content: string
   toolCalls?: ModelToolCall[]
   toolName?: string
+  images?: ModelImage[]
 }
 export interface ModelTool { name: string; description: string; parameters: Record<string, JsonValue> }
 export interface ModelRequest {
@@ -41,7 +43,7 @@ export interface ModelResponse {
   outputTokens: number
   finish: 'stop' | 'length'
 }
-export interface ModelCapabilities { tools: boolean; thinking: boolean; contextTokens: number }
+export interface ModelCapabilities { tools: boolean; thinking: boolean; contextTokens: number; vision?: boolean }
 export interface ModelProvider {
   readonly id: string
   readonly signal?: AbortSignal

@@ -24,6 +24,7 @@ import { aiRequest } from '../ai/client'
 import { connectionStateSchema } from '../ai/protocol'
 import { FieldHelp } from '../help/FieldHelp'
 import { SelectField, TextField } from './controls'
+import { KnowledgeFields } from './KnowledgeFields'
 
 export function AiOperationFields({ node, commit }: { node: WorkflowNode; commit: (operation: ExecutionConfig) => void }) {
   const editor = useEditor(), profile = useProfile()?.profile, op = node.operation
@@ -50,6 +51,7 @@ export function AiOperationFields({ node, commit }: { node: WorkflowNode; commit
       <TextField label="Timeout агента, секунд" helpKey="ai.limits" type="number" value={String(op.limits.timeoutMs / 1000)} commit={value => commit({ ...op, limits: { ...op.limits, timeoutMs: Number(value) * 1000 } })} />
       <TextField label="Лимит стоимости API, USD" helpKey="ai.limits" type="number" value={String(op.limits.maxCostUsd)} commit={value => commit({ ...op, limits: { ...op.limits, maxCostUsd: Number(value) } })} />
       <p className="muted">Ollama: $0 API. Общий Run: до 5 минут, 32 запросов модели и 131 072 токенов.</p>
+      <KnowledgeFields key={`${node.id}:${profile?.id}`} value={op.knowledge} commit={knowledge => commit({ ...op, knowledge })} />
     </>}
     {op?.kind === 'text-statistics' && <><p className="muted">Встроенный Tool: слова, символы, абзацы и Markdown-заголовки. Вход Flow — строка. Agent может передать свой текст или проверить исходный вход. Факты и внешние источники не проверяются.</p><TextField label="Минимум слов для проверки" helpKey="ai.completion" type="number" value={String(op.minimumWords)} commit={value => commit({ ...op, minimumWords: Number(value) })} /></>}
     {op?.kind === 'parallel' && <>
