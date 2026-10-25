@@ -24,6 +24,7 @@ import { defaultAgentLimits } from '../../src/domain/agent-config'
 import { defaultAgentKnowledge } from '../../src/domain/knowledge-config'
 import { jobSchema } from '../../src/runtime/job-schema'
 import { profileIds } from '../../src/profiles/schema'
+import { KnowledgeService } from '../../src/knowledge/service'
 
 test('real local Vision identifies different unseen control images through the native workflow', async () => {
   const model = process.env.WORKFLOW_LOCAL_VISION_MODEL
@@ -76,5 +77,48 @@ test('real local Vision identifies different unseen control images through the n
       expect(job.status, job.outcome?.error?.message).toBe('succeeded')
       expect(result).toEqual(variant === 0 ? { left: { color: 'красный', shape: 'круг' }, right: { color: 'синий', shape: 'квадрат' } } : { left: { color: 'зелёный', shape: 'треугольник' }, right: { color: 'жёлтый', shape: 'круг' } })
     }
+  } finally { await app.close() }
+})
+
+test('real local Mistral receives a frozen SOAR product and its care rules through the native workflow', async () => {
+  const model = process.env.WORKFLOW_LOCAL_VISION_MODEL, sourcePath = process.env.WORKFLOW_KNOWLEDGE_SOURCE
+  test.skip(!model || !sourcePath, 'Requires an explicit local model and SOAR source folder.')
+  test.setTimeout(360000)
+  const root = await mkdtemp(join(tmpdir(), 'workflow-real-soar-')), userData = join(root, 'profile')
+  const service = new KnowledgeService(join(userData, 'knowledge'))
+  const preview = await service.prepare({ profileId: profileIds[0], label: 'SOAR acceptance', sourcePath: sourcePath!, selectedPaths: [
+    'KNOWLEDGE-VERSION.json', 'source/current/products-editorial.json', 'source/current/care-rules-v1.json',
+  ] })
+  const collectionId = service.commit(profileIds[0], preview.token)
+  const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE
+  const app = await electron.launch({ args: [resolve('.desktop-app'), `--user-data-dir=${userData}`], env })
+  try {
+    const page = await app.firstWindow()
+    await page.getByRole('button', { name: 'Пропустить настройку' }).click()
+    await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('ready')
+    await page.evaluate(({ profileId, model }) => window.workflowDesktop!.runtime.request({ kind: 'ai', command: { action: 'save', profileId, configuration: { provider: 'ollama', port: 11434, model }, enabled: true } }), { profileId: profileIds[0], model: model! })
+    const project = createProject('SOAR real evidence'), trigger = createNode('trigger'), agent = createNode('agent'), artifact = createNode('artifact')
+    trigger.config = { triggerType: 'manual' }; trigger.operation = { kind: 'manual' }
+    agent.config = { role: 'Редактор фактов', systemPrompt: 'По переданным источникам подготовь связное описание товара и инструкцию по уходу на русском. Укажи состав основной и подкладочной ткани отдельно. Сохрани условия ухода, не придумывай свойства и наличие. Это техническая проверка фактов, не рекламная публикация.', model: { provider: 'ollama', name: model! } }
+    agent.operation = { kind: 'agent', limits: { ...defaultAgentLimits, maxCalls: 1, contextTokens: 16384, maxOutputTokens: 1200, maxTotalTokens: 16384, timeoutMs: 300000 }, minimumWords: 0, requireTools: false,
+      knowledge: { ...defaultAgentKnowledge, collections: [{ collectionId }], sku: 'SOAR-SET-B01-DM-01-01-02', query: 'состав уход', maxBytes: 10000, maxExcerpts: 3 } }
+    artifact.operation = { kind: 'artifact', filename: 'evidence-description.md', format: 'text', source: { kind: 'input', pointer: '' } }
+    project.nodes.push(trigger, agent, artifact)
+    for (const [a, b] of [[trigger, agent], [agent, artifact]] as const) project.edges.push(createEdge(a.id, b.id, a.ports[1]!.id, b.ports[0]!.id))
+    const id = createId(), started = Date.now()
+    const raw = JSON.stringify({ id, profileId: profileIds[0], eventKey: id, project, entryNodeId: trigger.id, input: 'Опиши комплект SOAR-SET-B01-DM-01-01-02 и объясни, как за ним ухаживать.', background: true })
+    await page.evaluate(raw => window.workflowDesktop!.runtime.request({ kind: 'submit', request: JSON.parse(raw) as unknown }), raw)
+    const get = async () => jobSchema.parse(await page.evaluate(({ profileId, id }) => window.workflowDesktop!.runtime.request({ kind: 'get', profileId, id }), { profileId: profileIds[0], id }))
+    await expect.poll(async () => ['succeeded', 'failed', 'cancelled'].includes((await get()).status), { timeout: 310000, intervals: [1000, 3000, 5000] }).toBe(true)
+    const job = await get(), content = job.outcome?.artifacts[0]?.content ?? '', packet = job.preparedKnowledge?.[0]?.packet
+    const folder = resolve('output/verification-0.5.3'); await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'soar-real.json'), JSON.stringify({ model, durationMs: Date.now() - started, status: job.status, error: job.outcome?.error, packet, content, trace: job.events.filter(event => event.kind === 'ai') }, null, 2))
+    expect(job.status, job.outcome?.error?.message).toBe('succeeded')
+    expect(packet!.excerpts.some(excerpt => excerpt.sourceIds.includes('SOAR-CARE-BRIEFS_MEN'))).toBe(true)
+    expect(content).toMatch(/91[,.]4/)
+    expect(content).toMatch(/8[,.]6/)
+    expect(content).toMatch(/40/)
+    expect(content.toLowerCase()).toContain('ручн')
+    expect(packet!.excerpts.flatMap(excerpt => excerpt.skus).every(sku => sku === 'SOAR-SET-B01-DM-01-01-02')).toBe(true)
   } finally { await app.close() }
 })
