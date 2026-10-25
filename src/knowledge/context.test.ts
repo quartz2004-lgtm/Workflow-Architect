@@ -31,6 +31,30 @@ function source(documents: KnowledgeDocument[]): ContextSource {
 const request = { profileId: profileIds[0], runId: randomUUID(), task: 'Подготовить описание товара', query: 'уход', maxBytes: 12000 }
 
 describe('immutable local context selection', () => {
+  it('follows explicit care references without importing other profiles or losing envelope restrictions', () => {
+    const input = source([
+      document({ sku: 'TEST-A', care_profile_ids: ['care-a'] }),
+      document({ source_id: 'care-source', scope: { restriction: 'Check the item label' }, profiles: [
+        { id: 'care-a', rules: ['Wash by hand'], not_shown: ['drying'] },
+        { id: 'care-b', rules: ['Boil'] },
+      ] }, 'docs/care.json'),
+    ])
+    const packet = buildContextPacket({ ...request, query: 'description', sku: 'TEST-A' }, [input])
+    expect(packet.excerpts).toHaveLength(2)
+    expect(packet.excerpts[1]).toMatchObject({ locator: '/profiles/0', sourceIds: ['care-a'] })
+    expect(packet.excerpts[1]!.content).toContain('Check the item label')
+    expect(packet.excerpts[1]!.content).toContain('not_shown')
+    expect(JSON.stringify(packet)).not.toContain('Boil')
+  })
+  it('does not resolve references across collections or follow recursive chains', () => {
+    const input = source([document({ sku: 'TEST-A', care_profile_ids: ['care-a', 'foreign'] }), document({ id: 'care-a', source_ids: ['deep'] }), document({ id: 'deep', note: 'Must not expand' })])
+    const foreign = source([document({ id: 'foreign', note: 'Another base' })])
+    const packet = buildContextPacket({ ...request, query: 'description', sku: 'TEST-A' }, [input, foreign])
+    expect(packet.excerpts).toHaveLength(2)
+    expect(packet.gaps).toContainEqual({ kind: 'missing-source', detail: 'foreign' })
+    expect(JSON.stringify(packet.excerpts)).not.toContain('Another base')
+    expect(JSON.stringify(packet.excerpts)).not.toContain('Must not expand')
+  })
   it('selects exact SKU before lexical matches and excludes a different product', () => {
     const records = [{ canonical_sku: 'TEST-A', name: 'Топ', note: 'Только ручная стирка' }, { canonical_sku: 'TEST-B', name: 'Уход уход уход', note: 'Другая модель' }]
     const input = source([document({ note: 'Не переносить свойства между моделями', models: records })])

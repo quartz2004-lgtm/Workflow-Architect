@@ -44,7 +44,7 @@ export type ContextPacket = z.infer<typeof contextPacketSchema>
 export type ContextExcerpt = z.infer<typeof contextExcerptSchema>
 export type ContextRequest = z.input<typeof contextRequestSchema>
 export interface ContextSource { collectionId: string; snapshot: KnowledgeSnapshot }
-interface Fragment { locator: string; content: string; sourceIds: string[]; skus: string[] }
+interface Fragment { locator: string; content: string; sourceIds: string[]; skus: string[]; references?: string[] }
 const normalize = (text: string) => text.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е')
 const words = (text: string) => [...new Set(normalize(text).match(/[\p{L}\p{N}_-]{3,}/gu) ?? [])]
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
@@ -98,13 +98,23 @@ export function documentFragments(document: KnowledgeDocument): Fragment[] {
       const record = value as Record<string, unknown>
       const named = Object.keys(record).some(key => skuKeys.has(key) || idKeys.has(key))
       const branches = Object.entries(record).filter(([, child]) => child !== null && typeof child === 'object')
+      // A source envelope is not a single product/claim. Preserve all envelope
+      // restrictions with each independently identified profile, including objects.
+      const profiles = record.profiles
+      if (typeof record.source_id === 'string' && Array.isArray(profiles) && profiles.length && profiles.every(profile => profile && typeof profile === 'object' && typeof profile.id === 'string')) {
+        const metadata = Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'profiles'))
+        profiles.forEach((profile, index) => visit(profile, `${locator}/profiles/${index}`, [...ancestors, metadata]))
+        return
+      }
       if (!named && branches.length) {
         const metadata = Object.fromEntries(Object.entries(record).filter(([, child]) => child === null || typeof child !== 'object'))
         if (Object.keys(metadata).length) fragments.push({ locator: `${locator || '/'}/@metadata`, content: JSON.stringify(metadata), ...identifiers(metadata) })
         branches.forEach(([key, child]) => visit(child, `${locator}/${pointer(key)}`, [...ancestors, metadata])); return
       }
     }
-    fragments.push({ locator: locator || '/', content: JSON.stringify(ancestors.length ? { sourceContext: ancestors, record: value } : value), ...identifiers(value) })
+    const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const references = ['care_profile_ids', 'source_ids'].flatMap(key => Array.isArray(record[key]) ? record[key].filter((id): id is string => typeof id === 'string') : [])
+    fragments.push({ locator: locator || '/', content: JSON.stringify(ancestors.length ? { sourceContext: ancestors, record: value } : value), ...identifiers(value), references })
   }
   visit(parsed, ''); return fragments
 }
@@ -115,7 +125,7 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
   const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: request.profileId, runId: request.runId,
     task: request.task, query: request.query, ...(request.sku ? { sku: request.sku } : {}), excerpts: [], gaps: [], budgetBytes: request.maxBytes }
   const tokens = words(request.query), requestedSku = request.sku && normalize(request.sku)
-  const candidates: { excerpt: ContextExcerpt; score: number; exact: boolean }[] = []
+  const candidates: { excerpt: ContextExcerpt; score: number; exact: boolean; references: string[] }[] = []
   const foundIds = new Set<string>(); let foundSku = false
   for (const source of sources) {
     z.uuid().parse(source.collectionId)
@@ -130,21 +140,32 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
       const haystack = normalize(`${document.path}\n${fragment.content}`)
       const lexical = tokens.reduce((total, token) => total + (haystack.includes(token) ? 1 : 0), 0)
       const exact = skuMatch || idMatches.length > 0
-      if (!exact && !lexical) continue
+      const { references = [], ...evidence } = fragment
       candidates.push({ score: Number(skuMatch) * 10000 + idMatches.length * 1000 + lexical, exact,
+        references,
         excerpt: { collectionId: source.collectionId, snapshotId: snapshot.id, snapshotDigest: snapshot.digest, sourceVersion: snapshot.sourceVersion,
-          documentId: document.id, documentHash: document.hash, path: document.path, ...fragment } })
+          documentId: document.id, documentHash: document.hash, path: document.path, ...evidence } })
     }
   }
   if (requestedSku && !foundSku) packet.gaps.push({ kind: 'missing-sku', detail: request.sku! })
   for (const id of request.sourceIds) if (!foundIds.has(id)) packet.gaps.push({ kind: 'missing-source', detail: id })
-  if (!candidates.length) packet.gaps.push({ kind: 'no-match', detail: 'Подходящие выдержки не найдены. Не восполняйте отсутствующие факты догадками.' })
-  candidates.sort((a, b) => b.score - a.score || a.excerpt.path.localeCompare(b.excerpt.path, 'en') || a.excerpt.locator.localeCompare(b.excerpt.locator, 'en') || a.excerpt.collectionId.localeCompare(b.excerpt.collectionId, 'en'))
+  // One explicit hop only, within the same immutable collection snapshot. Do not
+  // recursively expand arbitrary source data or borrow evidence from another base.
+  for (const parent of candidates.filter(candidate => candidate.exact)) {
+    for (const reference of parent.references) {
+      const related = candidates.filter(candidate => candidate.excerpt.collectionId === parent.excerpt.collectionId && candidate.excerpt.snapshotId === parent.excerpt.snapshotId && candidate.excerpt.sourceIds.includes(reference))
+      if (!related.length && !packet.gaps.some(gap => gap.kind === 'missing-source' && gap.detail === reference)) packet.gaps.push({ kind: 'missing-source', detail: reference })
+      related.forEach(candidate => { candidate.score = Math.max(candidate.score, 500) })
+    }
+  }
+  const selected = candidates.filter(candidate => candidate.score > 0)
+  if (!selected.length) packet.gaps.push({ kind: 'no-match', detail: 'Подходящие выдержки не найдены. Не восполняйте отсутствующие факты догадками.' })
+  selected.sort((a, b) => b.score - a.score || a.excerpt.path.localeCompare(b.excerpt.path, 'en') || a.excerpt.locator.localeCompare(b.excerpt.locator, 'en') || a.excerpt.collectionId.localeCompare(b.excerpt.collectionId, 'en'))
   // Reserve a bounded omission notice before selecting any excerpts.
   const omission = { kind: 'budget' as const, detail: 'Часть найденных источников не помещается целиком. Увеличьте бюджет или уточните запрос; пакет неполон.' }
   if (bytes({ ...packet, gaps: [...packet.gaps, omission] }) > request.maxBytes) throw new Error('Задача и служебные данные превышают бюджет пакета источников.')
   let omitted = false
-  for (const candidate of candidates) {
+  for (const candidate of selected) {
     const next = { ...packet, excerpts: [...packet.excerpts, candidate.excerpt], gaps: [...packet.gaps, omission] }
     if (packet.excerpts.length >= request.maxExcerpts || bytes(next) > request.maxBytes) { omitted = true; continue }
     packet.excerpts.push(candidate.excerpt)
