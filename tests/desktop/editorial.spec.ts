@@ -17,7 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { profileIds } from '../../src/profiles/schema'
@@ -45,9 +45,10 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
   await mkdir(join(source, 'source/current'), { recursive: true })
   await writeFile(join(source, 'source/current/CARE-v1.md'), '# Комфорт SOAR\nПроверяйте посадку белья в движении. Это тестовый источник, не реальные сведения о товарах.')
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE
-  const app = await electron.launch({ ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}), args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${join(directory, 'profile')}`], env })
+  const launch = () => electron.launch({ ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}), args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${join(directory, 'profile')}`], env })
+  let app = await launch()
   try {
-    const page = await app.firstWindow()
+    let page = await app.firstWindow()
     await page.getByRole('button', { name: 'Пропустить настройку' }).click()
     await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('ready')
     await page.evaluate(({ profileId, port }) => window.workflowDesktop!.runtime.request({ kind: 'ai', command: { action: 'save', profileId, configuration: { provider: 'ollama', port, model: 'editorial-fixture' }, enabled: true } }), { profileId: profileIds[0], port })
@@ -67,19 +68,36 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await page.getByRole('button', { name: 'Создать и открыть редакцию' }).click()
     await expect(page.getByRole('dialog', { name: 'Локальные проекты' })).toHaveCount(0)
     await page.getByRole('button', { name: /^Run ·/ }).click()
-    const panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    let panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
     await panel.getByLabel('Что подготовить?').fill('Комфорт SOAR: посадка белья в движении')
     await expect(panel.getByLabel('Вход запуска (JSON)', { exact: true })).toHaveCount(0)
     await panel.getByRole('button', { name: 'Посмотреть источники и фото для задания' }).click()
     await expect(panel.locator('.knowledge-context')).toContainText('CARE-v1.md')
     expect(stages).toEqual([])
+    await panel.getByLabel('Разрешить этому запуску работать после закрытия окна').check()
     await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
-    const human = panel.getByRole('region', { name: 'Ответ человеку' })
+    let human = panel.getByRole('region', { name: 'Ответ человеку' })
     await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
     expect(await human.locator('pre').first().textContent()).toBe(article)
     expect(stages).toEqual(['planner', 'writer', 'reviewer'])
     await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))) })
     await page.screenshot({ path: 'desktop-results/editorial-human.png' })
+    await human.getByText('Точная версия', { exact: true }).click()
+    const identity = await human.locator('details pre').textContent()
+    await app.close()
+    await new Promise<void>(done => server.close(() => done()))
+    // Only the synthetic source inside this test's mkdtemp directory is moved.
+    expect(resolve(source)).toBe(join(resolve(directory), 'source'))
+    await rename(source, join(directory, 'source-unavailable'))
+    app = await launch(); page = await app.firstWindow()
+    await page.getByRole('button', { name: /^Run ·/ }).click()
+    panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+    human = panel.getByRole('region', { name: 'Ответ человеку' })
+    await expect(human.getByRole('button', { name: 'Подтвердить', exact: true })).toBeEnabled()
+    await human.getByText('Точная версия', { exact: true }).click()
+    expect(await human.locator('details pre').textContent()).toBe(identity)
+    expect(await human.locator('pre').first().textContent()).toBe(article)
+    expect(stages).toEqual(['planner', 'writer', 'reviewer'])
     await human.getByRole('button', { name: 'Подтвердить', exact: true }).click()
     const artifact = panel.locator('.run-artifact')
     await expect(artifact).toContainText('article.md')
@@ -90,6 +108,7 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await artifact.scrollIntoViewIfNeeded()
     expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
     await page.screenshot({ path: 'desktop-results/editorial-compact.png' })
+    await new Promise<void>(done => server.listen(port, '127.0.0.1', done))
     await panel.getByRole('button', { name: 'Доработать этот текст' }).click()
     await expect(panel.getByRole('region', { name: 'Текст для доработки' })).toContainText('Прежнее одобрение не переносится')
     await panel.getByLabel('Что подготовить?').fill('Добавь полезный вывод, сохрани остальные разделы')

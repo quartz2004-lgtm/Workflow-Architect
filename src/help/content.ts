@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import { fieldHelp } from './field-help.ts'
 import { integrationsChapter } from './integrations-chapter.ts'
 import { knowledgeChapter } from './knowledge-chapter.ts'
+import { editorialChapter } from './editorial-chapter.ts'
 
 export type HelpBlock =
   | { kind: 'paragraph' | 'heading' | 'note' | 'code'; text: string }
@@ -33,6 +34,7 @@ const steps = (...items: string[]): HelpBlock => ({ kind: 'steps', items })
 const table = (columns: string[], rows: string[][]): HelpBlock => ({ kind: 'table', columns, rows })
 
 const content: HelpChapter[] = [
+  editorialChapter,
   knowledgeChapter,
   integrationsChapter,
   { id: 'ai', group: 'Инженерия', title: 'Локальный ИИ, агенты и помощник', summary: 'Ollama, реальные вызовы Agent, инструменты, параллелизм и проверяемые предложения в 0.4.0.', blocks: [
