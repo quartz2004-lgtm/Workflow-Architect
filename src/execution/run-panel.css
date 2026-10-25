@@ -26,10 +26,11 @@ along with this program.  If not, see <https://gnu.org>.
 .run-body label { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
 .run-body select, .run-body textarea { width: 100%; min-width: 0; padding: 9px 11px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); font: 12px var(--font); }
 .run-body textarea { font-family: var(--mono); line-height: 1.5; resize: vertical; max-height: 220px; }
-.run-start input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: 9px 11px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); font: 12px var(--font); }
+.run-body input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: 9px 11px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); font: 12px var(--font); }
 .run-start textarea:not(.code-input) { font-family: var(--font); }
 .run-start input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .run-start .check-field { display: flex; align-items: center; gap: 8px; }
+.run-human form { display: grid; gap: 12px; }
 .run-body select:focus-visible, .run-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .run-body :disabled { opacity: .55; cursor: not-allowed; }
 .run-body h3 { font-size: 14px; margin: 16px 0 12px; }

@@ -17,6 +17,44 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { readFile } from 'node:fs/promises'
 import { test, expect } from './fixtures'
+import { createEdge, createNode, createProject } from '../src/domain/factories'
+
+test('Human contract form validates a typed answer without requiring JSON', async ({ page }) => {
+  await page.locator('.ai-mode-info > summary').focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('note')).toContainText('Telegram')
+  await page.screenshot({ path: 'output/verification-0.5.4/local-mode.png' })
+  await page.keyboard.press('Enter')
+  const project = createProject('Понятный ответ Human')
+  const trigger = createNode('trigger'), human = createNode('human'), artifact = createNode('artifact')
+  trigger.config = { triggerType: 'manual' }; trigger.operation = { kind: 'manual' }
+  human.config = { interactionType: 'manual-input', response: { kind: 'json-schema', schema: {
+    type: 'object', properties: { heading: { type: 'string', title: 'Заголовок', minLength: 3 }, count: { type: 'integer', title: 'Количество', minimum: 1 }, approved: { type: 'boolean', title: 'Готово' } }, required: ['heading', 'count', 'approved'], additionalProperties: false,
+  } } }
+  human.operation = { kind: 'human', mode: 'input', question: 'Уточните результат', timeoutMs: 60000 }
+  artifact.operation = { kind: 'artifact', filename: 'answer.json', format: 'json', source: { kind: 'input', pointer: '' } }
+  project.nodes = [trigger, human, artifact]
+  project.edges = [createEdge(trigger.id, human.id, trigger.ports[1]!.id, human.ports[0]!.id), createEdge(human.id, artifact.id, human.ports[1]!.id, artifact.ports[0]!.id)]
+  await page.getByRole('button', { name: 'Открыть проекты' }).click()
+  await page.getByLabel('Файл проекта').setInputFiles({ name: 'human.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(project)) })
+  await page.getByRole('button', { name: 'Открыть импорт' }).click()
+  await page.getByRole('button', { name: /^Run ·/ }).click()
+  const panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+  await panel.getByRole('button', { name: 'Запустить workflow' }).click()
+  const form = panel.getByRole('region', { name: 'Ответ человеку' })
+  await form.getByLabel('Заголовок · обязательно').fill('Проверка')
+  await form.getByLabel('Количество · обязательно').fill('0')
+  await form.getByLabel('Готово · обязательно').selectOption('false')
+  await page.screenshot({ path: 'output/verification-0.5.4/human-form.png' })
+  await expect(form.getByLabel('Ответ (JSON)')).toHaveCount(0)
+  await form.getByRole('button', { name: 'Отправить ответ' }).click()
+  await expect(form.getByRole('alert')).toBeVisible()
+  await form.getByLabel('Количество · обязательно').fill('2')
+  await form.getByRole('button', { name: 'Отправить ответ' }).click()
+  await expect(panel.getByRole('heading', { name: 'Завершён', exact: true })).toBeVisible()
+  await panel.locator('.run-artifact summary').click()
+  expect(JSON.parse(await panel.locator('.run-artifact pre').innerText())).toEqual({ heading: 'Проверка', count: 2, approved: false })
+})
 
 test('real Worker executes both branches and nested calls, waits for Human and saves actual artifacts', async ({ page }) => {
   const errors: string[] = []
