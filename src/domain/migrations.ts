@@ -19,6 +19,7 @@ import type { Project } from './schema'
 import { projectSchema as legacyProjectSchema } from './legacy-schema'
 import { projectSchema as legacy02Schema } from './legacy-0.2-schema'
 import { projectSchema as legacy03Schema } from './legacy-0.3-schema'
+import { projectSchema as legacy04Schema } from './legacy-0.4-schema'
 import { assertNoObviousSecrets, parseProject, ProjectFormatError } from './serialization'
 
 export interface ProjectMigration {
@@ -41,6 +42,10 @@ export const projectMigrations: readonly ProjectMigration[] = [{
   from: '0.3', to: '0.4',
   validateSource(value) { legacy03Schema.parse(value) },
   transform(value) { return { ...legacy03Schema.parse(value), schemaVersion: '0.4' } },
+}, {
+  from: '0.4', to: '0.5',
+  validateSource(value) { legacy04Schema.parse(value) },
+  transform(value) { return { ...legacy04Schema.parse(value), schemaVersion: '0.5' } },
 }]
 
 function versionOf(value: unknown): string {
@@ -53,15 +58,15 @@ export async function migrateProjectSnapshot(raw: string, backup: (raw: string, 
   let value: unknown
   try { value = JSON.parse(raw) } catch { throw new ProjectFormatError('Некорректный JSON. Исходный файл не изменён.') }
   const originalVersion = versionOf(value)
-  if (originalVersion === '0.4') return parseProject(value)
+  if (originalVersion === '0.5') return parseProject(value)
   const route: ProjectMigration[] = []
   const visited = new Set<string>()
   let version = originalVersion
-  while (version !== '0.4') {
+  while (version !== '0.5') {
     if (visited.has(version)) throw new ProjectFormatError('Цикл в цепочке миграций.')
     visited.add(version)
     const candidates = migrations.filter(step => step.from === version)
-    if (candidates.length !== 1) throw new ProjectFormatError(`Неподдерживаемая версия проекта ${version}. Нет однозначной миграции в 0.4.`)
+    if (candidates.length !== 1) throw new ProjectFormatError(`Неподдерживаемая версия проекта ${version}. Нет однозначной миграции в 0.5.`)
     const step = candidates[0]!
     route.push(step); version = step.to
   }

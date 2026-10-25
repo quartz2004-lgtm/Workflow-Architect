@@ -26,6 +26,7 @@ import { parseCheckpoint, type RunCheckpoint } from './checkpoint'
 import { runEventSchema } from './protocol'
 import type { RunEvent } from './run-types'
 import { createArticleExample } from './article-example'
+import { defaultAgentKnowledge } from '../domain/knowledge-config'
 
 const link = (a: WorkflowNode, b: WorkflowNode) => createEdge(a.id, b.id, a.ports[1]!.id, b.ports[0]!.id)
 const reply = (content: string): ModelResponse => ({ content, toolCalls: [], inputTokens: 50, outputTokens: 40, finish: 'stop' })
@@ -49,6 +50,15 @@ function fixture(parallel = false) {
 const provider = (chat: ModelProvider['chat']): ModelProvider => ({ id: 'fake', costPerMillionInput: 0, costPerMillionOutput: 0, async list() { return ['qwen3:8b'] }, async inspect() { return { tools: true, thinking: false, contextTokens: 32768 } }, chat })
 
 describe('AI graph execution', () => {
+  it('does not silently generate without explicitly selected knowledge when a context runtime is absent', async () => {
+    const f = fixture(), chat = vi.fn(async () => reply('unused'))
+    if (f.author.operation?.kind !== 'agent') throw new Error('Expected agent')
+    f.author.operation.knowledge = { ...defaultAgentKnowledge, collections: [{ collectionId: createId() }] }
+    const result = await new ExecutionRun(f.plan(), () => {}, { provider: () => provider(chat) }).start('Задание')
+    expect(result.status).toBe('failed')
+    expect(result.error?.message).toContain('пакетом контекста')
+    expect(chat).not.toHaveBeenCalled()
+  })
   it('ships an executable article example with fresh IDs and explicit Tool grants', () => {
     const project = createArticleExample(), another = createArticleExample()
     expect(compileProject(project, project.nodes[0]!.id).ok).toBe(true)

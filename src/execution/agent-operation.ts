@@ -38,6 +38,7 @@ export async function executeAgentOperation(options: {
   const { node, project, graph, input, data, outputs } = options
   if (node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.config.model) throw new Error('Недоступная операция Agent.')
   const config = node.config, operation = node.operation
+  if (operation.knowledge && (operation.knowledge.collections.length || operation.knowledge.imageIds.length)) throw new Error('Источники Agent требуют runtime с подготовленным пакетом контекста. Запуск без выбранных знаний запрещён.')
   const context: Record<string, JsonValue> = {}
   for (const id of config.context?.attachedNodeIds ?? []) {
     const ports = outputs.get(id)
