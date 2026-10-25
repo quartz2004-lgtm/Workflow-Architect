@@ -265,7 +265,12 @@ export class TelegramHub {
           } else if (job.status === 'waiting') {
             const waiting = job.checkpoint?.frames.at(-1)?.human?.request
             if (!waiting || Date.now() >= Date.parse(waiting.expiresAt)) continue
-            const text = `${waiting.question}\nОтвет до ${waiting.expiresAt}.${waiting.mode === 'input' ? '\n/answer ваш ответ' : ''}`.slice(0, 4096)
+            if (waiting.editorial) {
+              await this.broker.execute(binding.profileId, binding.connectionId, `telegram:${binding.botId}:review:${waiting.id}:${waiting.editorial.digest}`, 'telegram.send-document', {
+                chatId: binding.chatId, filename: `review-v${waiting.editorial.number}-${waiting.editorial.digest.slice(0, 12)}.md`, content: waiting.editorial.text,
+              }, signal)
+            }
+            const text = `${waiting.editorial ? `Прочитайте файл review-v${waiting.editorial.number}-${waiting.editorial.digest.slice(0, 12)}.md. Это версия для проверки, ещё не одобренная вами.\nSHA256: ${waiting.editorial.digest}\n` : ''}${waiting.question}\nОтвет до ${waiting.expiresAt}.${waiting.mode === 'input' ? '\n/answer ваш ответ' : ''}`.slice(0, 4096)
             this.broker.safe(text)
             await this.broker.effects.perform(binding.profileId, `telegram:${binding.botId}:human:${waiting.id}`, { chatId: binding.chatId, text }, async () => api.message(binding.chatId, text, signal, waiting.mode === 'approval' ? [[{ text: 'Подтвердить', callback_data: `h:${waiting.id}:1` }, { text: 'Отклонить', callback_data: `h:${waiting.id}:0` }]] : undefined))
           }

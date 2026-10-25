@@ -71,13 +71,19 @@ export async function advanceEditorial(options: {
     state.phase = 'needs-editing'; return persist()
   }
   // Fresh role context: at most the latest draft, never a growing conversation of failed drafts.
-  const { images, ...knowledge } = packet
+  const { images } = packet
+  // Preserve the full frozen packet in evidence, but do not send duplicate task
+  // and previous-article copies or runtime identifiers to the language model.
+  const knowledge = {
+    query: packet.query, sku: packet.sku, excerpts: packet.excerpts, gaps: packet.gaps,
+    editorialFreedom: packet.handoff?.editorialFreedom,
+  }
   const prompt = JSON.stringify({
     task: state.task, knowledge,
     ...(stage !== 'planner' ? { plan: state.plan } : {}),
     ...(state.versions.length ? { draft: state.versions.at(-1)!.text, remarks: state.issues } : {}),
   })
-  const system = policy + '\n\n' + instructions[stage]
+  const system = [policy, instructions[stage], packet.handoff?.instructions].filter(Boolean).join('\n\n')
   const settings = { ...state.settings, temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }
   const pictures = images?.map(item => item.image) ?? []
   const reservedTokens = new TextEncoder().encode(JSON.stringify({ system, prompt })).byteLength + 2048 + imageContextReserve(pictures) + settings.maxOutputTokens

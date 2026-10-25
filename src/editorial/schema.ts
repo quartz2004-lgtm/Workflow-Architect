@@ -30,8 +30,8 @@ export const editorialTaskSchema = z.strictObject({
 export type EditorialTask = z.infer<typeof editorialTaskSchema>
 
 /** Read only explicitly supported legacy fields, never stringify a Telegram envelope. */
-export function normalizeEditorialTask(input: unknown): EditorialTask {
-  if (typeof input === 'string') return editorialTaskSchema.parse({ schemaVersion: '0.5.4', text: input, audience: 'Общая аудитория', minimumWords: 600, language: 'Русский' })
+export function normalizeEditorialTask(input: unknown, minimumWords = 600): EditorialTask {
+  if (typeof input === 'string') return editorialTaskSchema.parse({ schemaVersion: '0.5.4', text: input, audience: 'Общая аудитория', minimumWords, language: 'Русский' })
   const envelope = z.object({
     text: z.string().optional(), topic: z.string().optional(),
     audience: z.string().optional(), minimumWords: z.number().optional(),
@@ -39,7 +39,7 @@ export function normalizeEditorialTask(input: unknown): EditorialTask {
   }).parse(input)
   return editorialTaskSchema.parse({
     schemaVersion: '0.5.4', text: envelope.text ?? envelope.topic ?? '',
-    audience: envelope.audience ?? 'Общая аудитория', minimumWords: envelope.minimumWords ?? 600,
+    audience: envelope.audience ?? 'Общая аудитория', minimumWords: envelope.minimumWords ?? minimumWords,
     language: envelope.language ?? 'Русский',
     ...(envelope.previousArticle !== undefined ? { previousArticle: envelope.previousArticle } : {}),
   })

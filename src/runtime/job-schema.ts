@@ -29,11 +29,11 @@ export const submitJobSchema = z.strictObject({
 })
 export type SubmitJob = z.infer<typeof submitJobSchema>
 export const executionPlanSchema = z.strictObject({
-  planVersion: z.enum(['0.3', '0.4', '0.5']), id: z.uuid(), createdAt: z.iso.datetime(), entryNodeId: z.uuid(), snapshot: projectSchema,
-  limits: z.strictObject({ maxSteps: z.literal(10000), maxDepth: z.literal(24), timeoutMs: z.literal(300000) }),
-})
+  planVersion: z.enum(['0.3', '0.4', '0.5', '0.6']), id: z.uuid(), createdAt: z.iso.datetime(), entryNodeId: z.uuid(), snapshot: projectSchema,
+  limits: z.strictObject({ maxSteps: z.literal(10000), maxDepth: z.literal(24), timeoutMs: z.number().int().min(300000).max(7200000) }),
+}).refine(plan => plan.planVersion === '0.6' || plan.limits.timeoutMs === 300000, 'Расширенный лимит требует planVersion 0.6.')
 export const jobSchema = z.strictObject({
-  recordVersion: z.enum(['0.3.1', '0.5.3']), id: z.uuid(), profileId: runtimeProfileSchema,
+  recordVersion: z.enum(['0.3.1', '0.5.3', '0.5.4']), id: z.uuid(), profileId: runtimeProfileSchema,
   preparedKnowledge: preparedKnowledgeSchema.optional(), knowledgeDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   eventKey: z.string().min(1).max(128), fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), background: z.boolean(),

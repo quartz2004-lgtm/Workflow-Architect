@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import type { Graph, Project, WorkflowNode } from '../domain/schema'
 import { localModelNameSchema } from '../ai/schema'
+import { validateEditorialPlan } from './editorial-plan'
 
 export function agentTools(graph: Graph, node: WorkflowNode): WorkflowNode[] {
   if (node.type !== 'agent') throw new Error('Ожидался Agent.')
@@ -34,7 +35,7 @@ export function agentTools(graph: Graph, node: WorkflowNode): WorkflowNode[] {
 
 export function validateAgent(project: Project, graph: Graph, node: WorkflowNode): void {
   if (node.type !== 'agent' || node.operation?.kind !== 'agent') throw new Error('Ожидалась операция Agent.')
-  if (node.operation.editorial) throw new Error('Редакционный режим ещё не подключён к runtime этой сборки.')
+  validateEditorialPlan(graph, node)
   const config = node.config
   if (config.model?.provider !== 'ollama' || !localModelNameSchema.safeParse(config.model.name).success) throw new Error('Выберите провайдера ollama и локальную модель Agent.')
   if (!config.role?.trim()) throw new Error('Укажите роль Agent.')

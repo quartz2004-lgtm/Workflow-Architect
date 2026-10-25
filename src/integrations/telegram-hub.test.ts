@@ -37,6 +37,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { KnowledgeService } from '../knowledge/service'
 import { KnowledgeRuntime } from '../knowledge/runtime'
 import { defaultAgentKnowledge } from '../domain/knowledge-config'
+import { createEditorialExample } from '../execution/editorial-example'
 
 const cleanups: (() => void)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) cleanup(); await new Promise(resolve => setTimeout(resolve, 20)) })
@@ -61,9 +62,9 @@ function fixture(jobOptions?: (root: string) => ConstructorParameters<typeof Job
   const project = createProject('Remote article'), trigger = configureOperation(createNode('trigger'), 'telegram-message'), human = configureOperation(createNode('human'), 'human'), artifact = configureOperation(createNode('artifact'), 'artifact')
   project.nodes = [trigger, human, artifact]
   project.edges = [createEdge(trigger.id, human.id, trigger.ports.find(port => port.direction === 'output')!.id, human.ports.find(port => port.direction === 'input')!.id), createEdge(human.id, artifact.id, human.ports.find(port => port.direction === 'output')!.id, artifact.ports.find(port => port.direction === 'input')!.id)]
-  const bind = (profileId: typeof profileIds[number], chatId: string) => {
+  const bind = (profileId: typeof profileIds[number], chatId: string, entryNodeId = trigger.id) => {
     const connection = connections.save({ version: '0.5', id: createId(), profileId, label: 'Bot', enabled: true, revision: 0, settings: { kind: 'telegram', credentialId: createId() } })
-    const workflow = sources.publish(profileId, 'Article', project, trigger.id)
+    const workflow = sources.publish(profileId, 'Article', project, entryNodeId)
     const binding = sources.saveBinding({ version: '0.5', id: createId(), profileId, connectionId: connection.id, botId: '999999', chatId, userId: chatId, workflowId: workflow.id, lastJobId: null })
     return { connection, workflow, binding }
   }
@@ -72,6 +73,44 @@ function fixture(jobOptions?: (root: string) => ConstructorParameters<typeof Job
 }
 const message = (id: number, chat: number, text: string, type = 'private', from = chat): TelegramUpdate => ({ update_id: id, message: { message_id: id, from: { id: from, is_bot: false }, chat: { id: chat, type }, text } })
 describe('Telegram durable remote workflow', () => {
+  it('delivers the exact review file before Human buttons and the final article only after approval', async () => {
+    let knowledge!: KnowledgeService
+    const article = `# Статья\n\n## Выбор\n${'Пример '.repeat(310)}\n\n## Примерка\n${'Движение '.repeat(310)}`
+    const provider: ModelProvider = { id: 'test', costPerMillionInput: 0, costPerMillionOutput: 0,
+      list: async () => ['fixture'], identity: async () => 'a'.repeat(64), inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }),
+      chat: async request => ({ content: request.messages[0]!.content.includes('Подготовь краткий') ? 'План' : request.outputSchema ? '{"verdict":"ready-for-human","comments":[]}' : article, toolCalls: [], inputTokens: 100, outputTokens: 100, finish: 'stop' }),
+    }
+    const f = fixture(root => { knowledge = new KnowledgeService(join(root, 'knowledge')); return { knowledge: new KnowledgeRuntime(knowledge), provider: () => () => provider } })
+    const sourcePath = join(f.root, 'source')
+    await mkdir(join(sourcePath, 'source/current'), { recursive: true })
+    await writeFile(join(sourcePath, 'source/current/product.json'), '{"sku":"TG-A","care":"Холодная стирка"}')
+    const preview = await knowledge.prepare({ profileId: profileIds[0], label: 'Editorial source', sourcePath, selectedPaths: ['source/current/product.json'] })
+    const collectionId = knowledge.commit(profileIds[0], preview.token)
+    const project = createEditorialExample('fixture', { ...defaultAgentKnowledge, sku: 'TG-A', collections: [{ collectionId }] })
+    const manual = project.nodes.find(node => node.operation?.kind === 'manual')!
+    f.project.nodes = project.nodes.filter(node => node.id !== manual.id)
+    f.project.edges = project.edges.filter(edge => edge.sourceNode !== manual.id)
+    const { binding } = f.bind(profileIds[0], '101', f.project.nodes[0]!.id)
+    f.jobs.start(); f.hub.start(); f.updates.push(message(300, 101, 'Опиши TG-A'))
+    await vi.waitFor(() => expect(f.jobs.list(profileIds[0])[0]?.status).toBe('waiting'))
+    const jobId = f.sources.binding(profileIds[0], binding.id).lastJobId!
+    const job = f.jobs.get(profileIds[0], jobId), request = job.checkpoint!.frames.at(-1)!.human!.request
+    expect(request.editorial?.text).toBe(article)
+    const task = JSON.parse(job.preparedKnowledge![0]!.packet.task)
+    expect(task).not.toHaveProperty('chatId')
+    expect(task).not.toHaveProperty('userId')
+    await f.hub.notify(); await f.hub.notify()
+    expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(1)
+    const question = f.sent.findIndex(item => item.body.includes(request.id) && item.method === 'sendMessage')
+    expect(question).toBeGreaterThan(f.sent.findIndex(item => item.method === 'sendDocument'))
+    expect(f.sent[question]!.body).toContain(request.editorial!.digest)
+    expect(job.outcome?.artifacts ?? []).toEqual([])
+    f.updates.push({ update_id: 301, callback_query: { id: 'editorial-approval', from: { id: 101, is_bot: false }, data: `h:${request.id}:1`, message: { message_id: 1, chat: { id: 101, type: 'private' } } } })
+    await vi.waitFor(() => expect(f.jobs.get(profileIds[0], jobId).status).toBe('succeeded'))
+    await f.hub.notify(); await f.hub.notify()
+    expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(2)
+    expect(f.jobs.get(profileIds[0], jobId).outcome!.artifacts[0]!.content).toBe(article)
+  })
   it('delivers the bound profile snapshot to Agent and preserves its evidence for Telegram runs', async () => {
     let knowledge!: KnowledgeService
     const chat = vi.fn<ModelProvider['chat']>(async () => ({ content: 'Описание по источнику', toolCalls: [], inputTokens: 300, outputTokens: 20, finish: 'stop' }))

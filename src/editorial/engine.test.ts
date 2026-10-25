@@ -41,6 +41,20 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it('sends the original task and previous article once while retaining the frozen packet digest', async () => {
+    const task = { text: 'Добавь вывод', minimumWords: 100, previousArticle: 'UNIQUE_PREVIOUS_ARTICLE' }
+    const captured = { ...packet, task: JSON.stringify(task), stageInput: task }
+    const initial = await createEditorialState(task, captured, settings)
+    const model = provider([reply('План')])
+    const state = await advanceEditorial({ state: initial, packet: captured, provider: model, signal: signal(), save: async () => {} })
+    const prompt = model.requests[0]!.messages[1]!.content
+    expect(prompt.match(/UNIQUE_PREVIOUS_ARTICLE/g)).toHaveLength(1)
+    expect(prompt).not.toContain('stageInput')
+    expect(prompt).not.toContain('profileId')
+    expect(state.contextDigest).toBe(initial.contextDigest)
+    expect(captured.stageInput.previousArticle).toBe(task.previousArticle)
+  })
+
   it('persists exact requests before calls and separates planner, writer and reviewer', async () => {
     let state = await start()
     const model = provider([reply('План'), reply(article), reply(ready)])

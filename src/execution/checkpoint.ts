@@ -20,12 +20,15 @@ import { activationSchema, artifactSchema, humanRequestSchema } from './protocol
 import { assertValueBudget } from './values'
 import type { ExecutionPlan } from './compiler'
 import { aiUsageSchema } from '../ai/trace-schema'
+import { editorialStateSchema } from '../editorial/engine-schema'
+import { editorialResultSchema } from '../editorial/result'
 
 const id = z.uuid()
 const values = z.record(id, z.record(id, z.json()))
 const token = z.strictObject({ nodeId: id, portId: id.optional(), value: z.json() })
 export const checkpointSchema = z.strictObject({
-  checkpointVersion: z.enum(['0.3.1', '0.4', '0.5']), planId: id, runId: id,
+  checkpointVersion: z.enum(['0.3.1', '0.4', '0.5', '0.6']), planId: id, runId: id,
+  editorial: z.record(id, editorialStateSchema).optional(),
   aiUsage: aiUsageSchema.optional(),
   status: z.enum(['queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled']),
   cancelled: z.boolean(), sequence: z.number().int().min(0).max(30000),
@@ -47,6 +50,7 @@ export type CheckpointFrame = RunCheckpoint['frames'][number]
 export function parseCheckpoint(value: unknown, plan: ExecutionPlan): RunCheckpoint {
   assertValueBudget(value, 32 * 1024 * 1024, true)
   const saved = checkpointSchema.parse(value)
+  if (saved.checkpointVersion !== '0.6' && saved.editorial) throw new Error('Редакционные контрольные точки требуют версии 0.6.')
   if (saved.planId !== plan.id) throw new Error('Контрольная точка относится к другому плану.')
   if (new Set(saved.frames.map(frame => frame.id)).size !== saved.frames.length) throw new Error('Повторный ID вызова контрольной точки.')
   for (let depth = 0; depth < saved.frames.length; depth++) {
@@ -72,6 +76,8 @@ export function parseCheckpoint(value: unknown, plan: ExecutionPlan): RunCheckpo
     if (frame.activation && (frame.activation.callId !== frame.id || frame.activation.graphId !== frame.graphId || frame.activation.nodeId !== frame.queue[0]?.nodeId
       || JSON.stringify(frame.activation.path) !== JSON.stringify(frame.path))) throw new Error('Некорректная активация контрольной точки.')
     if (frame.human) {
+      const result = editorialResultSchema.safeParse(frame.queue[0]?.value)
+      if (result.success ? JSON.stringify(result.data.version) !== JSON.stringify(frame.human.request.editorial) : !!frame.human.request.editorial) throw new Error('Вопрос Human относится к другой редакционной версии.')
       const node = graph.nodes.find(node => node.id === frame.activation?.nodeId)
       if (!frame.activation || node?.operation?.kind !== 'human' || frame.human.request.mode !== node.operation.mode
         || JSON.stringify(frame.human.request.activation) !== JSON.stringify(frame.activation)
