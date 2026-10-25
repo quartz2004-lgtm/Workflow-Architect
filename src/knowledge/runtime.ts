@@ -23,6 +23,7 @@ import { assertValueBudget } from '../execution/values'
 import { buildContextPacket, contextPacketSchema, type ContextPacket } from './context'
 import type { KnowledgeService } from './service'
 import type { AgentKnowledge } from '../domain/knowledge-config'
+import type { MediaStore } from './media-store'
 
 export const preparedKnowledgeSchema = z.array(z.strictObject({
   nodeId: z.uuid(), collectionIds: z.array(z.uuid()).max(4), packet: contextPacketSchema,
@@ -34,17 +35,19 @@ export interface RuntimeKnowledge {
   resolve(profileId: string, runId: string, prepared: PreparedKnowledge, nodeId: string): ContextPacket
 }
 
-export function prepareContext(knowledge: Pick<KnowledgeService, 'capture'>, profileId: string, runId: string, config: AgentKnowledge, task: string): ContextPacket {
-  if (config.imageIds.length) throw new Error('Импорт фотографий ещё не подключён к runtime. Изображения не будут молча пропущены.')
+export function prepareContext(knowledge: Pick<KnowledgeService, 'capture'>, profileId: string, runId: string, config: AgentKnowledge, task: string, media?: Pick<MediaStore, 'capture'>): ContextPacket {
+  if (config.imageIds.length && !media) throw new Error('Хранилище фотографий недоступно. Изображения не будут молча пропущены.')
   const query = config.query || task
   if (query.length > 4000) throw new Error('Исходная задача слишком длинна для поискового запроса. Укажите отдельный запрос в источниках Agent.')
-  return buildContextPacket({ profileId: projectProfile(profileId), runId, task, query, sku: config.sku || undefined,
+  const packet = buildContextPacket({ profileId: projectProfile(profileId), runId, task, query, sku: config.sku || undefined,
     sourceIds: config.sourceIds, maxBytes: config.maxBytes, maxExcerpts: config.maxExcerpts }, knowledge.capture(profileId, config.collections))
+  if (config.imageIds.length) packet.images = media!.capture(profileId, config.imageIds, config.sku)
+  return packet
 }
 
 /** Native reader only. The desktop main process remains the sole collection writer. */
 export class KnowledgeRuntime implements RuntimeKnowledge {
-  constructor(private readonly knowledge: Pick<KnowledgeService, 'capture' | 'assertAllowed'>) {}
+  constructor(private readonly knowledge: Pick<KnowledgeService, 'capture' | 'assertAllowed'>, private readonly media?: Pick<MediaStore, 'capture' | 'assertAllowed'>) {}
   prepare(profileId: string, runId: string, project: Project, input: JsonValue): PreparedKnowledge {
     const result: PreparedKnowledge = []
     for (const { graph } of graphEntries(project)) for (const node of graph.nodes) {
@@ -52,7 +55,7 @@ export class KnowledgeRuntime implements RuntimeKnowledge {
       const config = node.operation.knowledge
       if (!config.collections.length && !config.imageIds.length) continue
       const task = typeof input === 'string' ? input : JSON.stringify(input)
-      const packet = prepareContext(this.knowledge, profileId, runId, config, task)
+      const packet = prepareContext(this.knowledge, profileId, runId, config, task, this.media)
       result.push({ nodeId: node.id, collectionIds: config.collections.map(item => item.collectionId), packet })
     }
     assertValueBudget(result, 4 * 1024 * 1024, true)
@@ -62,6 +65,10 @@ export class KnowledgeRuntime implements RuntimeKnowledge {
     const entry = prepared.find(item => item.nodeId === nodeId)
     if (!entry || entry.packet.profileId !== profileId || entry.packet.runId !== runId) throw new Error('Пакет источников не принадлежит этому узлу, профилю или запуску.')
     this.knowledge.assertAllowed(profileId, entry.collectionIds)
+    if (entry.packet.images?.length) {
+      if (!this.media) throw new Error('Хранилище фотографий недоступно.')
+      this.media.assertAllowed(profileId, entry.packet.images.map(image => image.id))
+    }
     return structuredClone(entry.packet)
   }
 }

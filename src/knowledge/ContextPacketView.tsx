@@ -20,8 +20,9 @@ import './context.css'
 
 export function ContextPacketView({ packet }: { packet: ContextPacket }) {
   return <section className="knowledge-context" aria-label="Источники в контексте агента">
+    {!!packet.images?.length && <div className="knowledge-image-grid">{packet.images.map((item, index) => <figure key={item.id}><img src={`data:image/png;base64,${item.image.data}`} width={item.image.width} height={item.image.height} alt={item.label} /><figcaption>Фото {index + 1}: {item.label} · SKU {item.sku}<details><summary>Происхождение фото</summary><pre>{JSON.stringify({ id: item.id, hash: item.hash, sourceName: item.sourceName, sourceHash: item.sourceHash, width: item.image.width, height: item.image.height }, null, 2)}</pre></details></figcaption></figure>)}</div>}
     <p className="muted">Выдержки: {packet.excerpts.length} · бюджет {packet.budgetBytes.toLocaleString('ru')} байт{packet.sku ? ` · SKU ${packet.sku}` : ''}</p>
-    {!!packet.gaps.length && <div role="status"><strong>Контекст неполон</strong><ul>{packet.gaps.map((gap, index) => <li key={index}>{gap.kind === 'missing-sku' ? 'Товар не найден: ' : gap.kind === 'missing-source' ? 'Источник не найден: ' : ''}{gap.detail}</li>)}</ul></div>}
+    {!!packet.gaps.length && <div role="status"><strong>Контекст неполон</strong><ul>{packet.gaps.map((gap, index) => <li key={index}>{gap.kind === 'missing-sku' ? 'Текстовые сведения о SKU не найдены: ' : gap.kind === 'missing-source' ? 'Источник не найден: ' : ''}{gap.detail}</li>)}</ul></div>}
     {packet.excerpts.map(excerpt => <details key={`${excerpt.collectionId}:${excerpt.documentId}:${excerpt.locator}`}>
       <summary>{excerpt.path} · {excerpt.locator}</summary>
       <p className="muted">Версия {excerpt.sourceVersion}{excerpt.skus.length ? ` · SKU ${excerpt.skus.join(', ')}` : ''}</p>

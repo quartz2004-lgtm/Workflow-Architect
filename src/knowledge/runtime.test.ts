@@ -27,6 +27,7 @@ import { JobManager } from '../runtime/job-manager'
 import type { ModelProvider } from '../ai/types'
 import { KnowledgeService } from './service'
 import { KnowledgeRuntime } from './runtime'
+import { MediaStore } from './media-store'
 
 const roots: string[] = [], managers: JobManager[] = []
 afterEach(async () => {
@@ -53,12 +54,34 @@ async function fixture() {
   for (const [a, b] of [[trigger, agent], [agent, artifact]] as const) project.edges.push(createEdge(a.id, b.id, a.ports[1]!.id, b.ports[0]!.id))
   const chat = vi.fn<ModelProvider['chat']>(async () => ({ content: 'Текст по выбранным источникам', toolCalls: [], inputTokens: 100, outputTokens: 20, finish: 'stop' as const }))
   const provider: ModelProvider = { id: 'test', costPerMillionInput: 0, costPerMillionOutput: 0, list: async () => ['local'], inspect: async () => ({ tools: true, thinking: false, contextTokens: 32768 }), chat }
-  const runtime = new KnowledgeRuntime(knowledge)
+  const media = new MediaStore(join(root, 'media'))
+  const runtime = new KnowledgeRuntime(knowledge, media)
   const manager = new JobManager(jobs, { knowledge: runtime, provider: () => () => provider }); managers.push(manager)
   const request = { id: createId(), profileId: profileIds[0], eventKey: createId(), project, entryNodeId: trigger.id, input: 'Опиши уход FIXTURE-A', background: true }
-  return { root, source, jobs, storage, file, input, knowledge, runtime, manager, request, chat, collectionId, preview, agent }
+  return { root, source, jobs, storage, file, input, knowledge, runtime, manager, request, chat, collectionId, preview, agent, media, provider }
 }
 describe('knowledge in durable graph execution', () => {
+  it('sends frozen photo pixels separately from textual provenance and saves exact visual evidence', async () => {
+    const f = await fixture()
+    f.provider.inspect = async () => ({ tools: true, thinking: false, vision: true, contextTokens: 32768 })
+    const image = { data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII=', width: 1, height: 1 }
+    const id = f.media.add({ profileId: profileIds[0], label: 'Фото товара', sku: 'FIXTURE-A', sourceName: 'photo.png', sourceHash: 'a'.repeat(64), image })
+    if (f.agent.operation?.kind !== 'agent') throw new Error('Expected agent')
+    f.agent.operation.knowledge!.imageIds = [id]
+    const job = f.manager.submit(f.request); f.manager.start()
+    await vi.waitFor(() => expect(f.manager.get(profileIds[0], job.id).status).toBe('succeeded'))
+    const sent = f.chat.mock.calls[0]![0]
+    expect(sent.messages[1]!.images).toEqual([image])
+    expect(sent.messages[1]!.content).not.toContain(image.data)
+    expect(sent.messages[1]!.content).toContain('Фото товара')
+    const event = f.manager.get(profileIds[0], job.id).events.find(event => event.kind === 'knowledge')!
+    if (event.kind !== 'knowledge') throw new Error('Expected evidence')
+    expect(event.packet.images![0]!.image).toEqual(image)
+    f.media.change(profileIds[0], id, 'remove')
+    f.manager.stop()
+    const reopened = new JobManager(f.jobs); managers.push(reopened)
+    expect(reopened.get(profileIds[0], job.id).preparedKnowledge![0]!.packet.images![0]!.image).toEqual(image)
+  })
   it('freezes at submission, executes actual selected text, and reopens exact evidence without source files', async () => {
     const f = await fixture(), job = f.manager.submit(f.request)
     expect(job.preparedKnowledge).toHaveLength(1)

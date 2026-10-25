@@ -61,7 +61,7 @@ test('knowledge wizard: exact preview, update, backup, isolated restore and rest
     await projects.getByRole('button', { name: 'Открыть импорт' }).click()
     await page.locator('.react-flow__node').filter({ hasText: 'Source reader' }).click()
     await page.locator('.knowledge-fields > summary').click()
-    await page.getByRole('button', { name: 'Выбрать коллекции' }).click()
+    await page.getByRole('button', { name: 'Показать источники профиля' }).click()
     await page.locator('.knowledge-fields input[type=checkbox]').first().check()
     await page.getByLabel('Поисковый запрос', { exact: true }).fill('Care')
     await page.getByLabel('Поисковый запрос', { exact: true }).press('Tab')

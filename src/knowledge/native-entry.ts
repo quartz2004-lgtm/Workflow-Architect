@@ -23,9 +23,13 @@ import { knowledgeCommandSchema } from './schema'
 import { assertValueBudget } from '../execution/values'
 import { randomUUID } from 'node:crypto'
 import { prepareContext } from './runtime'
+import { join } from 'node:path'
+import { MediaStore } from './media-store'
+import { importImage } from './image-import'
 
 export function createNativeKnowledge(directory: string) {
   const service = new KnowledgeService(directory)
+  const media = new MediaStore(join(directory, '..', 'knowledge-media'))
   let pending = Promise.resolve<unknown>(undefined)
   async function handle(value: unknown) {
     try {
@@ -33,8 +37,18 @@ export function createNativeKnowledge(directory: string) {
       const command = knowledgeCommandSchema.parse(value)
       let result: unknown = null
       switch (command.kind) {
+        case 'image-list': result = media.list(command.profileId); break
+        case 'image-inspect': result = media.inspect(command.profileId, command.id); break
+        case 'image-enable': media.change(command.profileId, command.id, 'enable', command.enabled); break
+        case 'image-remove': media.change(command.profileId, command.id, 'remove'); break
+        case 'image-import': {
+          const selection = await dialog.showOpenDialog({ title: 'Добавить фотографию товара · JPEG/PNG', properties: ['openFile', 'dontAddToRecent'], filters: [{ name: 'Фотографии', extensions: ['jpg', 'jpeg', 'png'] }] })
+          if (selection.canceled || !selection.filePaths[0]) break
+          const imported = await importImage(selection.filePaths[0])
+          result = media.add({ ...imported, profileId: command.profileId, label: command.label, sku: command.sku }); break
+        }
         case 'context-preview': {
-          try { result = prepareContext(service, command.profileId, randomUUID(), command.settings, command.task) }
+          try { result = prepareContext(service, command.profileId, randomUUID(), command.settings, command.task, media) }
           catch (error) { throw new KnowledgeError(error instanceof Error ? error.message : 'Не удалось подготовить контекст.') }
           break
         }

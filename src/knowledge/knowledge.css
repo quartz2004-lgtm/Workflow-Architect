@@ -42,5 +42,10 @@ along with this program.  If not, see <https://gnu.org>.
 .knowledge-dialog summary { cursor: pointer; line-height: 1.6; }
 .knowledge-document pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 450px; overflow: auto; padding: 16px; background: var(--canvas); font: 12px/1.7 var(--mono); }
 .knowledge-facts { max-height: 280px; overflow: auto; }
+.knowledge-media-list { display: grid; gap: 12px; margin-top: 16px; }
+.knowledge-media-item { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--canvas); }
+.knowledge-image-preview { margin: 20px 0; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.knowledge-image-preview img { display: block; width: auto; max-width: 100%; height: auto; max-height: 512px; object-fit: contain; margin: 0 auto 16px; }
+.knowledge-image-preview figcaption { overflow-wrap: anywhere; line-height: 1.6; }
 .knowledge-dialog button:focus-visible, .knowledge-dialog summary:focus-visible, .knowledge-dialog input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 700px) { .knowledge-intro, .knowledge-step, .knowledge-collection { padding: 14px; } .knowledge-files small { white-space: normal; } }

@@ -25,3 +25,7 @@ along with this program.  If not, see <https://gnu.org>.
 .knowledge-context [role=status] { border-left: 2px solid var(--amber); padding: 12px; background: var(--surface); }
 .knowledge-context ul { padding-left: 18px; }
 .knowledge-context summary:focus-visible, .knowledge-fields summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.knowledge-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.knowledge-image-grid figure { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
+.knowledge-image-grid img { display: block; width: 100%; height: auto; max-height: 360px; object-fit: contain; border-radius: var(--radius-small); }
+.knowledge-image-grid figcaption { margin-top: 10px; overflow-wrap: anywhere; }

@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import { z } from 'zod'
 import { knowledgeSnapshotSchema, type KnowledgeDocument, type KnowledgeSnapshot } from './schema'
 import { profileIds } from '../profiles/schema'
+import { imageEvidenceSchema } from './media-schema'
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
 export const contextRequestSchema = z.strictObject({
@@ -37,6 +38,7 @@ export const contextPacketSchema = z.strictObject({
   excerpts: z.array(contextExcerptSchema),
   gaps: z.array(z.strictObject({ kind: z.enum(['missing-sku', 'missing-source', 'no-match', 'budget']), detail: z.string() })),
   budgetBytes: z.number().int().positive(),
+  images: z.array(imageEvidenceSchema).max(2).optional(),
 })
 export type ContextPacket = z.infer<typeof contextPacketSchema>
 export type ContextExcerpt = z.infer<typeof contextExcerptSchema>

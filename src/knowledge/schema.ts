@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import { z } from 'zod'
 import { profileIds } from '../profiles/schema'
 import { agentKnowledgeSchema } from '../domain/knowledge-config'
+import { mediaRecordSchema } from './media-schema'
 
 export const knowledgeLimits = { documents: 200, documentBytes: 512 * 1024, snapshotBytes: 6 * 1024 * 1024, history: 3 } as const
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
@@ -48,6 +49,11 @@ export const knowledgeBackupSchema = z.strictObject({
 const owned = { profileId: z.enum(profileIds), id: z.uuid() }
 const versioned = { ...owned, revision: z.number().int().nonnegative() }
 export const knowledgeCommandSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('image-list'), profileId: z.enum(profileIds) }),
+  z.strictObject({ kind: z.literal('image-import'), profileId: z.enum(profileIds), label: mediaRecordSchema.shape.label, sku: mediaRecordSchema.shape.sku }),
+  z.strictObject({ kind: z.literal('image-inspect'), ...owned }),
+  z.strictObject({ kind: z.literal('image-enable'), ...owned, enabled: z.boolean() }),
+  z.strictObject({ kind: z.literal('image-remove'), ...owned }),
   z.strictObject({ kind: z.literal('context-preview'), profileId: z.enum(profileIds), settings: agentKnowledgeSchema, task: z.string().min(1).max(24000) }),
   z.strictObject({ kind: z.literal('list'), profileId: z.enum(profileIds) }),
   z.strictObject({ kind: z.literal('choose-folder') }),
