@@ -33,12 +33,16 @@ import { JobManager } from '../runtime/job-manager'
 import type { TelegramUpdate } from './telegram-api'
 import type { JsonTransport } from './network'
 import type { ModelProvider, ModelResponse } from '../ai/types'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { KnowledgeService } from '../knowledge/service'
+import { KnowledgeRuntime } from '../knowledge/runtime'
+import { defaultAgentKnowledge } from '../domain/knowledge-config'
 
 const cleanups: (() => void)[] = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) cleanup(); await new Promise(resolve => setTimeout(resolve, 20)) })
-function fixture() {
+function fixture(jobOptions?: (root: string) => ConstructorParameters<typeof JobManager>[1]) {
   const root = mkdtempSync(join(tmpdir(), 'wa-telegram-test-'))
-  const connections = new IntegrationConnections(join(root, 'connections')), effects = new EffectStore(join(root, 'effects')), sources = new SourceStore(join(root, 'sources')), inbox = new TelegramInbox(join(root, 'inbox')), jobs = new JobManager(join(root, 'jobs'))
+  const connections = new IntegrationConnections(join(root, 'connections')), effects = new EffectStore(join(root, 'effects')), sources = new SourceStore(join(root, 'sources')), inbox = new TelegramInbox(join(root, 'inbox')), jobs = new JobManager(join(root, 'jobs'), jobOptions?.(root))
   const updates: TelegramUpdate[] = [], sent: { method: string; body: string }[] = []
   let nextMessage = 1
   const transport: JsonTransport = async request => {
@@ -68,6 +72,45 @@ function fixture() {
 }
 const message = (id: number, chat: number, text: string, type = 'private', from = chat): TelegramUpdate => ({ update_id: id, message: { message_id: id, from: { id: from, is_bot: false }, chat: { id: chat, type }, text } })
 describe('Telegram durable remote workflow', () => {
+  it('delivers the bound profile snapshot to Agent and preserves its evidence for Telegram runs', async () => {
+    let knowledge!: KnowledgeService
+    const chat = vi.fn<ModelProvider['chat']>(async () => ({ content: 'Описание по источнику', toolCalls: [], inputTokens: 300, outputTokens: 20, finish: 'stop' }))
+    const provider: ModelProvider = { id: 'test', costPerMillionInput: 0, costPerMillionOutput: 0, list: async () => [], inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }), chat }
+    const f = fixture(root => {
+      knowledge = new KnowledgeService(join(root, 'knowledge'))
+      return { knowledge: new KnowledgeRuntime(knowledge), provider: () => () => provider }
+    })
+    const sourcePath = join(f.root, 'source')
+    await mkdir(join(sourcePath, 'source/current'), { recursive: true })
+    await writeFile(join(sourcePath, 'source/current/product.json'), JSON.stringify({ sku: 'TG-A', care: 'Только холодная стирка', composition: null }))
+    const preview = await knowledge.prepare({ profileId: profileIds[0], label: 'Telegram source', sourcePath, selectedPaths: ['source/current/product.json'] })
+    const collectionId = knowledge.commit(profileIds[0], preview.token)
+    const trigger = f.project.nodes[0]!, agent = configureOperation(createNode('agent'), 'agent'), artifact = f.project.nodes[2]!
+    if (agent.type !== 'agent' || agent.operation?.kind !== 'agent') throw new Error('Expected Agent')
+    agent.config = { role: 'Редактор', model: { provider: 'ollama', name: 'fixture' }, systemPrompt: 'Используй источники.' }
+    agent.operation.requireTools = false
+    agent.operation.minimumWords = 0
+    agent.operation.knowledge = { ...defaultAgentKnowledge, sku: 'TG-A', collections: [{ collectionId }] }
+    f.project.nodes = [trigger, agent, artifact]
+    f.project.edges = [[trigger, agent], [agent, artifact]].map(([a, b]) => createEdge(a!.id, b!.id, a!.ports.find(port => port.direction === 'output')!.id, b!.ports.find(port => port.direction === 'input')!.id))
+    const { binding } = f.bind(profileIds[0], '101')
+    f.updates.push(message(80, 101, '/run Опиши TG-A'))
+    f.hub.start()
+    await vi.waitFor(() => expect(f.jobs.list(profileIds[0])).toHaveLength(1))
+    const id = f.sources.binding(profileIds[0], binding.id).lastJobId!
+    const queued = f.jobs.get(profileIds[0], id)
+    expect(queued.preparedKnowledge![0]!.packet.task).toContain('Опиши TG-A')
+    await writeFile(join(sourcePath, 'source/current/product.json'), JSON.stringify({ sku: 'TG-A', care: 'Изменено после очереди' }))
+    f.jobs.start()
+    await vi.waitFor(() => expect(f.jobs.get(profileIds[0], id).status).toBe('succeeded'))
+    expect(chat.mock.calls[0]![0].messages[1]!.content).toContain('Только холодная стирка')
+    expect(chat.mock.calls[0]![0].messages[1]!.content).not.toContain('Изменено после очереди')
+    const event = f.jobs.get(profileIds[0], id).events.find(event => event.kind === 'knowledge')!
+    expect(event.kind === 'knowledge' && event.packet.handoff?.taskId).toBe(id)
+    expect(f.jobs.list(profileIds[1])).toEqual([])
+    await f.hub.notify()
+    expect(f.sent.filter(item => item.method === 'sendDocument')).toHaveLength(1)
+  })
   it('preserves a newer chat publication while a model classifies an earlier message', async () => {
     const f = fixture(), { binding, workflow } = f.bind(profileIds[0], '101')
     let resolveResponse!: (value: ModelResponse) => void
