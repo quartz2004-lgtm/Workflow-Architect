@@ -85,6 +85,8 @@ describe('knowledge in durable graph execution', () => {
   it('freezes at submission, executes actual selected text, and reopens exact evidence without source files', async () => {
     const f = await fixture(), job = f.manager.submit(f.request)
     expect(job.preparedKnowledge).toHaveLength(1)
+    expect(job.preparedKnowledge![0]!.packet.handoff).toMatchObject({ taskId: job.id, nodeId: f.agent.id, mode: 'local', model: 'local', minimumWords: 0, format: 'text', instructions: 'Редактор\n\nИспользуй только указанные сведения.' })
+    expect(job.preparedKnowledge![0]!.packet.stageInput).toBeUndefined()
     await writeFile(f.file, JSON.stringify({ sku: 'FIXTURE-A', care: 'НОВАЯ ВЕРСИЯ' }))
     const update = await f.knowledge.prepare({ ...f.input, id: f.collectionId, revision: 0 })
     f.knowledge.commit(profileIds[0], update.token); f.knowledge.change(profileIds[0], f.collectionId, 1, 'prune')
@@ -98,7 +100,7 @@ describe('knowledge in durable graph execution', () => {
     const saved = f.manager.get(profileIds[0], job.id), event = saved.events.find(event => event.kind === 'knowledge')!
     expect(event.kind).toBe('knowledge')
     if (event.kind !== 'knowledge') throw new Error('Missing evidence')
-    expect(event.packet).toEqual(job.preparedKnowledge![0]!.packet)
+    expect(event.packet).toEqual({ ...job.preparedKnowledge![0]!.packet, stageInput: f.request.input })
     expect(event.runId).toBe(event.packet.runId)
     expect(event.packet.excerpts[0]!.snapshotId).toBe(f.preview.snapshot.id)
     f.manager.stop()

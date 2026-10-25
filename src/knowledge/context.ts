@@ -21,11 +21,18 @@ import { profileIds } from '../profiles/schema'
 import { imageEvidenceSchema } from './media-schema'
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
+export const contextHandoffSchema = z.strictObject({
+  taskId: z.uuid(), nodeId: z.uuid(), mode: z.literal('local'),
+  model: z.string(), minimumWords: z.number().int().nonnegative(),
+  format: z.enum(['text', 'json-schema']), outputContract: z.json().optional(),
+  instructions: z.string(), editorialFreedom: z.string(),
+})
 export const contextRequestSchema = z.strictObject({
   profileId: z.enum(profileIds), runId: z.uuid(), task: z.string().min(1).max(24000),
   query: z.string().min(1).max(4000), sku: z.string().trim().min(1).max(200).optional(),
   sourceIds: z.array(z.string().min(1).max(200)).max(30).default([]),
   maxBytes: z.number().int().min(1024).max(96000), maxExcerpts: z.number().int().min(1).max(40).default(12),
+  handoff: contextHandoffSchema.optional(),
 })
 export const contextExcerptSchema = z.strictObject({
   collectionId: z.uuid(), snapshotId: z.uuid(), snapshotDigest: hash, sourceVersion: z.string(),
@@ -39,6 +46,8 @@ export const contextPacketSchema = z.strictObject({
   gaps: z.array(z.strictObject({ kind: z.enum(['missing-sku', 'missing-source', 'no-match', 'budget']), detail: z.string() })),
   budgetBytes: z.number().int().positive(),
   images: z.array(imageEvidenceSchema).max(2).optional(),
+  handoff: contextHandoffSchema.optional(),
+  stageInput: z.json().optional(),
 })
 export type ContextPacket = z.infer<typeof contextPacketSchema>
 export type ContextExcerpt = z.infer<typeof contextExcerptSchema>
@@ -130,7 +139,7 @@ export function documentFragments(document: KnowledgeDocument): Fragment[] {
 export function buildContextPacket(input: ContextRequest, sources: readonly ContextSource[]): ContextPacket {
   const request = contextRequestSchema.parse(input)
   const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: request.profileId, runId: request.runId,
-    task: request.task, query: request.query, ...(request.sku ? { sku: request.sku } : {}), excerpts: [], gaps: [], budgetBytes: request.maxBytes }
+    task: request.task, query: request.query, ...(request.sku ? { sku: request.sku } : {}), ...(request.handoff ? { handoff: request.handoff } : {}), excerpts: [], gaps: [], budgetBytes: request.maxBytes }
   const tokens = words(request.query), requestedSku = request.sku && normalize(request.sku)
   const candidates: { excerpt: ContextExcerpt; score: number; exact: boolean; references: string[] }[] = []
   const foundIds = new Set<string>(); let foundSku = false

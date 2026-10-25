@@ -24,6 +24,7 @@ import { buildContextPacket, contextPacketSchema, type ContextPacket } from './c
 import type { KnowledgeService } from './service'
 import type { AgentKnowledge } from '../domain/knowledge-config'
 import type { MediaStore } from './media-store'
+import { resolveContract } from '../execution/compiler'
 
 export const preparedKnowledgeSchema = z.array(z.strictObject({
   nodeId: z.uuid(), collectionIds: z.array(z.uuid()).max(4), packet: contextPacketSchema,
@@ -35,12 +36,12 @@ export interface RuntimeKnowledge {
   resolve(profileId: string, runId: string, prepared: PreparedKnowledge, nodeId: string): ContextPacket
 }
 
-export function prepareContext(knowledge: Pick<KnowledgeService, 'capture'>, profileId: string, runId: string, config: AgentKnowledge, task: string, media?: Pick<MediaStore, 'capture'>): ContextPacket {
+export function prepareContext(knowledge: Pick<KnowledgeService, 'capture'>, profileId: string, runId: string, config: AgentKnowledge, task: string, media?: Pick<MediaStore, 'capture'>, handoff?: ContextPacket['handoff']): ContextPacket {
   if (config.imageIds.length && !media) throw new Error('Хранилище фотографий недоступно. Изображения не будут молча пропущены.')
   const query = config.query || task
   if (query.length > 4000) throw new Error('Исходная задача слишком длинна для поискового запроса. Укажите отдельный запрос в источниках Agent.')
   const packet = buildContextPacket({ profileId: projectProfile(profileId), runId, task, query, sku: config.sku || undefined,
-    sourceIds: config.sourceIds, maxBytes: config.maxBytes, maxExcerpts: config.maxExcerpts }, knowledge.capture(profileId, config.collections))
+    sourceIds: config.sourceIds, maxBytes: config.maxBytes, maxExcerpts: config.maxExcerpts, handoff }, knowledge.capture(profileId, config.collections))
   if (config.imageIds.length) packet.images = media!.capture(profileId, config.imageIds, config.sku)
   return packet
 }
@@ -51,11 +52,18 @@ export class KnowledgeRuntime implements RuntimeKnowledge {
   prepare(profileId: string, runId: string, project: Project, input: JsonValue): PreparedKnowledge {
     const result: PreparedKnowledge = []
     for (const { graph } of graphEntries(project)) for (const node of graph.nodes) {
-      if (node.status === 'disabled' || node.operation?.kind !== 'agent' || !node.operation.knowledge) continue
+      if (node.status === 'disabled' || node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.operation.knowledge) continue
       const config = node.operation.knowledge
       if (!config.collections.length && !config.imageIds.length) continue
       const task = typeof input === 'string' ? input : JSON.stringify(input)
-      const packet = prepareContext(this.knowledge, profileId, runId, config, task, this.media)
+      const outputContract = node.config.output ? resolveContract(node.config.output, project) : undefined
+      const packet = prepareContext(this.knowledge, profileId, runId, config, task, this.media, {
+        taskId: runId, nodeId: node.id, mode: 'local', model: node.config.model?.name ?? '',
+        minimumWords: node.operation.minimumWords, format: outputContract === undefined ? 'text' : 'json-schema',
+        ...(outputContract === undefined ? {} : { outputContract }),
+        instructions: [node.config.role, node.config.promptId ? project.prompts.find(prompt => prompt.id === node.config.promptId)?.content : '', node.config.systemPrompt, ...(node.config.behavioralRules ?? [])].filter(Boolean).join('\n\n'),
+        editorialFreedom: 'Свободно улучшай структуру, стиль и подачу в рамках задания. Сохраняй проверяемые факты, условия их применимости и неизвестные сведения. Не превращай визуальные наблюдения в подтверждённые свойства товара.',
+      })
       result.push({ nodeId: node.id, collectionIds: config.collections.map(item => item.collectionId), packet })
     }
     assertValueBudget(result, 4 * 1024 * 1024, true)

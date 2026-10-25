@@ -346,6 +346,9 @@ export class ExecutionRun {
       const knowledge = needsKnowledge ? this.persistence.knowledge?.(node.id) : undefined
       if (knowledge) {
         if (knowledge.runId !== this.id) throw new Error('Пакет источников относится к другому запуску.')
+          // Freeze the actual predecessor result/draft for this activation; the
+          // submitted task and source snapshot remain unchanged.
+          knowledge.stageInput = structuredClone(input)
         this.emit({ kind: 'knowledge', activation, packet: knowledge })
       }
       this.save()
