@@ -17,8 +17,21 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { describe, expect, it } from 'vitest'
 import { jsonSchemaProblem } from './json-schema'
+import { execFileSync } from 'node:child_process'
 
 describe('precompiled JSON metaschemas', () => {
+  it('resolves CommonJS default helpers in native Node for enum and const comparisons', () => {
+    const modules = ['draft07', 'draft2020'].map(name => new URL(`./generated/${name}.js`, import.meta.url).href)
+    const script = `
+      for (const url of ${JSON.stringify(modules)}) {
+        const { default: validate } = await import(url);
+        const schema = { type: 'object', properties: { choice: { enum: ['red', 'blue'] }, fixed: { const: { enabled: true } } }, required: ['choice', 'fixed'] };
+        if (!validate(schema)) throw new Error(JSON.stringify(validate.errors));
+        if (validate({ required: ['same', 'same'] })) throw new Error('Duplicate required field accepted');
+      }
+    `
+    expect(() => execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', windowsHide: true })).not.toThrow()
+  })
   it('validates draft-07 and 2020-12 without runtime code generation', () => {
     const original = globalThis.Function
     globalThis.Function = function () { throw new Error('Runtime compilation is forbidden') } as unknown as FunctionConstructor
