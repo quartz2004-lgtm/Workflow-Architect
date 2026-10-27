@@ -27,6 +27,36 @@ import { KnowledgeService } from '../../src/knowledge/service'
 import { buildContextPacket } from '../../src/knowledge/context'
 import { advanceEditorial } from '../../src/editorial/engine'
 import { OllamaProvider } from '../../src/ai/ollama'
+import { editorialStateSchema } from '../../src/editorial/engine-schema'
+import { editorialReviewSchema } from '../../src/editorial/schema'
+import { contextPacketSchema } from '../../src/knowledge/context'
+
+test('real bounded reviewer preserves a correction budget for a saved draft', async () => {
+  const folder = process.env.WORKFLOW_EDITORIAL_REVIEW_EVIDENCE
+  test.skip(!folder, 'Explicit saved local evidence required.')
+  test.setTimeout(660000)
+  let state = editorialStateSchema.parse(JSON.parse(await readFile(join(folder!, 'state.json'), 'utf8')))
+  const packet = contextPacketSchema.parse(JSON.parse(await readFile(join(folder!, 'packet.json'), 'utf8')))
+  expect(state.calls.every(call => call.status === 'complete')).toBe(true)
+  expect(state.calls).toHaveLength(5)
+  state.phase = 'reviewer'; state.issues = state.versions.at(-1)!.issues.filter(issue => issue.origin === 'program')
+  const output = resolve('output/verification-0.5.4', `bounded-review-${Date.now()}`)
+  await mkdir(output, { recursive: true })
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
+  console.log(`Bounded review: ${output}`)
+  state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => { await writeFile(join(output, 'state.json'), JSON.stringify(value, null, 2)) } })
+  expect(state.calls.at(-1)?.status).toBe('complete')
+  const review = editorialReviewSchema.parse(JSON.parse(state.calls.at(-1)!.response!))
+  expect(review.comments.length).toBeLessThanOrEqual(5)
+  // Probe the next prompt's size without spending another generation or
+  // modifying the saved real review. A controlled exception stops the probe.
+  expect(state.phase).toBe('writer')
+  let nextRequestFits = false
+  provider.chat = async () => { nextRequestFits = true; throw new Error('TEST_ONLY_CONTEXT_PROBE') }
+  await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async () => {} })
+  await writeFile(join(output, 'sizing.json'), JSON.stringify({ nextRequestFits, comments: review.comments.length, humanApproved: false }))
+  expect(nextRequestFits).toBe(true)
+})
 
 test('real revision replay uses completed evidence without repeating planner or first draft', async () => {
   const path = process.env.WORKFLOW_EDITORIAL_REVISION_JOB

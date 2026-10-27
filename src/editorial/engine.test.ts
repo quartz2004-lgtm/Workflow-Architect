@@ -41,6 +41,17 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it('rejects an overlong reviewer response instead of truncating concerns or approving', async () => {
+    let state = await start()
+    const model = provider([reply('План'), reply(article), reply(JSON.stringify({ verdict: 'ready-for-human', comments: ['x'.repeat(201)] }))])
+    for (let step = 0; step < 3; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('writer')
+    expect(state.issues.some(issue => issue.message.includes('не вернул завершённую проверку'))).toBe(true)
+    expect(state.calls.at(-1)?.response).toContain('x'.repeat(201))
+    const schema = model.requests[2]!.outputSchema!
+    expect(JSON.stringify(schema)).toContain('"maxLength":200')
+    expect(JSON.stringify(schema)).toContain('"maxItems":5')
+  })
   it.each(['unavailable', 'changed'])('preserves a %s model failure without generating text', async mode => {
     const model = provider([])
     if (mode === 'unavailable') model.inspect = async () => { throw new Error('Ollama недоступна') }
