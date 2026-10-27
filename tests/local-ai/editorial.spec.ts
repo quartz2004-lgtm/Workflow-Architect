@@ -25,11 +25,34 @@ import { jobSchema } from '../../src/runtime/job-schema'
 import { profileIds } from '../../src/profiles/schema'
 import { KnowledgeService } from '../../src/knowledge/service'
 import { buildContextPacket } from '../../src/knowledge/context'
-import { advanceEditorial } from '../../src/editorial/engine'
+import { advanceEditorial, createEditorialState } from '../../src/editorial/engine'
 import { OllamaProvider } from '../../src/ai/ollama'
 import { editorialStateSchema } from '../../src/editorial/engine-schema'
 import { editorialReviewSchema } from '../../src/editorial/schema'
 import { contextPacketSchema } from '../../src/knowledge/context'
+
+test('fresh editorial replay of a saved dossier reaches human review without changing the production job', async () => {
+  const path = process.env.WORKFLOW_EDITORIAL_DOSSIER_JOB
+  test.skip(!path, 'Explicit saved job required; uses a new bounded test task.')
+  test.setTimeout(1850000)
+  const job = jobSchema.parse(JSON.parse(await readFile(path!, 'utf8')))
+  const original = Object.values(job.checkpoint?.editorial ?? {})[0]!
+  const packet = contextPacketSchema.parse(job.preparedKnowledge![0]!.packet)
+  let state = await createEditorialState(original.task, packet, original.settings, original.budget)
+  const folder = resolve('output/verification-0.5.4', `dossier-replay-${Date.now()}`)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'packet.json'), JSON.stringify(packet, null, 2))
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
+  for (let step = 0; step < 7 && ['planner', 'writer', 'reviewer'].includes(state.phase); step++) {
+    console.log(`Saved dossier replay: ${state.phase}; evidence ${folder}`)
+    state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => {
+      await writeFile(join(folder, 'state.json'), JSON.stringify(value, null, 2))
+    } })
+  }
+  for (const version of state.versions) await writeFile(join(folder, `draft-v${version.number}.md`), version.text)
+  expect(state.id).not.toBe(original.id)
+  expect(state.phase, state.issues.map(issue => issue.message).join('\n')).toBe('awaiting-human')
+})
 
 test('real bounded reviewer preserves a correction budget for a saved draft', async () => {
   const folder = process.env.WORKFLOW_EDITORIAL_REVIEW_EVIDENCE
