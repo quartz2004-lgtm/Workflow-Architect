@@ -25,6 +25,37 @@ import { jobSchema } from '../../src/runtime/job-schema'
 import { profileIds } from '../../src/profiles/schema'
 import { KnowledgeService } from '../../src/knowledge/service'
 import { buildContextPacket } from '../../src/knowledge/context'
+import { advanceEditorial } from '../../src/editorial/engine'
+import { OllamaProvider } from '../../src/ai/ollama'
+
+test('real revision replay uses completed evidence without repeating planner or first draft', async () => {
+  const path = process.env.WORKFLOW_EDITORIAL_REVISION_JOB
+  test.skip(!path, 'Explicit local evidence required; no production job is changed.')
+  test.setTimeout(1850000)
+  const job = jobSchema.parse(JSON.parse(await readFile(path!, 'utf8')))
+  let state = structuredClone(Object.values(job.checkpoint?.editorial ?? {})[0]!)
+  const packet = job.preparedKnowledge![0]!.packet
+  expect(state.phase).toBe('needs-editing')
+  expect(state.calls.every(call => call.status === 'complete')).toBe(true)
+  expect(state.issues.at(-1)?.message).toContain('контекст')
+  expect(state.versions).toHaveLength(1)
+  const originalCalls = state.calls.map(call => call.id)
+  // Controlled test continuation only: preserve deadline/tokens, remove the
+  // observed sizing error, retain all editorial remarks for the latest draft.
+  state.phase = 'writer'; state.issues = structuredClone(state.versions.at(-1)!.issues)
+  const folder = resolve('output/verification-0.5.4', `revision-${Date.now()}`)
+  await mkdir(folder, { recursive: true })
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
+  const save = async (value: typeof state) => { await writeFile(join(folder, 'state.json'), JSON.stringify(value, null, 2)) }
+  await writeFile(join(folder, 'packet.json'), JSON.stringify(packet, null, 2))
+  for (let step = 0; step < 4 && ['writer', 'reviewer'].includes(state.phase); step++) {
+    console.log(`Revision replay: ${state.phase}; evidence ${folder}`)
+    state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save })
+  }
+  for (const version of state.versions) await writeFile(join(folder, `draft-v${version.number}.md`), version.text)
+  expect(state.calls.slice(0, 3).map(call => call.id)).toEqual(originalCalls)
+  expect(state.phase, state.issues.map(issue => issue.message).join('\n')).toBe('awaiting-human')
+})
 
 test('real source preflight measures complete bounded dossiers without calling a model', async () => {
   const sourcePath = process.env.WORKFLOW_SOAR_SOURCE

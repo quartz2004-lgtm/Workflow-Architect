@@ -94,7 +94,23 @@ describe('durable bounded editorial stages', () => {
     const finalWriter = model.requests[5]!.messages[1]!.content
     expect(finalWriter).toContain('черновик-B')
     expect(finalWriter).not.toContain('черновик-A')
+    expect(JSON.parse(finalWriter)).not.toHaveProperty('plan')
     expect(state.issues.some(item => item.code === 'volume')).toBe(true)
+  })
+
+  it('keeps complete source facts and references while avoiding duplicate query and transport provenance', async () => {
+    const captured: ContextPacket = { ...packet, query: 'Уникальная исходная задача', excerpts: [{
+      collectionId: id, snapshotId: id, snapshotDigest: 'b'.repeat(64), sourceVersion: 'source-v1',
+      documentId: id, documentHash: 'c'.repeat(64), path: 'products.json', locator: '/models/0',
+      sourceIds: ['source-1'], skus: ['product-1'], content: 'Полный факт и все ограничения применимости',
+    }] }
+    const initial = await createEditorialState({ text: captured.query, minimumWords: 100 }, captured, settings)
+    const model = provider([reply('План')])
+    await advanceEditorial({ state: initial, packet: captured, provider: model, signal: signal(), save: async () => {} })
+    const prompt = JSON.parse(model.requests[0]!.messages[1]!.content)
+    expect(prompt.knowledge).not.toHaveProperty('query')
+    expect(prompt.knowledge.excerpts[0]).toEqual({ path: 'products.json', locator: '/models/0', sourceVersion: 'source-v1', sourceIds: ['source-1'], skus: ['product-1'], content: captured.excerpts[0]!.content })
+    expect(captured.excerpts[0]!.snapshotDigest).toBe('b'.repeat(64))
   })
 
   it('stops before generation when the frozen source packet is incomplete', async () => {

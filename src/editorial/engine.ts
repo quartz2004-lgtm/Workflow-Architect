@@ -80,12 +80,15 @@ export async function advanceEditorial(options: {
   // Preserve the full frozen packet in evidence, but do not send duplicate task
   // and previous-article copies or runtime identifiers to the language model.
   const knowledge = {
-    query: packet.query, sku: packet.sku, excerpts: packet.excerpts, gaps: packet.gaps,
+    ...(packet.query === state.task.text ? {} : { query: packet.query }), sku: packet.sku,
+    // Machine provenance remains in the frozen packet. Writers need the source
+    // identity and full fact, not repeated transport UUIDs and SHA-256 strings.
+    excerpts: packet.excerpts.map(({ path, locator, sourceVersion, sourceIds, skus, content }) => ({ path, locator, sourceVersion, sourceIds, skus, content })), gaps: packet.gaps,
     editorialFreedom: packet.handoff?.editorialFreedom,
   }
   const prompt = JSON.stringify({
     task: state.task, knowledge,
-    ...(stage === 'writer' ? { plan: state.plan } : {}),
+    ...(stage === 'writer' && !state.versions.length ? { plan: state.plan } : {}),
     ...(state.versions.length ? { draft: state.versions.at(-1)!.text, remarks: state.issues } : {}),
   })
   const system = [policy, instructions[stage], packet.handoff?.instructions,
