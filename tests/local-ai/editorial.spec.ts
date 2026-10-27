@@ -16,7 +16,7 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { _electron as electron, expect, test } from '@playwright/test'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createEditorialExample } from '../../src/execution/editorial-example'
@@ -48,6 +48,7 @@ test('real SOAR editorial stages preserve evidence and wait for human review', a
   const model = process.env.WORKFLOW_LOCAL_EDITORIAL_MODEL, source = process.env.WORKFLOW_SOAR_SOURCE
   test.skip(!model || !source, 'Explicit installed model and authorized local SOAR source required.')
   test.setTimeout(1950000)
+  const replay = process.env.WORKFLOW_EDITORIAL_REPLAY_JOB ? jobSchema.parse(JSON.parse(await readFile(process.env.WORKFLOW_EDITORIAL_REPLAY_JOB, 'utf8'))) : undefined
   const root = await mkdtemp(join(tmpdir(), 'workflow-real-editorial-'))
   const reportFolder = resolve('output/verification-0.5.4', `editorial-${Date.now()}`)
   await mkdir(reportFolder, { recursive: true })
@@ -63,10 +64,10 @@ test('real SOAR editorial stages preserve evidence and wait for human review', a
     expect(prepared.ok).toBe(true)
     const committed = await page.evaluate(({ profileId, token }) => window.workflowDesktop!.knowledge!.request({ kind: 'commit', profileId, token }), { profileId, token: prepared.value.token }) as { ok: boolean; value: string }
     expect(committed.ok).toBe(true)
-    const project = createEditorialExample(model!, { ...defaultAgentKnowledge, collections: [{ collectionId: committed.value }], sku: 'SOAR-SET-B01-DM-01-01-02', query: process.env.WORKFLOW_EDITORIAL_QUERY ?? '', maxBytes: 16000, maxExcerpts: 12 })
+    const project = createEditorialExample(model!, { ...defaultAgentKnowledge, collections: [{ collectionId: committed.value }], sku: replay ? '' : 'SOAR-SET-B01-DM-01-01-02', query: replay ? '' : process.env.WORKFLOW_EDITORIAL_QUERY ?? '', maxBytes: 16000, maxExcerpts: 12 })
     const id = crypto.randomUUID()
     const input = { text: 'Как выбрать мужское бельё для комфорта: посадка, ощущения в движении и разумная примерка. Используй комплект SOAR чёрный и синий как конкретный пример, не превращай статью в каталог. Не обещай медицинских эффектов и не выдумывай свойства. Нужен живой полезный текст с примерами, без повторов и рекламных штампов.', audience: 'Взрослые покупатели, которые хотят разобраться в выборе удобного белья', minimumWords: 600 }
-    const raw = JSON.stringify({ id, profileId, eventKey: id, project, entryNodeId: project.nodes[0]!.id, input, background: true })
+    const raw = JSON.stringify({ id, profileId, eventKey: id, project, entryNodeId: project.nodes[0]!.id, input: replay?.input ?? input, background: true })
     await writeFile(join(reportFolder, 'submission.json'), raw)
     await page.evaluate(raw => window.workflowDesktop!.runtime.request({ kind: 'submit', request: JSON.parse(raw) as unknown }), raw)
     const get = async () => jobSchema.parse(await page.evaluate(({ profileId, id }) => window.workflowDesktop!.runtime.request({ kind: 'get', profileId, id }), { profileId, id }))

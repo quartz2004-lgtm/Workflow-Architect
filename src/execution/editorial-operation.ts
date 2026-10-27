@@ -54,7 +54,10 @@ export async function executeEditorialOperation(options: {
   while (['planner', 'writer', 'reviewer'].includes(state.phase)) {
     state = await advanceEditorial({ state, packet, provider, signal: options.signal, save: options.save, beforeModel: options.beforeModel })
   }
-  if (state.phase !== 'awaiting-human') throw new Error(`${state.phase === 'cancelled' ? 'Задача отменена' : 'Требуется редактура'}: ${state.issues.map(issue => issue.message).join(' ') || 'Откройте сохранённый черновик и историю этапов.'}`)
+  if (state.phase !== 'awaiting-human') {
+    const label = state.phase === 'cancelled' ? 'Задача отменена' : !state.versions.length && state.issues.some(issue => issue.code === 'knowledge-gap') ? 'Не удалось подготовить источники; текст ещё не создавался' : 'Требуется редактура'
+    throw new Error(`${label}: ${state.issues.map(issue => issue.message).join(' ') || 'Откройте сохранённый черновик и историю этапов.'}`)
+  }
   const version = state.versions.at(-1)
   if (!version || version.issues.length) throw new Error('Нет проверенной версии для Human.')
   return { kind: 'editorial-result', version }

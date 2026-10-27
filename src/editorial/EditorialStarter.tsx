@@ -17,13 +17,12 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { useState } from 'react'
 import type { Project } from '../domain/schema'
-import { defaultAgentKnowledge } from '../domain/knowledge-config'
 import { useProfile } from '../profiles/context'
 import { aiRequest } from '../ai/client'
 import { connectionStateSchema } from '../ai/protocol'
 import { knowledgeRequest } from '../knowledge/client'
 import { knowledgeListSchema, type KnowledgeView } from '../knowledge/schema'
-import { createEditorialExample } from '../execution/editorial-example'
+import { createEditorialExample, defaultEditorialKnowledge } from '../execution/editorial-example'
 
 export function EditorialStarter({ open, disabled }: { open: (project: Project) => Promise<void>; disabled: boolean }) {
   const profile = useProfile()?.profile
@@ -52,7 +51,7 @@ export function EditorialStarter({ open, disabled }: { open: (project: Project) 
       <p>Модель профиля: <strong>{current.model}</strong>. Доступность Ollama проверяется при запуске.</p>
       <label className="field"><span>База для этой редакции</span><select value={selected} onChange={event => setSelected(event.target.value)}><option value="">Выберите базу</option>{current.collections.map(collection => <option key={collection.id} value={collection.id}>{collection.label} · {collection.snapshots[0]?.sourceVersion}</option>)}</select></label>
       <p className="muted">Перед запуском можно выбрать конкретный товар и фотографии в «Знаниях агента», а в Run — посмотреть найденные источники.</p>
-      <button disabled={disabled || busy || !current.collections.some(collection => collection.id === selected)} onClick={() => void open(createEditorialExample(current.model, { ...defaultAgentKnowledge, collections: [{ collectionId: selected }] }))}>Создать и открыть редакцию</button>
+      <button disabled={disabled || busy || !current.collections.some(collection => collection.id === selected)} onClick={() => void open(createEditorialExample(current.model, { ...defaultEditorialKnowledge, collections: [{ collectionId: selected }] }))}>Создать и открыть редакцию</button>
     </>}
     {error && <p className="field-error" role="alert">{error}</p>}
   </section>

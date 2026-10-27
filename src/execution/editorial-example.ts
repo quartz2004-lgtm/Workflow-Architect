@@ -21,7 +21,9 @@ import { defaultEditorialBudget } from '../domain/editorial-config'
 import { defaultAgentKnowledge, type AgentKnowledge } from '../domain/knowledge-config'
 
 /** Two entries converge on one identical, published editorial contract. */
-export function createEditorialExample(model: string, knowledge: AgentKnowledge = defaultAgentKnowledge) {
+export const defaultEditorialKnowledge: AgentKnowledge = { ...defaultAgentKnowledge, maxBytes: 16000, maxExcerpts: 12 }
+
+export function createEditorialExample(model: string, knowledge: AgentKnowledge = defaultEditorialKnowledge) {
   const project = createProject('Локальная редакция · SOAR')
   project.settings.defaultMode = 'engineering'
   project.project.description = 'Задание с ПК или из Telegram → досье → план → текст → проверка → ваше подтверждение → файл. До запуска выберите базу знаний.'
