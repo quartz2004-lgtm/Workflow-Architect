@@ -52,6 +52,16 @@ function plan(telegram = false) {
 }
 
 describe('editorial runtime route', () => {
+  it('explains a source preparation failure without claiming a text needs editing', async () => {
+    const fixture = model()
+    const incomplete: ContextPacket = { ...packet, gaps: [{ kind: 'budget', detail: 'Не помещается карточка товара.' }] }
+    const run = new ExecutionRun(plan(), () => {}, { runId: id, provider: () => fixture.provider, knowledge: () => incomplete })
+    const result = await run.start('Статья')
+    expect(result.status).toBe('failed')
+    expect(result.error?.message).toContain('текст ещё не создавался')
+    expect(fixture.calls).toEqual([])
+    expect(result.artifacts).toEqual([])
+  })
   it('cancels even while initial model identity ignores its AbortSignal', async () => {
     const fixture = model()
     let started!: () => void
