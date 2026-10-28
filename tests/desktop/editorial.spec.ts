@@ -23,7 +23,9 @@ import { join, resolve } from 'node:path'
 import { profileIds } from '../../src/profiles/schema'
 
 test('editorial starter, ordinary task, source preview and exact Human file in native UI', async () => {
-  const article = `# Комфорт SOAR\n\n## Посадка\n${'Пример '.repeat(310)}\n\n## Движение\n${'Проверка '.repeat(310)}`
+  const firstDraft = `# Комфорт SOAR\n\n## Посадка\n${'Пример '.repeat(310)}`
+  const addedParagraph = 'Проверка '.repeat(310).trim()
+  const article = `${firstDraft}\n\n## Движение\n\n${addedParagraph}\n\n`
   const stages: string[] = []
   const prompts: string[] = []
   const server = createServer(async (request, response) => {
@@ -41,8 +43,8 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     // restarting with the complete corrected version and no model available.
     const writerText = prompt.baseVersionId ? JSON.stringify({
       baseVersionId: prompt.baseVersionId,
-      replacements: article.split('\n\n').slice(1).map((text, index) => ({ blockId: `p${index + 1}`, text })), additions: [],
-    }) : stages.length === 2 ? article.replaceAll('Пример '.repeat(310), 'Пример ').replaceAll('Проверка '.repeat(310), 'Проверка ') : article
+      replacements: [], additions: [{ afterBlockId: 'p1', heading: { level: 2, title: 'Движение' }, paragraphs: [addedParagraph] }],
+    }) : stages.length === 2 ? firstDraft : article
     const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? writerText : '{"verdict":"ready-for-human","comments":[]}'
     response.end(JSON.stringify({ model: 'editorial-fixture', done: true, done_reason: 'stop', prompt_eval_count: 100, eval_count: 300, message: { role: 'assistant', content } }))
   })

@@ -111,6 +111,33 @@ test('grounded reviewer validates an unchanged saved first draft in an isolated 
   expect(['writer', 'awaiting-human'], state.issues.map(issue => issue.message).join('\n')).toContain(state.phase)
 })
 
+test('structured additions preserve section integrity on a real saved draft', async () => {
+  const source = process.env.WORKFLOW_EDITORIAL_SECTION_PROBE
+  test.skip(!source, 'Explicit saved test evidence required; one writer call, not full acceptance.')
+  test.setTimeout(660000)
+  const original = editorialStateSchema.parse(JSON.parse(await readFile(join(source!, 'state.json'), 'utf8')))
+  const packet = contextPacketSchema.parse(JSON.parse(await readFile(join(source!, 'packet.json'), 'utf8')))
+  let state = await createEditorialState(original.task, packet, original.settings, original.budget)
+  state.versions = [{ ...structuredClone(original.versions[0]!), id: crypto.randomUUID(), taskId: state.id }]
+  state.phase = 'writer'
+  state.issues = checkEditorialText({ task: state.task, text: state.versions[0]!.text, finish: 'stop', allowedSourceIds: packet.excerpts.flatMap(excerpt => excerpt.sourceIds), knowledgeGaps: [] }).issues
+  const folder = resolve('output/verification-0.5.4', `section-probe-${Date.now()}`)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'seed.json'), JSON.stringify({ source, versionId: original.versions[0]!.id, humanApproved: false }))
+  await writeFile(join(folder, 'packet.json'), JSON.stringify(packet, null, 2))
+  console.log(`Structured addition probe only: ${folder}`)
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
+  state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => {
+    await writeFile(join(folder, 'state.json'), JSON.stringify(value, null, 2))
+  } })
+  expect(state.phase, state.issues.map(issue => issue.message).join('\n')).toBe('reviewer')
+  expect(state.versions).toHaveLength(2)
+  expect(JSON.parse(state.calls[0]!.response!).additions.length).toBeGreaterThan(0)
+  expect(state.versions[0]!.text).toBe(original.versions[0]!.text)
+  expect(state.issues.filter(issue => issue.code === 'structure')).toEqual([])
+  await writeFile(join(folder, 'draft-v2.md'), state.versions[1]!.text)
+})
+
 test('real bounded reviewer preserves a correction budget for a saved draft', async () => {
   const folder = process.env.WORKFLOW_EDITORIAL_REVIEW_EVIDENCE
   test.skip(!folder, 'Explicit saved local evidence required.')

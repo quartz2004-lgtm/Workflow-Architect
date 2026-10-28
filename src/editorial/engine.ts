@@ -24,7 +24,7 @@ import { defaultEditorialBudget, normalizeEditorialTask, type EditorialIssue } f
 import { checkEditorialText } from './quality'
 import { countWords } from '../ai/agent'
 import { createEditorialVersion, editorialDigest } from './versions'
-import { applyEditorialRevision, editorialBlocks, editorialRevisionSchema } from './revision'
+import { applyEditorialRevision, editorialBlocks, revisionResponseSchema } from './revision'
 import { groundedReviewSchema, reviewIssues } from './review'
 
 const reviewOutputSchema = z.record(z.string(), z.json()).parse(z.toJSONSchema(groundedReviewSchema))
@@ -80,7 +80,7 @@ export async function advanceEditorial(options: {
   const draft = state.versions.at(-1)?.text
   const revising = stage === 'writer' && draft !== undefined
   const outputSchema = stage === 'reviewer' ? reviewOutputSchema : revising
-    ? z.record(z.string(), z.json()).parse(z.toJSONSchema(editorialRevisionSchema.extend({ baseVersionId: z.literal(state.versions.at(-1)!.id) }))) : undefined
+    ? z.record(z.string(), z.json()).parse(z.toJSONSchema(revisionResponseSchema(draft!, state.versions.at(-1)!.id))) : undefined
   const targetWords = Math.ceil(state.task.minimumWords * 1.5)
   if (stage === 'writer' && state.versions.length >= state.budget.maxRevisions) {
     state.phase = 'needs-editing'; return persist()
@@ -109,7 +109,7 @@ export async function advanceEditorial(options: {
         : 'Составь краткий план полезной статьи. Отдели подтверждённые свойства товаров от общих советов читателю.',
   })
   const system = [policy, revising
-    ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions добавляет новые абзацы после afterBlockId; null добавляет в конец. Новый заголовок и все его абзацы помещай вместе в text одного добавления, не разносить их по разным местам. ID относятся к исходному draftBlocks и не меняются после вставок. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
+    ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions вставляет цельный раздел после afterBlockId; null добавляет в конец. Для нового раздела heading={level:2,title:название без #}, для добавления абзацев без заголовка heading=null. paragraphs — непустой список содержательных абзацев без Markdown-заголовков. Заголовок и все его абзацы принадлежат одному добавлению. ID относятся к исходному draftBlocks и не меняются после вставок. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
     : instructions[stage], packet.handoff?.instructions,
     'Карточки товаров и связанные правила ухода подтверждают только прямо указанные факты. Состав волокон не доказывает посадку, износостойкость или комфорт изделия. Общий текст о материале не подтверждает его применение в выбранном товаре. Не переноси его свойства на товар без явной связи. Не выдумывай размерные соответствия и происхождение волокон.',
     ...(stage === 'writer' && !revising ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),

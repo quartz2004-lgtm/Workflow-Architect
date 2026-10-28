@@ -21,7 +21,11 @@ const blockId = z.string().regex(/^p[0-9]+$/)
 export const editorialRevisionSchema = z.strictObject({
   baseVersionId: z.uuid(),
   replacements: z.array(z.strictObject({ blockId, text: z.string().max(10000) })).max(12),
-  additions: z.array(z.strictObject({ afterBlockId: blockId.nullable(), text: z.string().trim().min(1).max(10000) })).max(4),
+  additions: z.array(z.strictObject({
+    afterBlockId: blockId.nullable(),
+    heading: z.strictObject({ level: z.number().int().min(2).max(6), title: z.string().trim().min(1).max(200).regex(/^[^#\r\n]+$/) }).nullable(),
+    paragraphs: z.array(z.string().trim().min(1).max(5000)).min(1).max(8),
+  })).max(4),
 })
 
 /** IDs are selectors within one immutable version, not persistent paragraph identities. */
@@ -33,6 +37,17 @@ export function editorialBlocks(text: string) {
     offset += part.length
   })
   return blocks
+}
+
+const hasBody = (text: string) => Boolean(text.replace(/^#{1,6}[ \t]+[^\r\n]+/gm, '').trim())
+
+export function revisionResponseSchema(text: string, versionId: string) {
+  const anchors = editorialBlocks(text).filter(block => hasBody(block.text)).map(block => block.id)
+  const afterBlockId = anchors.length ? z.enum(anchors).nullable() : z.null()
+  return editorialRevisionSchema.extend({
+    baseVersionId: z.literal(versionId),
+    additions: z.array(editorialRevisionSchema.shape.additions.element.extend({ afterBlockId })).max(4),
+  })
 }
 
 /** Atomic literal edits. No fuzzy matching, executable patches or partial application. */
@@ -49,10 +64,16 @@ export function applyEditorialRevision(text: string, versionId: string, input: u
     edits.push({ start: block.start, end: block.end, text: replacement.text, order: edits.length })
   }
   for (const addition of patch.additions) {
+    if (addition.paragraphs.some(paragraph => /^\s{0,3}#{1,6}[ \t]/m.test(paragraph))) throw new Error('Заголовок добавления должен быть в heading, а paragraphs — содержать его текст.')
     const block = addition.afterBlockId === null ? null : blocks.get(addition.afterBlockId)
     if (block === undefined) throw new Error('Неизвестный блок для добавления.')
+    if (block && !hasBody(block.text)) throw new Error('Нельзя вставлять новый фрагмент между заголовком и его содержанием. Выберите блок с текстом или конец статьи.')
     const position = block ? block.end : text.length
-    edits.push({ start: position, end: position, text: '\n\n' + addition.text + '\n\n', order: edits.length })
+    const content = [
+      ...(addition.heading ? ['#'.repeat(addition.heading.level) + ' ' + addition.heading.title] : []),
+      ...addition.paragraphs,
+    ].join('\n\n')
+    edits.push({ start: position, end: position, text: '\n\n' + content + '\n\n', order: edits.length })
   }
   let result = text
   for (const edit of edits.sort((a, b) => b.start - a.start || b.end - a.end || b.order - a.order)) {
