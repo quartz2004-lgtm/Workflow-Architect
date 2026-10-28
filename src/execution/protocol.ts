@@ -19,6 +19,8 @@ import { z } from 'zod'
 import { assertValueBudget } from './values'
 import { agentTraceSchema } from '../ai/trace-schema'
 import { contextPacketSchema } from '../knowledge/context'
+import { editorialStateSchema } from '../editorial/engine-schema'
+import { editorialVersionSchema } from '../editorial/schema'
 
 const id = z.uuid()
 const time = z.iso.datetime()
@@ -27,11 +29,12 @@ export const activationSchema = z.strictObject({ id, callId: id, graphId: id.nul
 const activation = activationSchema
 export const artifactSchema = z.strictObject({ id, activation, filename: z.string().max(150), format: z.enum(['json', 'text']), content: z.string().max(4 * 1024 * 1024) })
 const artifact = artifactSchema
-export const humanRequestSchema = z.strictObject({ id, activation, question: z.string().max(10000), mode: z.enum(['approval', 'input']), expiresAt: time })
+export const humanRequestSchema = z.strictObject({ id, activation, question: z.string().max(10000), mode: z.enum(['approval', 'input']), expiresAt: time, editorial: editorialVersionSchema.optional() })
 const failure = { activation: activation.optional(), message: z.string().max(100000) }
 const diagnostic = z.strictObject({ severity: z.enum(['error', 'warning']), graphId: id.nullable(), entityId: z.string(), code: z.string(), message: z.string() })
 const eventBase = { runId: id, sequence: z.number().int().positive(), timestamp: time }
 export const runEventSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ ...eventBase, kind: z.literal('editorial'), activation, state: editorialStateSchema }),
   z.strictObject({ ...eventBase, kind: z.literal('knowledge'), activation, packet: contextPacketSchema }),
   z.strictObject({ ...eventBase, kind: z.literal('ai'), activation, trace: agentTraceSchema }),
   z.strictObject({ ...eventBase, kind: z.literal('status'), status }),

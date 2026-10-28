@@ -26,6 +26,7 @@ import { prepareContext } from './runtime'
 import { join } from 'node:path'
 import { MediaStore } from './media-store'
 import { importImage } from './image-import'
+import { productCatalog } from './products'
 
 export function createNativeKnowledge(directory: string) {
   const service = new KnowledgeService(directory)
@@ -37,6 +38,11 @@ export function createNativeKnowledge(directory: string) {
       const command = knowledgeCommandSchema.parse(value)
       let result: unknown = null
       switch (command.kind) {
+        case 'product-list': {
+          const selections = command.collections ?? (await service.list(command.profileId)).collections.filter(item => item.enabled).map(item => ({ collectionId: item.id }))
+          result = productCatalog(selections.flatMap(selection => service.capture(command.profileId, [selection])))
+          break
+        }
         case 'image-list': result = media.list(command.profileId); break
         case 'image-inspect': result = media.inspect(command.profileId, command.id); break
         case 'image-enable': media.change(command.profileId, command.id, 'enable', command.enabled); break

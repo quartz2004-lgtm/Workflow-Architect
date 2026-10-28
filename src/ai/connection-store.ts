@@ -68,6 +68,7 @@ export class ConnectionStore {
     return { id: provider.id, signal: captured.signal, costPerMillionInput: provider.costPerMillionInput, costPerMillionOutput: provider.costPerMillionOutput,
       list: signal => guarded(signal, combined => provider.list(combined)),
       inspect: (name, signal) => { if (name !== model) return Promise.reject(new Error('Модель не разрешена этим подключением.')); return guarded(signal, combined => provider.inspect(name, combined)) },
+      identity: (name, signal) => { if (name !== model || !provider.identity) return Promise.reject(new Error('Версия модели недоступна в этом подключении.')); return guarded(signal, combined => provider.identity!(name, combined)) },
       chat: (request, signal) => { if (request.model !== model) return Promise.reject(new Error('Модель не разрешена этим подключением.')); return guarded(signal, combined => provider.chat(request, combined)) },
     }
   }

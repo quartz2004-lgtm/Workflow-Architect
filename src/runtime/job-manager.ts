@@ -70,7 +70,7 @@ export class JobManager {
   }
   private verify(job: RuntimeJob, id: string) {
     if (job.id !== id || fingerprint(requestData(job)) !== job.fingerprint) throw new Error('Нарушена целостность задания.')
-    if (job.recordVersion === '0.5.3') {
+    if (job.recordVersion !== '0.3.1') {
       if (!job.preparedKnowledge || createHash('sha256').update(canonical(job.preparedKnowledge)).digest('hex') !== job.knowledgeDigest) throw new Error('Нарушена целостность пакета знаний.')
       if (job.preparedKnowledge.some(entry => entry.packet.runId !== job.id || entry.packet.profileId !== job.profileId)) throw new Error('Пакет знаний относится к другому запуску.')
     } else if (job.preparedKnowledge || job.knowledgeDigest) throw new Error('Пакет знаний требует recordVersion 0.5.3.')
@@ -135,7 +135,7 @@ export class JobManager {
     const preparedKnowledge = this.options.knowledge?.prepare(request.profileId, request.id, compiled.plan.snapshot, request.input) ?? []
     const knowledgeDigest = createHash('sha256').update(canonical(preparedKnowledge)).digest('hex')
     const timestamp = nowISO()
-    const job = jobSchema.parse({ recordVersion: '0.5.3', preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
+    const job = jobSchema.parse({ recordVersion: '0.5.4', preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
       createdAt: timestamp, updatedAt: timestamp, background: request.background, plan: compiled.plan, input: request.input,
       status: 'queued', cancelRequested: false, attempts: 0, deadline: Date.now() + compiled.plan.limits.timeoutMs, retryAt: 0,
       message: '', checkpoint: null, events: [], outcome: null })
@@ -171,7 +171,7 @@ export class JobManager {
       if (!frame.activation) return true
       const graph = graphs.find(item => item.id === frame.graphId)?.graph
       const operation = graph?.nodes.find(node => node.id === frame.activation!.nodeId)?.operation
-      return !!operation && replaySafe.has(operation.kind)
+      return !!operation && (replaySafe.has(operation.kind) || operation.kind === 'agent' && !!operation.editorial && !!job.checkpoint?.editorial?.[frame.activation.id])
     })
     const decision = recoveryDecision({ cancelled: job.cancelRequested, now: Date.now(), deadline: job.deadline, attempts: job.attempts,
       effect: pure ? 'pure' : 'unknown', idempotencySupported: false, policy: { maxAttempts: 3, initialDelayMs: 250, maxDelayMs: 1000 } })
@@ -218,7 +218,7 @@ export class JobManager {
   private launch(job: RuntimeJob) {
     let events = [...job.events]
     try {
-      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { runId: job.recordVersion === '0.5.3' ? job.id : undefined,
+      const run = new ExecutionRun(job.plan, event => { events.push(event) }, { runId: job.recordVersion !== '0.3.1' ? job.id : undefined,
         knowledge: this.options.knowledge ? nodeId => this.options.knowledge!.resolve(job.profileId, job.id, job.preparedKnowledge ?? [], nodeId) : undefined,
         provider: this.options.provider?.(job.profileId), connector: this.options.connector?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
         const current = this.jobs.get(job.id)!

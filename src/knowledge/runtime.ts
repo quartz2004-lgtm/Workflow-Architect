@@ -25,6 +25,7 @@ import type { KnowledgeService } from './service'
 import type { AgentKnowledge } from '../domain/knowledge-config'
 import type { MediaStore } from './media-store'
 import { resolveContract } from '../execution/compiler'
+import { editorialKnowledgeRequest, normalizeEditorialTask } from '../editorial/schema'
 
 export const preparedKnowledgeSchema = z.array(z.strictObject({
   nodeId: z.uuid(), collectionIds: z.array(z.uuid()).max(4), packet: contextPacketSchema,
@@ -55,9 +56,11 @@ export class KnowledgeRuntime implements RuntimeKnowledge {
       if (node.status === 'disabled' || node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.operation.knowledge) continue
       const config = node.operation.knowledge
       if (!config.collections.length && !config.imageIds.length) continue
-      const task = typeof input === 'string' ? input : JSON.stringify(input)
+      const editorialTask = node.operation.editorial ? normalizeEditorialTask(input, node.operation.minimumWords || 600) : undefined
+      const editorialRequest = editorialTask ? editorialKnowledgeRequest(editorialTask) : undefined
+      const task = editorialRequest ? editorialRequest.task : typeof input === 'string' ? input : JSON.stringify(input)
       const outputContract = node.config.output ? resolveContract(node.config.output, project) : undefined
-      const packet = prepareContext(this.knowledge, profileId, runId, config, task, this.media, {
+      const packet = prepareContext(this.knowledge, profileId, runId, editorialRequest ? { ...config, query: config.query || editorialRequest.query } : config, task, this.media, {
         taskId: runId, nodeId: node.id, mode: 'local', model: node.config.model?.name ?? '',
         minimumWords: node.operation.minimumWords, format: outputContract === undefined ? 'text' : 'json-schema',
         ...(outputContract === undefined ? {} : { outputContract }),

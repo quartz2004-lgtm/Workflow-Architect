@@ -97,7 +97,10 @@ describe('desktop run projection', () => {
     const project = createExecutionExample()
     first.native!.store.setState({ background: true })
     first.start(project, project.nodes[0]!.id, { approved: true, text: 'persistent' })
-    await vi.waitFor(() => expect(first.store.getState().status).toBe('waiting'))
+    // Real checkpoint writes plus the 150 ms view refresh can exceed Vitest's
+    // default 1 s observation window on a shared CI runner. This is a lifecycle
+    // assertion, not a latency benchmark; still require the exact Human state.
+    await vi.waitFor(() => expect(first.store.getState().status).toBe('waiting'), { timeout: 3000 })
     const id = first.store.getState().jobId!
     first.dispose()
     expect(manager.get(profileIds[0], id).status).toBe('waiting')

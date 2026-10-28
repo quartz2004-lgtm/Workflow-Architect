@@ -26,6 +26,11 @@ along with this program.  If not, see <https://gnu.org>.
 .run-body label { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
 .run-body select, .run-body textarea { width: 100%; min-width: 0; padding: 9px 11px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); font: 12px var(--font); }
 .run-body textarea { font-family: var(--mono); line-height: 1.5; resize: vertical; max-height: 220px; }
+.run-body input:not([type="checkbox"]) { width: 100%; min-width: 0; padding: 9px 11px; background: var(--canvas); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-small); font: 12px var(--font); }
+.run-start textarea:not(.code-input) { font-family: var(--font); }
+.run-start input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.run-start .check-field { display: flex; align-items: center; gap: 8px; }
+.run-human form { display: grid; gap: 12px; }
 .run-body select:focus-visible, .run-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .run-body :disabled { opacity: .55; cursor: not-allowed; }
 .run-body h3 { font-size: 14px; margin: 16px 0 12px; }
@@ -33,6 +38,7 @@ along with this program.  If not, see <https://gnu.org>.
 .run-human h3 { margin: 0; font-size: 16px; }
 .run-human p { margin: 0; }
 .run-body pre { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; padding: 12px; background: var(--canvas); border-radius: var(--radius-small); }
+.run-body .run-human > pre { font-family: var(--font); font-size: 14px; line-height: 1.7; max-height: 360px; }
 .run-body details { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .run-body summary { cursor: pointer; line-height: 1.5; font-size: 12px; overflow-wrap: anywhere; }
 .run-event summary > span { display: inline-block; min-width: 28px; color: var(--subtle); font-family: var(--mono); }

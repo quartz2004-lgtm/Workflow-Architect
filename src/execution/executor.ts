@@ -29,6 +29,11 @@ import { parallelRegion } from './ai-plan'
 import { textStatistics } from '../ai/text-tool'
 import type { AiUsage } from '../ai/trace-schema'
 import { connectorArguments, type ConnectorExecutor } from './connector-operation'
+import type { EditorialState } from '../editorial/engine-schema'
+import type { EditorialVersion } from '../editorial/schema'
+import { editorialResultSchema } from '../editorial/result'
+import { approveEditorialVersion, isEditorialApprovalCurrent } from '../editorial/versions'
+import { executeEditorialOperation } from './editorial-operation'
 
 class RunFailure extends Error {
   constructor(message: string, readonly activation?: Activation) { super(message) }
@@ -68,8 +73,9 @@ export class ExecutionRun {
   private readonly abort = new AbortController()
   private aiUsage: AiUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, toolCalls: 0 }
   private reservedTokens = 0
+  private editorial: Record<string, EditorialState> = {}
   constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor; runId?: string; knowledge?: import('../knowledge/runtime').KnowledgeResolver } = {}) {
-    if (!['0.3', '0.4', '0.5'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
+    if (!['0.3', '0.4', '0.5', '0.6'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
     if (!verified.ok) throw new Error(verified.diagnostics.map(issue => issue.message).join('\n'))
@@ -82,14 +88,16 @@ export class ExecutionRun {
       if (['succeeded', 'failed', 'cancelled'].includes(saved.status)) throw new Error('Завершённый запуск нельзя возобновить.')
       for (const frame of saved.frames) {
         const graph = frame.graphId === null ? this.plan.snapshot : this.plan.snapshot.subworkflows.find(item => item.id === frame.graphId)
-        const operation = graph?.nodes.find(node => node.id === frame.activation?.nodeId)?.operation?.kind
-        if (operation === 'agent' || operation === 'parallel' || operation === 'connector') throw new Error('Прерванный запрос ИИ или сервиса не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
+        const operation = graph?.nodes.find(node => node.id === frame.activation?.nodeId)?.operation
+        const savedEditorial = operation?.kind === 'agent' && operation.editorial && frame.activation && saved.editorial?.[frame.activation.id]
+        if ((operation?.kind === 'agent' && !savedEditorial) || operation?.kind === 'parallel' || operation?.kind === 'connector') throw new Error('Прерванный запрос ИИ или сервиса не повторяется автоматически. Проверьте журнал и создайте новый запуск.')
       }
       if (persistence.runId && persistence.runId !== saved.runId) throw new Error('Контрольная точка относится к другому запуску.')
       this.id = saved.runId; this.status = saved.status; this.cancelled = saved.cancelled
       this.sequence = saved.sequence; this.steps = saved.steps; this.deadline = saved.deadline
       this.eventBytes = saved.eventBytes; this.artifacts = saved.artifacts; this.restored = saved.frames
       this.aiUsage = saved.aiUsage ?? this.aiUsage
+      this.editorial = saved.editorial ?? {}
       this.resumed = true
     }
   }
@@ -165,7 +173,7 @@ export class ExecutionRun {
     if (!this.persistence.save) return
     const records = (values: Context['outputs']) => Object.fromEntries([...values].map(([id, ports]) => [id, Object.fromEntries(ports)]))
     const checkpoint: RunCheckpoint = {
-      checkpointVersion: '0.5', aiUsage: this.aiUsage, planId: this.plan.id, runId: this.id, status: this.status,
+      checkpointVersion: '0.6', aiUsage: this.aiUsage, editorial: this.editorial, planId: this.plan.id, runId: this.id, status: this.status,
       cancelled: this.cancelled, sequence: this.sequence, steps: this.steps, deadline: this.deadline,
       eventBytes: this.eventBytes, artifacts: this.artifacts,
       frames: this.frames.map(frame => ({ id: frame.id, graphId: frame.graphId, path: frame.path,
@@ -300,12 +308,22 @@ export class ExecutionRun {
         return routed(op.bodyPortId)
       }
       case 'human': {
-        const response = await this.waitForHuman(node, activation)
+        const editorial = editorialResultSchema.safeParse(input)
+        const response = await this.waitForHuman(node, activation, editorial.success ? editorial.data.version : undefined)
         this.guard(); this.changeStatus('running')
         if (op.mode === 'approval' && response === false) throw new Error('Продолжение отклонено пользователем.')
+        if (editorial.success) {
+          if (op.mode !== 'approval') throw new Error('Редакционная версия требует Human approval.')
+          const version = editorial.data.version
+          const original = Object.values(this.editorial).find(state => state.id === version.taskId)?.versions.at(-1)
+          if (!original || JSON.stringify(original) !== JSON.stringify(version)) throw new Error('Подтверждаемая версия не совпадает с сохранённым результатом редакции.')
+          return { output: { ...editorial.data, approval: await approveEditorialVersion(original, { taskId: version.taskId, versionId: version.id, digest: version.digest }, new Date().toISOString()) } }
+        }
         return { output: op.mode === 'approval' ? input : response }
       }
       case 'artifact': {
+        const editorial = editorialResultSchema.safeParse(input)
+        if (editorial.success && !await isEditorialApprovalCurrent(editorial.data.version, editorial.data.approval)) throw new Error('Артефакт требует подтверждения точной версии текста.')
         const output = sourceValue(op.source, input, data)
         const content = op.format === 'json' ? JSON.stringify(output, null, 2) : typeof output === 'string' ? output : JSON.stringify(output)
         return { output, artifact: { id: createId(), activation, filename: op.filename, format: op.format, content } }
@@ -335,6 +353,7 @@ export class ExecutionRun {
   }
   private async executeAgent(node: WorkflowNode, input: JsonValue, context: Context, data: ReadonlyMap<string, JsonValue>, activation: Activation, signal: AbortSignal): Promise<JsonValue> {
     if (!this.persistence.provider || node.operation?.kind !== 'agent') throw new Error('Для ИИ требуется Windows-приложение с настроенной локальной моделью.')
+    if (node.operation.editorial) return this.executeEditorial(node, input, activation, signal)
     const reserved = Math.min(node.operation.limits.maxTotalTokens, 131072 - this.aiUsage.inputTokens - this.aiUsage.outputTokens - this.reservedTokens)
     if (reserved < 128) throw new Error('Исчерпан общий бюджет ИИ запуска (131072 токена).')
     if (this.deadline - Date.now() < 1000) throw new Error('Недостаточно времени для запроса модели.')
@@ -423,7 +442,35 @@ export class ExecutionRun {
     this.guard()
     return { output: input, next: [{ nodeId: join.id, value: { results } }] }
   }
-  private waitForHuman(node: WorkflowNode, activation: Activation): Promise<JsonValue> {
+  private async executeEditorial(node: WorkflowNode, input: JsonValue, activation: Activation, signal: AbortSignal): Promise<JsonValue> {
+    if (node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.operation.editorial || !node.config.model || !this.persistence.provider) throw new Error('Редакционный Agent не настроен.')
+    const packet = this.persistence.knowledge?.(node.id)
+    if (!packet || packet.runId !== this.id) throw new Error('Выберите доступную базу знаний для редакционного задания.')
+    const previous = this.editorial[activation.id]
+    if (!previous) this.emit({ kind: 'knowledge', activation, packet })
+    const totals = (state?: EditorialState) => ({
+      input: state?.calls.reduce((sum, call) => sum + (call.metrics?.inputTokens ?? call.reservedTokens), 0) ?? 0,
+      output: state?.calls.reduce((sum, call) => sum + (call.metrics?.outputTokens ?? 0), 0) ?? 0,
+      calls: state?.calls.length ?? 0,
+    })
+    const remaining = 131072 - this.aiUsage.inputTokens - this.aiUsage.outputTokens
+    if (!previous && remaining < 1024) throw new Error('Исчерпан общий бюджет ИИ запуска.')
+    return executeEditorialOperation({
+      node, input, packet, provider: this.persistence.provider(node.config.model.name), state: previous,
+      signal, deadline: this.deadline, tokenBudget: remaining,
+      beforeModel: () => { this.guard(); signal.throwIfAborted(); this.persistence.knowledge!(node.id); if (this.aiUsage.calls > 32) throw new Error('Превышен общий лимит 32 вызовов модели.') },
+      save: async state => {
+        const before = totals(this.editorial[activation.id]), after = totals(state)
+        this.aiUsage.inputTokens += after.input - before.input
+        this.aiUsage.outputTokens += after.output - before.output
+        this.aiUsage.calls += after.calls - before.calls
+        this.editorial[activation.id] = structuredClone(state)
+        this.emit({ kind: 'editorial', activation, state })
+        this.save()
+      },
+    })
+  }
+  private waitForHuman(node: WorkflowNode, activation: Activation, editorial?: EditorialVersion): Promise<JsonValue> {
     const op = node.operation
     if (op?.kind !== 'human') throw new Error('Ожидалась операция Human.')
     const frame = this.frames.at(-1)!
@@ -436,7 +483,7 @@ export class ExecutionRun {
       const previous = frame.human?.request
       const expires = previous ? Date.parse(previous.expiresAt) : Math.min(this.deadline, Date.now() + op.timeoutMs)
       if (Date.now() >= expires) { reject(new RunFailure('Истёк timeout ожидания Human.', activation)); return }
-      const request: HumanRequest = previous ?? { id: createId(), activation, question: op.question, mode: op.mode, expiresAt: new Date(expires).toISOString() }
+      const request: HumanRequest = previous ?? { id: createId(), activation, question: op.question, mode: op.mode, expiresAt: new Date(expires).toISOString(), ...(editorial ? { editorial } : {}) }
       frame.human = { request }
       const timer = setTimeout(() => { this.pending = undefined; reject(new RunFailure('Истёк timeout ожидания Human.', activation)) }, Math.max(0, expires - Date.now()))
       this.pending = { request, node, resolve, reject, timer }

@@ -53,7 +53,7 @@ export type ContextPacket = z.infer<typeof contextPacketSchema>
 export type ContextExcerpt = z.infer<typeof contextExcerptSchema>
 export type ContextRequest = z.input<typeof contextRequestSchema>
 export interface ContextSource { collectionId: string; snapshot: KnowledgeSnapshot }
-interface Fragment { locator: string; content: string; sourceIds: string[]; skus: string[]; references?: string[] }
+interface Fragment { locator: string; content: string; sourceIds: string[]; skus: string[]; references?: string[]; article?: string }
 const normalize = (text: string) => text.normalize('NFKC').toLocaleLowerCase('ru').replaceAll('ё', 'е')
 // Lightweight inflection matching, not semantic inference. Identifiers retain
 // their separate exact-match path; no stemming for mixed alphanumeric tokens.
@@ -130,7 +130,8 @@ export function documentFragments(document: KnowledgeDocument): Fragment[] {
     }
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
     const references = ['care_profile_ids', 'source_ids'].flatMap(key => Array.isArray(record[key]) ? record[key].filter((id): id is string => typeof id === 'string') : [])
-    fragments.push({ locator: locator || '/', content: JSON.stringify(ancestors.length ? { sourceContext: ancestors, record: value } : value), ...identifiers(value), references })
+    fragments.push({ locator: locator || '/', content: JSON.stringify(ancestors.length ? { sourceContext: ancestors, record: value } : value), ...identifiers(value), references,
+      ...(typeof record.canonical_sku === 'string' && typeof record.article === 'string' ? { article: record.article } : {}) })
   }
   visit(parsed, ''); return fragments
 }
@@ -141,7 +142,7 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
   const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: request.profileId, runId: request.runId,
     task: request.task, query: request.query, ...(request.sku ? { sku: request.sku } : {}), ...(request.handoff ? { handoff: request.handoff } : {}), excerpts: [], gaps: [], budgetBytes: request.maxBytes }
   const tokens = words(request.query), requestedSku = request.sku && normalize(request.sku)
-  const candidates: { excerpt: ContextExcerpt; score: number; exact: boolean; references: string[] }[] = []
+  const candidates: { excerpt: ContextExcerpt; score: number; exact: boolean; references: string[]; articleMatch: boolean; required: boolean }[] = []
   const foundIds = new Set<string>(); let foundSku = false
   for (const source of sources) {
     z.uuid().parse(source.collectionId)
@@ -156,11 +157,25 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
       const haystack = new Set(words(`${document.path}\n${fragment.content}`))
       const lexical = tokens.reduce((total, token) => total + Number(haystack.has(token)), 0)
       const exact = skuMatch || idMatches.length > 0
-      const { references = [], ...evidence } = fragment
+      const { references = [], article, ...evidence } = fragment
+      const articleMatch = !requestedSku && !!article && tokens.includes(normalize(article))
       candidates.push({ score: Number(skuMatch) * 10000 + idMatches.length * 1000 + lexical, exact,
-        references,
+        references, articleMatch, required: exact,
         excerpt: { collectionId: source.collectionId, snapshotId: snapshot.id, snapshotDigest: snapshot.digest, sourceVersion: snapshot.sourceVersion,
           documentId: document.id, documentHash: document.hash, path: document.path, ...evidence } })
+    }
+  }
+  // Resolve explicit catalogue articles before lexical ranking. A multi-product
+  // brief is not a request for every product sharing words such as "gift".
+  const scopedSkus = new Set(candidates.filter(candidate => candidate.articleMatch).flatMap(candidate => candidate.excerpt.skus.map(normalize)))
+  const articleScoped = scopedSkus.size > 0
+  if (articleScoped) {
+    for (let index = candidates.length - 1; index >= 0; index--) {
+      const candidate = candidates[index]!
+      if (candidate.excerpt.skus.length) {
+        if (!candidate.excerpt.skus.some(sku => scopedSkus.has(normalize(sku)))) { candidates.splice(index, 1); continue }
+        candidate.exact = true; candidate.required = true; candidate.score += 10000
+      }
     }
   }
   if (requestedSku && !foundSku) packet.gaps.push({ kind: 'missing-sku', detail: request.sku! })
@@ -171,7 +186,7 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
     for (const reference of parent.references) {
       const related = candidates.filter(candidate => candidate.excerpt.collectionId === parent.excerpt.collectionId && candidate.excerpt.snapshotId === parent.excerpt.snapshotId && candidate.excerpt.sourceIds.includes(reference))
       if (!related.length && !packet.gaps.some(gap => gap.kind === 'missing-source' && gap.detail === reference)) packet.gaps.push({ kind: 'missing-source', detail: reference })
-      related.forEach(candidate => { candidate.score = Math.max(candidate.score, 500) })
+      related.forEach(candidate => { candidate.score = Math.max(candidate.score, articleScoped ? 5000 : 500); candidate.required = true })
     }
   }
   const selected = candidates.filter(candidate => candidate.score > 0)
@@ -183,7 +198,7 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
   let omitted = false
   for (const candidate of selected) {
     const next = { ...packet, excerpts: [...packet.excerpts, candidate.excerpt], gaps: [...packet.gaps, omission] }
-    if (packet.excerpts.length >= request.maxExcerpts || bytes(next) > request.maxBytes) { omitted = true; continue }
+    if (packet.excerpts.length >= request.maxExcerpts || bytes(next) > request.maxBytes) { if (!articleScoped || candidate.required) omitted = true; continue }
     packet.excerpts.push(candidate.excerpt)
   }
   if (omitted) packet.gaps.push(omission)

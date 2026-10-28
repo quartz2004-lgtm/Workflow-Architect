@@ -27,7 +27,7 @@ import { parallelRegion, validateAgent } from './ai-plan'
 
 export interface ExecutionDiagnostic { severity: 'error' | 'warning'; graphId: string | null; entityId: string; code: string; message: string }
 export interface ExecutionPlan {
-  readonly planVersion: '0.3' | '0.4' | '0.5'
+  readonly planVersion: '0.3' | '0.4' | '0.5' | '0.6'
   readonly id: string
   readonly createdAt: string
   readonly entryNodeId: string
@@ -159,7 +159,11 @@ export function compileProject(value: unknown, entryNodeId: string): CompileResu
     if (hasUnguardedCycle(graph, active)) add(id, id ?? project.project.id, 'unbounded-cycle', 'Цикл должен проходить через выход тела явно ограниченного Loop.')
   }
   if (diagnostics.some(issue => issue.severity === 'error')) return { ok: false, diagnostics }
-  const plan: ExecutionPlan = { planVersion: '0.5', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs: 300000 } }
+  const editorial = entries.flatMap(entry => entry.graph.nodes).filter(node => node.operation?.kind === 'agent' && node.operation.editorial)
+  const editorialTime = editorial.reduce((sum, node) => sum + (node.operation?.kind === 'agent' ? node.operation.editorial!.timeoutMs : 0), 0)
+  const humanTime = entries.flatMap(entry => entry.graph.nodes).reduce((sum, node) => sum + (node.operation?.kind === 'human' ? node.operation.timeoutMs : 0), 0)
+  const timeoutMs = editorial.length ? Math.min(7200000, 300000 + editorialTime + humanTime) : 300000
+  const plan: ExecutionPlan = { planVersion: '0.6', id: createId(), createdAt: new Date().toISOString(), entryNodeId, snapshot: structuredClone(project), limits: { maxSteps: 10000, maxDepth: 24, timeoutMs } }
   deepFreeze(plan)
   return { ok: true, plan, diagnostics }
 }

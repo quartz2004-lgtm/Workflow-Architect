@@ -20,6 +20,7 @@ import { assertValueBudget } from '../execution/values'
 import { localConnectionSchema, localModelNameSchema, type LocalConnection } from './schema'
 import type { ModelCapabilities, ModelProvider, ModelRequest, ModelResponse } from './types'
 import { modelImagesSchema } from './images'
+import { ollamaTransport } from './ollama-transport'
 
 const toolCall = z.object({ function: z.object({ name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/), arguments: z.record(z.string(), z.json()) }) })
 const replySchema = z.object({
@@ -34,7 +35,7 @@ export class OllamaProvider implements ModelProvider {
   readonly costPerMillionInput = 0
   readonly costPerMillionOutput = 0
   private readonly base: string
-  constructor(connection: LocalConnection, private readonly transport: typeof fetch = fetch) {
+  constructor(connection: LocalConnection, private readonly transport: typeof fetch = ollamaTransport) {
     const parsed = localConnectionSchema.parse(connection)
     this.base = `http://127.0.0.1:${parsed.port}`
   }
@@ -89,6 +90,14 @@ export class OllamaProvider implements ModelProvider {
     const contextTokens = contexts.length ? Math.min(...contexts) : 2048
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 2048) throw new Error('Не удалось определить контекст модели.')
     return { tools: data.capabilities.includes('tools'), thinking: data.capabilities.includes('thinking'), vision: data.capabilities.includes('vision'), contextTokens: Math.min(contextTokens, 32768) }
+  }
+  /** Digest identifies installed weights; a mutable model tag alone is insufficient evidence. */
+  async identity(model: string, signal: AbortSignal): Promise<string> {
+    const name = localModelNameSchema.parse(model)
+    const data = z.object({ models: z.array(z.object({ name: z.string(), digest: z.string().regex(/^[a-f0-9]{64}$/) })).max(1000) }).parse(await this.request('/api/tags', undefined, signal))
+    const matches = data.models.filter(item => item.name === name || (!name.includes(':') && item.name === `${name}:latest`))
+    if (matches.length !== 1) throw new Error('Не удалось однозначно определить установленную версию модели. Обновите список моделей и выберите её заново.')
+    return matches[0]!.digest
   }
   async chat(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse> {
     localModelNameSchema.parse(request.model)

@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { executionConfigSchema, predicateSchema } from './execution-config'
 import { projectSchema as legacy02Schema } from './legacy-0.2-schema'
 import { projectSchema as legacy03Schema } from './legacy-0.3-schema'
+import { projectSchema as legacy05Schema } from './legacy-0.5-schema'
 import { projectSchema as legacy04Schema } from './legacy-0.4-schema'
 
 export const idSchema = z.uuid()
@@ -106,7 +107,7 @@ export const groupSchema = z.strictObject({
 })
 const graph = { nodes: z.array(nodeSchema).max(10_000), edges: z.array(edgeSchema).max(50_000), groups: z.array(groupSchema) }
 export const projectSchema = z.strictObject({
-  schemaVersion: z.enum(['0.2', '0.3', '0.4', '0.5']),
+  schemaVersion: z.enum(['0.2', '0.3', '0.4', '0.5', '0.6']),
   project: z.strictObject({ id: idSchema, name: z.string().min(1).max(300), description: text, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }),
   ...graph,
   schemas: z.array(z.strictObject({ id: idSchema, name: text, definition: z.union([jsonObject, z.boolean()]) })),
@@ -114,6 +115,7 @@ export const projectSchema = z.strictObject({
   subworkflows: z.array(z.strictObject({ id: idSchema, title: text, description: text, ports: z.array(portSchema), ...graph })),
   settings: z.strictObject({ defaultMode: z.enum(['concept', 'engineering']), grid: z.boolean(), snap: z.boolean(), motion: z.enum(['system', 'reduced']), exportDefault: z.enum(['archive', 'json', 'yaml', 'markdown', 'codex']).optional() }),
 }).superRefine((value, context) => {
+  if (value.schemaVersion === '0.5' && !legacy05Schema.safeParse(value).success) context.addIssue({ code: 'custom', message: 'Редакционный режим требует schemaVersion 0.6.' })
   if (value.schemaVersion === '0.2' && !legacy02Schema.safeParse(value).success) context.addIssue({ code: 'custom', message: 'Новые операции требуют schemaVersion 0.3.' })
   if (value.schemaVersion === '0.3' && !legacy03Schema.safeParse(value).success) context.addIssue({ code: 'custom', message: 'Интеграции требуют schemaVersion 0.4.' })
   if (value.schemaVersion === '0.4' && !legacy04Schema.safeParse(value).success) context.addIssue({ code: 'custom', message: 'Источники Agent требуют schemaVersion 0.5.' })

@@ -36,7 +36,7 @@ export function recoverProject(raw: string): RecoveryReport {
   try {
     assertPortableSnapshot(raw)
     value = record(JSON.parse(raw))
-    if (!['0.1', '0.2', '0.3', '0.4', '0.5'].includes(String(value.schemaVersion))) throw new Error('Автоматическое восстановление поддерживает schemaVersion 0.1–0.5.')
+    if (!['0.1', '0.2', '0.3', '0.4', '0.5', '0.6'].includes(String(value.schemaVersion))) throw new Error('Автоматическое восстановление поддерживает schemaVersion 0.1–0.6.')
   } catch (error) { add('project', error instanceof Error ? error.message : 'Некорректный JSON.'); return report }
   const safe = (schema: z.ZodType, candidate: unknown) => {
     try { assertNoObviousSecrets(candidate); return schema.safeParse(candidate) }

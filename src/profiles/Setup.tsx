@@ -50,7 +50,7 @@ export function Setup({ initial, complete, cancel }: { initial: Profile; complet
           <div className="profile-preferences"><label className="field"><span>Опыт проектирования процессов</span><select value={profile.answers.experience} onChange={e => answer({ experience: e.target.value as SetupAnswers['experience'] })}><option value="beginner">Начинаю знакомиться</option><option value="confident">Есть опыт</option><option value="advanced">Уверенно работаю с архитектурой</option></select></label>
           <label className="field"><span>Предпочтительный способ управления</span><select value={profile.answers.control} onChange={e => answer({ control: e.target.value as SetupAnswers['control'] })}><option value="assisted">С рекомендациями</option><option value="manual">Вручную</option></select></label></div>
           <label className="field"><span>Какими сервисами пользуетесь?</span><input maxLength={2000} value={profile.answers.services} placeholder="Названия сервисов, без паролей и ключей" onChange={e => answer({ services: e.target.value })} /></label>
-          <p className="muted">Ответы помогут выбрать начальные настройки и примеры. Подключения к сервисам появятся в следующих версиях.</p>
+          <p className="muted">Ответы помогут выбрать начальные настройки и примеры. Сервисы подключаются отдельно в «Интеграциях», локальная модель — в «ИИ-помощнике». Этот опрос не подключает сервисы и не обучает модель.</p>
         </>}
         {step === 1 && <>
           <h2>Запрос → обработка → результат</h2><p>Нужно получить запрос, подготовить отчёт с помощью ИИ и сохранить документ. Выберите подходящую структуру.</p>

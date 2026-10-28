@@ -64,6 +64,7 @@ test('native photos: canonical import, SKU selection, actual pixels to local tra
     await page.getByRole('button', { name: 'Знания SOAR', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Знания SOAR' })
     await dialog.getByLabel('Название фотографии', { exact: true }).fill('Контрольная фотография')
+    await dialog.getByText('Указать код товара вручную', { exact: true }).click()
     await dialog.getByLabel('SKU фотографии', { exact: true }).fill('PHOTO-A')
     await dialog.getByRole('button', { name: 'Выбрать JPEG / PNG…' }).click()
     await expect(dialog.getByRole('img', { name: 'Контрольная фотография' })).toBeVisible()

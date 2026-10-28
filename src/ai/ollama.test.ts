@@ -25,6 +25,15 @@ const signal = () => new AbortController().signal
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
 const request: ModelRequest = { model: 'qwen3:8b', messages: [{ role: 'user', content: 'Привет' }], tools: [], maxOutputTokens: 100, contextTokens: 4096, temperature: 0 }
 describe('Ollama boundary', () => {
+  it('identifies exact installed weights and fails closed on ambiguous or missing identities', async () => {
+    const digest = 'a'.repeat(64)
+    const provider = new OllamaProvider(config, async () => json({ models: [{ name: 'qwen3:8b', digest }, { name: 'local:latest', digest }] }))
+    expect(await provider.identity('qwen3:8b', signal())).toBe(digest)
+    expect(await provider.identity('local', signal())).toBe(digest)
+    await expect(provider.identity('missing', signal())).rejects.toThrow('однозначно')
+    await expect(new OllamaProvider(config, async () => json({ models: [{ name: 'qwen3:8b' }] })).identity('qwen3:8b', signal())).rejects.toThrow()
+    await expect(new OllamaProvider(config, async () => json({ models: [{ name: 'local', digest }, { name: 'local:latest', digest }] })).identity('local', signal())).rejects.toThrow('однозначно')
+  })
   it('uses only numeric loopback, refuses redirects, maps protocol and actual usage', async () => {
     const transport = vi.fn<typeof fetch>(async () => json({ model: 'qwen3:8b', done: true, done_reason: 'stop', message: { role: 'assistant', content: 'Здравствуйте' }, prompt_eval_count: 12, eval_count: 5 }))
     const provider = new OllamaProvider(config, transport)

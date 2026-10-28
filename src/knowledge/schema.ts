@@ -49,6 +49,7 @@ export const knowledgeBackupSchema = z.strictObject({
 const owned = { profileId: z.enum(profileIds), id: z.uuid() }
 const versioned = { ...owned, revision: z.number().int().nonnegative() }
 export const knowledgeCommandSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('product-list'), profileId: z.enum(profileIds), collections: agentKnowledgeSchema.shape.collections.optional() }),
   z.strictObject({ kind: z.literal('image-list'), profileId: z.enum(profileIds) }),
   z.strictObject({ kind: z.literal('image-import'), profileId: z.enum(profileIds), label: mediaRecordSchema.shape.label, sku: mediaRecordSchema.shape.sku }),
   z.strictObject({ kind: z.literal('image-inspect'), ...owned }),

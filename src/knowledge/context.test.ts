@@ -17,9 +17,12 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { describe, expect, it } from 'vitest'
 import { createHash, randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { buildContextPacket, documentFragments, contextPacketSchema, type ContextSource } from './context'
 import { profileIds } from '../profiles/schema'
 import type { KnowledgeDocument } from './schema'
+import { knowledgeCollectionSchema } from './schema'
+import { jobSchema } from '../runtime/job-schema'
 
 function document(value: unknown, path = 'source/current/products.json'): KnowledgeDocument {
   const content = typeof value === 'string' ? value : JSON.stringify(value)
@@ -31,6 +34,41 @@ function source(documents: KnowledgeDocument[]): ContextSource {
 const request = { profileId: profileIds[0], runId: randomUUID(), task: 'Подготовить описание товара', query: 'уход', maxBytes: 12000 }
 
 describe('immutable local context selection', () => {
+  it('prioritizes two exact catalogue articles and shared care over broad lexical matches', () => {
+    const input = source([
+      document({ models: [
+        { canonical_sku: 'SOCK-A', article: 'B02-DM-1-01', care_profile_ids: ['care-socks'], quantity: 3 },
+        { canonical_sku: 'SOCK-B', article: 'B02-DM-2-01', care_profile_ids: ['care-socks'], quantity: 5 },
+        { canonical_sku: 'OTHER', article: 'B02-DM-1-010', name: 'подарок набор' },
+      ] }),
+      document({ id: 'care-socks', scope: 'Check the label', rules: 'Do not bleach' }, 'care.json'),
+      document('# Подарок набор\n' + 'подарок '.repeat(2000), 'marketing.md'),
+    ])
+    const packet = buildContextPacket({ ...request, query: 'Подарок набор: B02-DM-1-01; B02-DM-2-01.', maxBytes: 4000 }, [input])
+    expect(packet.gaps).toEqual([])
+    expect(packet.excerpts.flatMap(item => item.skus)).toEqual(['SOCK-A', 'SOCK-B'])
+    expect(packet.excerpts.filter(item => item.sourceIds.includes('care-socks'))).toHaveLength(1)
+    expect(packet.excerpts.map(item => item.content).join()).toContain('Check the label')
+    expect(packet.excerpts.some(item => item.path === 'marketing.md')).toBe(false)
+    const small = buildContextPacket({ ...request, query: 'B02-DM-1-01 B02-DM-2-01', maxBytes: 1600 }, [input])
+    expect(small.gaps.some(gap => gap.kind === 'budget')).toBe(true)
+  })
+  it.skipIf(!process.env.WORKFLOW_RETRIEVAL_JOB || !process.env.WORKFLOW_RETRIEVAL_COLLECTION)('replays an explicitly supplied local failed packet without model calls or writes', () => {
+    const job = jobSchema.parse(JSON.parse(readFileSync(process.env.WORKFLOW_RETRIEVAL_JOB!, 'utf8')))
+    const collection = knowledgeCollectionSchema.parse(JSON.parse(readFileSync(process.env.WORKFLOW_RETRIEVAL_COLLECTION!, 'utf8')))
+    const prior = contextPacketSchema.parse(job.preparedKnowledge![0]!.packet)
+    const snapshot = collection.snapshots.find(item => item.id === prior.excerpts[0]?.snapshotId)
+    if (!snapshot) throw new Error('The original immutable snapshot is required for replay')
+    for (const maxBytes of [8000, 16000]) {
+      const packet = buildContextPacket({ ...request, profileId: prior.profileId, runId: prior.runId, task: prior.task, query: prior.query, handoff: prior.handoff, maxBytes }, [{ collectionId: collection.id, snapshot }])
+      console.log(JSON.stringify({ maxBytes, gaps: packet.gaps, bytes: Buffer.byteLength(JSON.stringify(packet)), excerpts: packet.excerpts.map(item => ({ path: item.path, locator: item.locator, skus: item.skus })) }))
+      if (maxBytes === 16000) {
+        expect(packet.gaps).toEqual([])
+        expect(packet.excerpts.flatMap(item => item.skus)).toEqual(expect.arrayContaining(['SOAR-SOCKS-B02-DM-1-01', 'SOAR-SOCKS-B02-DM-2-01']))
+        expect(packet.excerpts.some(item => item.path.endsWith('care-rules-v1.json'))).toBe(true)
+      } else expect(packet.gaps.some(gap => gap.kind === 'budget')).toBe(true)
+    }
+  })
   it('follows explicit care references without importing other profiles or losing envelope restrictions', () => {
     const input = source([
       document({ sku: 'TEST-A', care_profile_ids: ['care-a'] }),

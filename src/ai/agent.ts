@@ -22,6 +22,7 @@ import { assertValueBudget } from '../execution/values'
 import { agentLimitsSchema, localModelNameSchema, type AgentLimits } from './schema'
 import type { ModelMessage, ModelProvider, ModelResponse, ModelTool } from './types'
 import { imageContextReserve, modelImagesSchema, type ModelImage } from './images'
+import { abortable } from '../shared/abortable'
 
 export interface AgentTool extends ModelTool { execute(args: Record<string, JsonValue>, signal: AbortSignal): Promise<JsonValue> }
 export type AgentTrace =
@@ -36,18 +37,6 @@ export interface AgentRequest {
 }
 export interface AgentResult { output: JsonValue; inputTokens: number; outputTokens: number; costUsd: number; calls: number; toolCalls: number }
 export const countWords = (text: string): number => text.match(/[\p{L}\p{N}]+(?:['’‐-][\p{L}\p{N}]+)*/gu)?.length ?? 0
-
-/** Also races providers that ignore AbortSignal; their late reply can never execute a tool. */
-async function abortable<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
-  signal.throwIfAborted()
-  let listener: () => void = () => {}
-  const cancelled = new Promise<never>((_, reject) => {
-    listener = () => reject(signal.reason ?? new Error('Запрос отменён.'))
-    signal.addEventListener('abort', listener, { once: true })
-  })
-  try { return await Promise.race([work(), cancelled]) }
-  finally { signal.removeEventListener('abort', listener) }
-}
 
 /** No ambient tools, persistent memory, filesystem or network access in the agent loop. */
 export async function runAgent(provider: ModelProvider, raw: AgentRequest, signal: AbortSignal, trace: (event: AgentTrace) => void = () => {}): Promise<AgentResult> {

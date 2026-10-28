@@ -935,3 +935,19 @@ That is the core design constraint of Workflow Architect.
 Every new or changed project-owned script/source file must begin with the exact copyright and GPL-3.0-or-later notice in `docs/COPYRIGHT_NOTICE.txt`, formatted as a comment for its language. Keep a required shebang or HTML doctype first, then the notice. This applies to TypeScript/JavaScript, tests, build scripts, CSS, HTML and executable automation/configuration YAML, PowerShell, Python and shell scripts. JSON cannot contain comments; use package metadata and LICENSE.txt instead.
 
 Run `npm run copyright:check` before declaring a change complete. `npm run copyright:fix` adds missing headers to project-owned files, including new untracked files outside ignored output directories. Generators must preserve the header on their generated project code. Do not replace third-party copyright notices or attribute vendored third-party code to quartz2004. Dependency licenses remain in THIRD_PARTY_NOTICES.md and their original license files.
+
+
+# 42. Understandable UX is a release requirement
+
+Technical complexity must not prevent a person without technical training from understanding, learning and comfortably using the application. Follow docs/UX_EVOLUTION.md and the UX gates in docs/ROADMAP.md.
+
+- Start from user tasks and results. Keep advanced engineering controls available through progressive disclosure. Do not require JSON, credential IDs or SKU copying for ordinary workflows.
+- Review complete user journeys before changing contracts, permissions, persistence or entity relationships. Cosmetic refinement can be deferred with a named milestone; architectural UX decisions cannot be silently deferred.
+- Explain disabled actions, errors, background work, data transmission and recovery. Do not hide permissions to simplify a screen.
+- Help must work with keyboard and touch as well as hover. Tooltips supplement understandable controls.
+- Show what setup actually changed; never imply training or successful execution that did not happen.
+- Simple and advanced interfaces use the same domain model and command path.
+- Technical checks and usability acceptance are separate evidence. Do not claim user testing from automated checks alone.
+- Cover the full lifecycle, including graph authoring, import/export, publication, profile changes, updates and recovery; do not limit usability work to the editorial scenario. Maintain the journey register in docs/ROADMAP.md.
+- Distinguish planned, implemented in a branch, technically verified, user-accepted and released work. A future UX milestone is not permission to defer a blocker in the current user journey.
+- Before accepting a feature, verify its visible promises and help against actual behavior. Record user acceptance per participant, including developer assistance; a guided walkthrough is not independent acceptance.
