@@ -37,9 +37,11 @@ function model(text = article) {
     inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }),
     chat: async request => {
       const system = request.messages[0]!.content
-      const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') ? 'writer' : 'reviewer'
+      const prompt = JSON.parse(request.messages[1]!.content)
+      const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') || prompt.baseVersionId ? 'writer' : 'reviewer'
       calls.push(stage)
-      return { content: stage === 'planner' ? 'План полезной статьи' : stage === 'writer' ? text : '{"verdict":"ready-for-human","comments":[]}', finish: 'stop' as const, toolCalls: [], inputTokens: 100, outputTokens: 300 }
+      const revised = prompt.baseVersionId ? JSON.stringify({ baseVersionId: prompt.baseVersionId, replacements: [{ blockId: 'p0', text: `${text} ${calls.length}` }], additions: [] }) : text
+      return { content: stage === 'planner' ? 'План полезной статьи' : stage === 'writer' ? revised : '{"verdict":"ready-for-human","comments":[]}', finish: 'stop' as const, toolCalls: [], inputTokens: 100, outputTokens: 300 }
     },
   }
   return { provider, calls }

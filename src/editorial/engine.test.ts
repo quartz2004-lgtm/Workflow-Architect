@@ -28,27 +28,61 @@ const article = `# Выбор\n\n## Посадка\n${'Пример '.repeat(60)
 const ready = JSON.stringify({ verdict: 'ready-for-human', comments: [] })
 const reply = (content: string, finish: 'stop' | 'length' = 'stop'): ModelResponse => ({ content, finish, toolCalls: [], inputTokens: 100, outputTokens: 100 })
 
-function provider(responses: ModelResponse[]): ModelProvider & { requests: ModelRequest[] } {
+const revision = (text: string) => (request: ModelRequest) => reply(JSON.stringify({
+  baseVersionId: JSON.parse(request.messages[1]!.content).baseVersionId,
+  replacements: [{ blockId: 'p0', text }], additions: [],
+}))
+
+function provider(responses: (ModelResponse | ((request: ModelRequest) => ModelResponse))[]): ModelProvider & { requests: ModelRequest[] } {
   const requests: ModelRequest[] = []
   return {
     id: 'ollama', costPerMillionInput: 0, costPerMillionOutput: 0, requests,
     list: async () => ['local-model'], inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }),
     identity: async () => 'a'.repeat(64),
-    async chat(request) { requests.push(structuredClone(request)); const response = responses.shift(); if (!response) throw new Error('Unexpected call'); return response },
+    async chat(request) { requests.push(structuredClone(request)); const response = responses.shift(); if (!response) throw new Error('Unexpected call'); return typeof response === 'function' ? response(request) : response },
   }
 }
 const start = () => createEditorialState({ text: 'Статья о посадке', minimumWords: 100 }, packet, settings)
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it.each(['malformed', 'stale', 'truncated'] as const)('preserves the previous draft after a %s revision', async mode => {
+    let state = await start()
+    const model = provider([reply('План'), reply('Короткий черновик'), reply(ready), request => {
+      const response = revision('Исправленный текст')(request)
+      if (mode === 'malformed') response.content = '{'
+      if (mode === 'stale') response.content = response.content.replace(JSON.parse(request.messages[1]!.content).baseVersionId, id)
+      if (mode === 'truncated') response.finish = 'length'
+      return response
+    }])
+    for (let step = 0; step < 4; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('needs-editing')
+    expect(state.versions).toHaveLength(1)
+    expect(state.versions[0]!.text).toBe('Короткий черновик')
+    expect(state.calls.at(-1)?.response).toBeDefined()
+    expect(state.issues.some(issue => issue.message.includes('Правки не применены'))).toBe(true)
+  })
+  it('checks and submits a new complete version after a valid revision', async () => {
+    let state = await start()
+    const model = provider([reply('План'), reply('Короткий черновик'), reply(ready), revision(article), reply(ready)])
+    for (let step = 0; step < 5; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('awaiting-human')
+    expect(state.versions.map(version => version.text)).toEqual(['Короткий черновик', article])
+    expect(state.versions[0]!.id).not.toBe(state.versions[1]!.id)
+    expect(state.contextDigest).toBe((await start()).contextDigest)
+    expect(state.issues).toEqual([])
+  })
   it('gives revision an explicit measured expansion task while keeping the minimum mandatory', async () => {
     let state = await createEditorialState({ text: 'Статья', minimumWords: 600 }, packet, settings)
-    const model = provider([reply('План'), reply(article), reply(ready), reply(article), reply(ready)])
+    const model = provider([reply('План'), reply(article), reply(ready), revision('# Новый заголовок'), reply(ready)])
     for (let step = 0; step < 5; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
     const prompt = JSON.parse(model.requests[3]!.messages[1]!.content)
     expect(prompt.action).toContain('Сейчас 123 слов')
-    expect(prompt.action).toContain('Цель — 900 слов, обязательный минимум — 600')
-    expect(prompt.draft).toBe(article)
+    expect(prompt.action).toContain('минимум 600')
+    expect(prompt.action).toContain('Добавь не менее 597')
+    expect(prompt.draftBlocks.map((block: { text: string }) => block.text).join('\n\n')).toBe(article)
+    expect(prompt).not.toHaveProperty('draft')
+    expect(prompt.responseFormat).toEqual(model.requests[3]!.outputSchema)
     expect(prompt).not.toHaveProperty('plan')
     expect(state.phase).toBe('writer')
     expect(state.issues.some(issue => issue.code === 'volume')).toBe(true)
@@ -109,7 +143,7 @@ describe('durable bounded editorial stages', () => {
 
   it('caps failed drafts at three and never accumulates failed conversation history', async () => {
     let state = await start()
-    const model = provider([reply('План'), reply('черновик-A'), reply(ready), reply('черновик-B'), reply(ready), reply('черновик-C'), reply(ready)])
+    const model = provider([reply('План'), reply('черновик-A'), reply(ready), revision('черновик-B'), reply(ready), revision('черновик-C'), reply(ready)])
     const save = async () => {}
     for (let i = 0; i < 8; i++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save })
     expect(state.phase).toBe('needs-editing')
