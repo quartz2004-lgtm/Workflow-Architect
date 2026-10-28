@@ -39,13 +39,18 @@ export function checkEditorialText(options: {
   if (!text.trim()) issue('empty', 'Модель не вернула текст.')
   if (words < task.minimumWords) issue('volume', `Получено ${words} слов; требуется минимум ${task.minimumWords}.`)
   if (!/^#\s+\S.*$/m.test(text) || sections < 2) issue('structure', 'Нужны заголовок статьи (#) и хотя бы два тематических раздела (##).')
-  const headings = [...text.matchAll(/^#{1,2}[ \t]+[^\r\n]+/gm)]
+  const headings = [...text.matchAll(/^(#{1,6})[ \t]+[^\r\n]+/gm)]
   for (let index = 0; index < headings.length; index++) {
     const heading = headings[index]!
-    if (!/^##[ \t]/.test(heading[0])) continue
-    const body = text.slice(heading.index + heading[0].length, headings[index + 1]?.index ?? text.length)
-    if (!body.replace(/^#{3,6}[ \t]+[^\r\n]+/gm, '').trim()) {
-      issue('structure', `Раздел «${heading[0].replace(/^##\s+/, '').slice(0, 160)}» пуст. Добавьте содержание сразу под его заголовком.`)
+    const level = heading[1]!.length
+    if (level === 1) continue
+    let end = text.length
+    for (let cursor = index + 1; cursor < headings.length; cursor++) {
+      if (headings[cursor]![1]!.length <= level) { end = headings[cursor]!.index; break }
+    }
+    const body = text.slice(heading.index + heading[0].length, end)
+    if (!body.replace(/^#{1,6}[ \t]+[^\r\n]+/gm, '').trim()) {
+      issue('structure', `Раздел «${heading[0].replace(/^#{1,6}\s+/, '').slice(0, 160)}» пуст. Добавьте содержание сразу под его заголовком.`)
     }
   }
   // Only explicit machine-readable references are validated. Arbitrary prose is not a citation.

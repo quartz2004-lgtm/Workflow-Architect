@@ -55,6 +55,13 @@ describe('formal checks stay separate from editorial judgement', () => {
     const result = checkEditorialText({ task, text: '# Тема\n## Подарок\n### Подраздел\nСодержание\n## Уход\nСодержание', finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
     expect(result.issues.filter(issue => issue.code === 'structure')).toEqual([])
   })
+  it.each([3, 4, 5, 6])('rejects an empty heading at level %i before a sibling or parent', level => {
+    const marker = '#'.repeat(level)
+    for (const next of [marker, '##']) {
+      const result = checkEditorialText({ task, text: `# Тема\n## Выбор\nСодержание\n${marker} Пустой\n\n${next} Уход\nТекст`, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
+      expect(result.issues.some(issue => issue.code === 'structure' && issue.message.includes('Пустой'))).toBe(true)
+    }
+  })
   it('accepts formal structure without claiming semantic correctness', () => {
     const result = checkEditorialText({ task, text, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
     expect(result.issues).toEqual([])
