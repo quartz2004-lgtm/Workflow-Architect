@@ -33,10 +33,17 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk))
     const body = JSON.parse(Buffer.concat(chunks).toString()) as { messages: { content: string }[] }
     const system = body.messages[0]!.content
-    const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') ? 'writer' : 'reviewer'
+    const prompt = JSON.parse(body.messages[1]!.content)
+    const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') || prompt.baseVersionId ? 'writer' : 'reviewer'
     stages.push(stage)
     prompts.push(body.messages[1]!.content)
-    const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? article : '{"verdict":"ready-for-human","comments":[]}'
+    // Exercise the real JSON revision wire contract before Human, including
+    // restarting with the complete corrected version and no model available.
+    const writerText = prompt.baseVersionId ? JSON.stringify({
+      baseVersionId: prompt.baseVersionId,
+      replacements: article.split('\n\n').slice(1).map((text, index) => ({ blockId: `p${index + 1}`, text })), additions: [],
+    }) : stages.length === 2 ? article.replaceAll('Пример '.repeat(310), 'Пример ').replaceAll('Проверка '.repeat(310), 'Проверка ') : article
+    const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? writerText : '{"verdict":"ready-for-human","comments":[]}'
     response.end(JSON.stringify({ model: 'editorial-fixture', done: true, done_reason: 'stop', prompt_eval_count: 100, eval_count: 300, message: { role: 'assistant', content } }))
   })
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
@@ -77,9 +84,9 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await panel.getByLabel('Разрешить этому запуску работать после закрытия окна').check()
     await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
     let human = panel.getByRole('region', { name: 'Ответ человеку' })
-    await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
+    await expect(human).toContainText('Вы подтверждаете версию 2', { timeout: 20000 })
     expect(await human.locator('pre').first().textContent()).toBe(article)
-    expect(stages).toEqual(['planner', 'writer', 'reviewer'])
+    expect(stages).toEqual(['planner', 'writer', 'reviewer', 'writer', 'reviewer'])
     await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))) })
     await page.screenshot({ path: 'desktop-results/editorial-human.png' })
     await human.getByText('Точная версия', { exact: true }).click()
@@ -97,7 +104,7 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await human.getByText('Точная версия', { exact: true }).click()
     expect(await human.locator('details pre').textContent()).toBe(identity)
     expect(await human.locator('pre').first().textContent()).toBe(article)
-    expect(stages).toEqual(['planner', 'writer', 'reviewer'])
+    expect(stages).toEqual(['planner', 'writer', 'reviewer', 'writer', 'reviewer'])
     await human.getByRole('button', { name: 'Подтвердить', exact: true }).click()
     const artifact = panel.locator('.run-artifact')
     await expect(artifact).toContainText('article.md')
@@ -114,8 +121,8 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await panel.getByLabel('Что подготовить?').fill('Добавь полезный вывод, сохрани остальные разделы')
     await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
     await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
-    expect(JSON.parse(prompts[3]!).task.previousArticle).toBe(article)
-    expect(stages).toHaveLength(6)
+    expect(JSON.parse(prompts[5]!).task.previousArticle).toBe(article)
+    expect(stages).toHaveLength(8)
     await expect(panel.locator('.run-artifact')).toHaveCount(0)
     await human.getByRole('button', { name: 'Отклонить', exact: true }).click()
     await expect(panel.getByRole('region', { name: 'Редакционный процесс' })).toContainText('Вы отклонили эту версию')
