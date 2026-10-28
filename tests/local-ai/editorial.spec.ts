@@ -30,6 +30,35 @@ import { OllamaProvider } from '../../src/ai/ollama'
 import { editorialStateSchema } from '../../src/editorial/engine-schema'
 import { editorialReviewSchema } from '../../src/editorial/schema'
 import { contextPacketSchema } from '../../src/knowledge/context'
+import { checkEditorialText } from '../../src/editorial/quality'
+
+test('isolated long writer request completes under its recorded stage deadline', async () => {
+  const folder = process.env.WORKFLOW_EDITORIAL_FAILED_WRITER
+  test.skip(!folder, 'Explicit saved test evidence required; never resumes a production job.')
+  test.setTimeout(660000)
+  const original = editorialStateSchema.parse(JSON.parse(await readFile(join(folder!, 'state.json'), 'utf8')))
+  const packet = contextPacketSchema.parse(JSON.parse(await readFile(join(folder!, 'packet.json'), 'utf8')))
+  const call = original.calls.at(-1)!
+  expect(call.stage).toBe('writer'); expect(call.status).toBe('failed')
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: call.settings.model })
+  const signal = AbortSignal.timeout(call.settings.callTimeoutMs)
+  expect(await provider.identity(call.settings.model, signal)).toBe(call.settings.modelDigest)
+  const output = resolve('output/verification-0.5.4', `long-writer-${Date.now()}`)
+  await mkdir(output, { recursive: true })
+  await writeFile(join(output, 'request.json'), JSON.stringify(call, null, 2))
+  console.log(`Isolated writer transport check: ${output}`)
+  const started = Date.now()
+  const response = await provider.chat({ model: call.settings.model,
+    messages: [{ role: 'system', content: call.system }, { role: 'user', content: call.prompt }],
+    tools: [], maxOutputTokens: call.settings.maxOutputTokens, contextTokens: call.settings.contextTokens, temperature: call.settings.temperature,
+  }, signal)
+  const formal = checkEditorialText({ task: original.task, text: response.content, finish: response.finish,
+    allowedSourceIds: packet.excerpts.flatMap(excerpt => excerpt.sourceIds), knowledgeGaps: packet.gaps.map(gap => gap.detail) })
+  await writeFile(join(output, 'response.json'), JSON.stringify({ response, durationMs: Date.now() - started, formal, humanApproved: false }, null, 2))
+  await writeFile(join(output, 'draft.md'), response.content)
+  expect(response.finish).toBe('stop')
+  expect(formal.issues).toEqual([])
+})
 
 test('fresh editorial replay of a saved dossier reaches human review without changing the production job', async () => {
   const path = process.env.WORKFLOW_EDITORIAL_DOSSIER_JOB
@@ -38,11 +67,14 @@ test('fresh editorial replay of a saved dossier reaches human review without cha
   const job = jobSchema.parse(JSON.parse(await readFile(path!, 'utf8')))
   const original = Object.values(job.checkpoint?.editorial ?? {})[0]!
   const packet = contextPacketSchema.parse(job.preparedKnowledge![0]!.packet)
-  let state = await createEditorialState(original.task, packet, original.settings, original.budget)
+  const model = process.env.WORKFLOW_LOCAL_EDITORIAL_MODEL ?? original.settings.model
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model })
+  const modelDigest = await provider.identity(model, new AbortController().signal)
+  if (packet.handoff) packet.handoff.model = model
+  let state = await createEditorialState(original.task, packet, { ...original.settings, model, modelDigest }, original.budget)
   const folder = resolve('output/verification-0.5.4', `dossier-replay-${Date.now()}`)
   await mkdir(folder, { recursive: true })
   await writeFile(join(folder, 'packet.json'), JSON.stringify(packet, null, 2))
-  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
   for (let step = 0; step < 7 && ['planner', 'writer', 'reviewer'].includes(state.phase); step++) {
     console.log(`Saved dossier replay: ${state.phase}; evidence ${folder}`)
     state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => {

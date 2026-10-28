@@ -22,6 +22,7 @@ import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
 import { editorialStateSchema, type EditorialState, type EditorialSettings } from './engine-schema'
 import { defaultEditorialBudget, editorialReviewSchema, normalizeEditorialTask, type EditorialIssue } from './schema'
 import { checkEditorialText } from './quality'
+import { countWords } from '../ai/agent'
 import { createEditorialVersion, editorialDigest } from './versions'
 
 const reviewOutputSchema = z.record(z.string(), z.json()).parse(z.toJSONSchema(editorialReviewSchema))
@@ -74,6 +75,8 @@ export async function advanceEditorial(options: {
     state.phase = 'needs-editing'; state.issues.push(issue('Исчерпан общий бюджет редакционной задачи. Уже полученные версии сохранены.')); return persist()
   }
   const stage = state.phase as 'planner' | 'writer' | 'reviewer'
+  const draft = state.versions.at(-1)?.text
+  const targetWords = Math.ceil(state.task.minimumWords * 1.5)
   if (stage === 'writer' && state.versions.length >= state.budget.maxRevisions) {
     state.phase = 'needs-editing'; return persist()
   }
@@ -92,13 +95,16 @@ export async function advanceEditorial(options: {
     task: state.task, knowledge,
     ...(stage === 'writer' && !state.versions.length ? { plan: state.plan } : {}),
     ...(state.versions.length ? { draft: state.versions.at(-1)!.text, remarks: state.issues } : {}),
+    action: stage === 'writer'
+      ? `${draft ? `Исправь draft по remarks. Сейчас ${countWords(draft)} слов.` : 'Напиши статью по заданию и досье.'} Цель — ${targetWords} слов, обязательный минимум — ${state.task.minimumWords}. Верни полный текст. Развивай полезные объяснения и примеры выбора, не повторяй черновик дословно и не добавляй неподтверждённые свойства.`
+      : stage === 'reviewer' ? 'Проверь фактические утверждения draft о конкретных товарах. Общие советы и художественные формулировки разрешены. Не требуй включить в статью все сведения досье. Верни JSON с конкретными исправлениями; при отсутствии существенных ошибок comments=[].'
+        : 'Составь краткий план полезной статьи. Отдели подтверждённые свойства товаров от общих советов читателю.',
   })
   const system = [policy, instructions[stage], packet.handoff?.instructions,
-    'Состав ткани сам по себе не доказывает характеристики готового изделия. Не приписывай товару расположение или форму швов, посадку, долговечность, отсутствие раздражения и гарантированный комфорт, если это прямо не подтверждено досье. Общие советы по примерке отделяй от описания конкретной модели.',
-    'Не придумывай числовые размерные соответствия (например, обхват талии для L), которых нет в досье. Не добавляй заявления о здоровье или профилактике заболеваний. Не дополняй указанный состав классификацией и происхождением волокон, если они не раскрыты источником.',
+    'Карточки товаров и связанные правила ухода подтверждают только прямо указанные факты. Состав волокон не доказывает посадку, износостойкость или комфорт изделия. Общий текст о материале не подтверждает его применение в выбранном товаре. Не переноси его свойства на товар без явной связи. Не выдумывай размерные соответствия и происхождение волокон.',
     ...(stage === 'writer' ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
-    ...(stage === 'writer' && state.task.minimumWords >= 600 ? [`Планируй объём с запасом: ${Math.ceil(state.task.minimumWords * 1.15)} слов. Разверни шесть содержательных разделов, примерно по три абзаца с конкретными ситуациями выбора и проверки. Не добирай объём повторениями или выдуманными свойствами товара. Требуемый минимум остаётся ${state.task.minimumWords} слов.`] : []),
-    ...(stage === 'reviewer' ? ['Проверяй именно предоставленный draft. Замечание должно указывать конкретный фрагмент и существенную проблему: противоречие досье, неподтверждённое утверждение о товаре или невыполненное требование задачи. Не требуй добавить свойства, которых нет в источнике, и не повторяй совет, уже выполненный в draft. Предпочтение другого стиля или дополнительного дисклеймера само по себе не блокирует текст. Если существенных проблем нет, verdict=ready-for-human и comments=[]. Это разрешение показать текст человеку, не подтверждение истинности всех утверждений.'] : []),
+    ...(stage === 'writer' && state.task.minimumWords >= 600 ? [`Шесть разделов примерно по ${Math.ceil(targetWords / 6)} слов: каждый раскрывает отдельный вопрос читателя через несколько абзацев с примерами и объяснениями. Не добирай объём повторениями. При доработке сохраняй верные детали, но исправляй ошибки и расширяй короткий текст.`] : []),
+    ...(stage === 'reviewer' ? ['Блокируют: неверные артикулы, состав, размеры, количество, правила ухода и неподтверждённые измеримые свойства изделия. Не блокируют: общие советы по выбору/упаковке, вкусовые оценки, образные фразы без обещания свойств. Не требуй добавить сведения о материале без связи с товаром. В замечании сначала необходимое исправление и основание, затем короткая цитата (2–5 слов), если нужна. Объём проверяет программа. verdict=ready-for-human разрешает показать текст человеку, но не доказывает истинность всех утверждений.'] : []),
   ].filter(Boolean).join('\n\n')
   const settings = { ...state.settings, maxOutputTokens: stage === 'writer' ? state.settings.maxOutputTokens : Math.min(state.settings.maxOutputTokens, 1536), temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }
   const pictures = images?.map(item => item.image) ?? []

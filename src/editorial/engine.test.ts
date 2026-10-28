@@ -41,6 +41,19 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it('gives revision an explicit measured expansion task while keeping the minimum mandatory', async () => {
+    let state = await createEditorialState({ text: 'Статья', minimumWords: 600 }, packet, settings)
+    const model = provider([reply('План'), reply(article), reply(ready), reply(article), reply(ready)])
+    for (let step = 0; step < 5; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    const prompt = JSON.parse(model.requests[3]!.messages[1]!.content)
+    expect(prompt.action).toContain('Сейчас 123 слов')
+    expect(prompt.action).toContain('Цель — 900 слов, обязательный минимум — 600')
+    expect(prompt.draft).toBe(article)
+    expect(prompt).not.toHaveProperty('plan')
+    expect(state.phase).toBe('writer')
+    expect(state.issues.some(issue => issue.code === 'volume')).toBe(true)
+    expect(state.versions[0]!.text).toBe(article)
+  })
   it('rejects an overlong reviewer response instead of truncating concerns or approving', async () => {
     let state = await start()
     const model = provider([reply('План'), reply(article), reply(JSON.stringify({ verdict: 'ready-for-human', comments: ['x'.repeat(201)] }))])

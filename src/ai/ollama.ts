@@ -20,6 +20,7 @@ import { assertValueBudget } from '../execution/values'
 import { localConnectionSchema, localModelNameSchema, type LocalConnection } from './schema'
 import type { ModelCapabilities, ModelProvider, ModelRequest, ModelResponse } from './types'
 import { modelImagesSchema } from './images'
+import { ollamaTransport } from './ollama-transport'
 
 const toolCall = z.object({ function: z.object({ name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/), arguments: z.record(z.string(), z.json()) }) })
 const replySchema = z.object({
@@ -34,7 +35,7 @@ export class OllamaProvider implements ModelProvider {
   readonly costPerMillionInput = 0
   readonly costPerMillionOutput = 0
   private readonly base: string
-  constructor(connection: LocalConnection, private readonly transport: typeof fetch = fetch) {
+  constructor(connection: LocalConnection, private readonly transport: typeof fetch = ollamaTransport) {
     const parsed = localConnectionSchema.parse(connection)
     this.base = `http://127.0.0.1:${parsed.port}`
   }
