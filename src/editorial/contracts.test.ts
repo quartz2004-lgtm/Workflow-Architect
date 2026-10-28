@@ -47,6 +47,13 @@ describe('editorial input and bounded policy', () => {
 })
 
 describe('formal checks stay separate from editorial judgement', () => {
+  it('rejects verbatim long paragraph padding while allowing repeated short labels', () => {
+    const paragraph = 'Полезное объяснение выбора подарка. '.repeat(5)
+    const result = checkEditorialText({ task, text: `${text}\n\n${paragraph}\n\n${paragraph.replaceAll(' ', '  ')}\n\nСовет\n\nСовет`, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
+    expect(result.issues.filter(issue => issue.code === 'structure')).toHaveLength(1)
+    expect(result.issues[0]!.message).toContain('повторяется дословно')
+    expect(checkEditorialText({ task, text: `${text}\n\nСовет\n\nСовет`, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] }).issues).toEqual([])
+  })
   it.each(['## Подарок\n\n## Уход\nСодержание', '## Уход\nСодержание\n\n## Подарок\n', '## Подарок\n### Подраздел\n\n## Уход\nСодержание'])('rejects an empty thematic section: %s', sections => {
     const result = checkEditorialText({ task, text: `# Тема\n${sections}`, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
     expect(result.issues.some(issue => issue.code === 'structure' && issue.message.includes('Подарок'))).toBe(true)

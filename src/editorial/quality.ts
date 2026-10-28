@@ -53,6 +53,16 @@ export function checkEditorialText(options: {
       issue('structure', `Раздел «${heading[0].replace(/^#{1,6}\s+/, '').slice(0, 160)}» пуст. Добавьте содержание сразу под его заголовком.`)
     }
   }
+  const paragraphs = new Set<string>()
+  for (const block of text.split(/\r?\n[ \t]*\r?\n/)) {
+    const paragraph = block.trim().replace(/\s+/g, ' ')
+    if (paragraph.length < 120 || /^#{1,6}[ \t]/.test(paragraph)) continue
+    if (paragraphs.has(paragraph)) {
+      issue('structure', `Длинный абзац повторяется дословно: «${paragraph.slice(0, 120)}…». Уберите дублирование и сохраните полезный объём.`)
+      break
+    }
+    paragraphs.add(paragraph)
+  }
   // Only explicit machine-readable references are validated. Arbitrary prose is not a citation.
   const references = [...text.matchAll(/\[source:([^\]\r\n]+)\]/g)].map(match => match[1]!.trim())
   for (const reference of new Set(references)) if (!options.allowedSourceIds.includes(reference)) issue('source-reference', `Источник «${reference.slice(0, 200)}» отсутствует в выбранном досье.`)
