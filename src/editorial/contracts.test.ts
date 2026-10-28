@@ -47,6 +47,14 @@ describe('editorial input and bounded policy', () => {
 })
 
 describe('formal checks stay separate from editorial judgement', () => {
+  it.each(['## Подарок\n\n## Уход\nСодержание', '## Уход\nСодержание\n\n## Подарок\n', '## Подарок\n### Подраздел\n\n## Уход\nСодержание'])('rejects an empty thematic section: %s', sections => {
+    const result = checkEditorialText({ task, text: `# Тема\n${sections}`, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
+    expect(result.issues.some(issue => issue.code === 'structure' && issue.message.includes('Подарок'))).toBe(true)
+  })
+  it('accepts section content inside a subsection', () => {
+    const result = checkEditorialText({ task, text: '# Тема\n## Подарок\n### Подраздел\nСодержание\n## Уход\nСодержание', finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
+    expect(result.issues.filter(issue => issue.code === 'structure')).toEqual([])
+  })
   it('accepts formal structure without claiming semantic correctness', () => {
     const result = checkEditorialText({ task, text, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] })
     expect(result.issues).toEqual([])

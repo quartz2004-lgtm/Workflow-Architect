@@ -39,6 +39,15 @@ export function checkEditorialText(options: {
   if (!text.trim()) issue('empty', 'Модель не вернула текст.')
   if (words < task.minimumWords) issue('volume', `Получено ${words} слов; требуется минимум ${task.minimumWords}.`)
   if (!/^#\s+\S.*$/m.test(text) || sections < 2) issue('structure', 'Нужны заголовок статьи (#) и хотя бы два тематических раздела (##).')
+  const headings = [...text.matchAll(/^#{1,2}[ \t]+[^\r\n]+/gm)]
+  for (let index = 0; index < headings.length; index++) {
+    const heading = headings[index]!
+    if (!/^##[ \t]/.test(heading[0])) continue
+    const body = text.slice(heading.index + heading[0].length, headings[index + 1]?.index ?? text.length)
+    if (!body.replace(/^#{3,6}[ \t]+[^\r\n]+/gm, '').trim()) {
+      issue('structure', `Раздел «${heading[0].replace(/^##\s+/, '').slice(0, 160)}» пуст. Добавьте содержание сразу под его заголовком.`)
+    }
+  }
   // Only explicit machine-readable references are validated. Arbitrary prose is not a citation.
   const references = [...text.matchAll(/\[source:([^\]\r\n]+)\]/g)].map(match => match[1]!.trim())
   for (const reference of new Set(references)) if (!options.allowedSourceIds.includes(reference)) issue('source-reference', `Источник «${reference.slice(0, 200)}» отсутствует в выбранном досье.`)

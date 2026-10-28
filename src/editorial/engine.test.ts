@@ -46,6 +46,20 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it('bounds decoded message bytes and rejects one byte below the reservation', async () => {
+    const initial = await createEditorialState({ text: 'Тема "цитата" \\ пример\nНовая строка', minimumWords: 100 }, packet, settings)
+    const model = provider([reply('План')])
+    const result = await advanceEditorial({ state: initial, packet, provider: model, signal: signal(), save: async () => {} })
+    const request = model.requests[0]!
+    const reservation = request.messages.reduce((sum, message) => sum + new TextEncoder().encode(message.content).byteLength, 0) + 2048 + request.maxOutputTokens
+    expect(result.calls[0]!.reservedTokens).toBe(reservation)
+    for (const difference of [-1, 0]) {
+      const bounded = provider([reply('План')])
+      const next = await advanceEditorial({ state: { ...initial, settings: { ...settings, contextTokens: reservation + difference } }, packet, provider: bounded, signal: signal(), save: async () => {} })
+      expect(bounded.requests).toHaveLength(difference === -1 ? 0 : 1)
+      expect(next.phase).toBe(difference === -1 ? 'needs-editing' : 'writer')
+    }
+  })
   it.each(['malformed', 'stale', 'truncated'] as const)('preserves the previous draft after a %s revision', async mode => {
     let state = await start()
     const model = provider([reply('План'), reply('Короткий черновик'), reply(ready), request => {

@@ -108,7 +108,7 @@ export async function advanceEditorial(options: {
         : 'Составь краткий план полезной статьи. Отдели подтверждённые свойства товаров от общих советов читателю.',
   })
   const system = [policy, revising
-    ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions добавляет новые абзацы после afterBlockId; null добавляет в конец. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
+    ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions добавляет новые абзацы после afterBlockId; null добавляет в конец. Новый заголовок и все его абзацы помещай вместе в text одного добавления, не разносить их по разным местам. ID относятся к исходному draftBlocks и не меняются после вставок. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
     : instructions[stage], packet.handoff?.instructions,
     'Карточки товаров и связанные правила ухода подтверждают только прямо указанные факты. Состав волокон не доказывает посадку, износостойкость или комфорт изделия. Общий текст о материале не подтверждает его применение в выбранном товаре. Не переноси его свойства на товар без явной связи. Не выдумывай размерные соответствия и происхождение волокон.',
     ...(stage === 'writer' && !revising ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
@@ -117,7 +117,10 @@ export async function advanceEditorial(options: {
   ].filter(Boolean).join('\n\n')
   const settings = { ...state.settings, maxOutputTokens: stage === 'writer' ? state.settings.maxOutputTokens : Math.min(state.settings.maxOutputTokens, 1536), temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }
   const pictures = images?.map(item => item.image) ?? []
-  const reservedTokens = new TextEncoder().encode(JSON.stringify({ system, prompt })).byteLength + 2048 + imageContextReserve(pictures) + settings.maxOutputTokens
+  // Reserve decoded message content, not HTTP JSON escaping that is removed
+  // before tokenization. Keep the byte bound, framing and full output reserve.
+  const encoder = new TextEncoder()
+  const reservedTokens = encoder.encode(system).byteLength + encoder.encode(prompt).byteLength + 2048 + imageContextReserve(pictures) + settings.maxOutputTokens
   if (reservedTokens > settings.contextTokens || reservedTokens + state.spentTokens > state.budget.maxTotalTokens) {
     state.phase = 'needs-editing'; state.issues.push(issue('Досье и ответ не помещаются в доступный контекст или общий бюджет. Сократите досье либо увеличьте разрешённый лимит; текст не обрезан автоматически.')); return persist()
   }
