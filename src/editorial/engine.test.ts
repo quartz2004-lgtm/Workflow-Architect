@@ -20,6 +20,7 @@ import type { ModelProvider, ModelRequest, ModelResponse } from '../ai/types'
 import type { ContextPacket } from '../knowledge/context'
 import { advanceEditorial, createEditorialState } from './engine'
 import type { EditorialSettings, EditorialState } from './engine-schema'
+import { reviewIssues } from './review'
 
 const id = '00000000-0000-4000-8000-000000000001'
 const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: id, runId: id, task: 'Тема', query: 'Тема', excerpts: [], gaps: [], budgetBytes: 4000 }
@@ -46,6 +47,32 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it.each([
+    { verdict: 'needs-editing', comments: [{ quote: 'Отсутствующая фраза', sourceIds: [], correction: 'Исправить.' }] },
+    { verdict: 'needs-editing', comments: [{ quote: 'Посадка', sourceIds: ['invented'], correction: 'Исправить.' }] },
+    { verdict: 'ready-for-human', comments: [{ quote: 'Посадка', sourceIds: [], correction: 'Исправить.' }] },
+    { verdict: 'needs-editing', comments: [] },
+  ])('does not rewrite or approve from an ungrounded review: %j', response => {
+    expect(() => reviewIssues(response, article, ['known'])).toThrow()
+  })
+  it('retains exact draft quotations and known source references without certifying meaning', () => {
+    const remarks = reviewIssues({ verdict: 'needs-editing', comments: [{ quote: 'Посадка', sourceIds: ['known'], correction: 'Проверить основание.' }] }, article, ['known'])
+    expect(remarks[0]?.message).toContain('Источники: known.')
+    expect(remarks[0]?.origin).toBe('reviewer')
+  })
+  it('stops on an invented review quotation and keeps its raw reply and unchanged draft', async () => {
+    let state = await start()
+    const raw = JSON.stringify({ verdict: 'needs-editing', comments: [{ quote: 'Фраза только из источника', sourceIds: [], correction: 'Удалить.' }] })
+    const model = provider([reply('План'), reply(article), reply(raw)])
+    for (let step = 0; step < 4; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('needs-editing')
+    expect(state.versions).toHaveLength(1)
+    expect(state.versions[0]!.text).toBe(article)
+    expect(state.calls.at(-1)?.response).toBe(raw)
+    expect(model.requests).toHaveLength(3)
+    expect(state.issues.at(-1)?.message).toContain('Цитата редактора отсутствует')
+    expect(JSON.parse(model.requests[2]!.messages[1]!.content)).not.toHaveProperty('remarks')
+  })
   it('bounds decoded message bytes and rejects one byte below the reservation', async () => {
     const initial = await createEditorialState({ text: 'Тема "цитата" \\ пример\nНовая строка', minimumWords: 100 }, packet, settings)
     const model = provider([reply('План')])
@@ -106,7 +133,7 @@ describe('durable bounded editorial stages', () => {
     let state = await start()
     const model = provider([reply('План'), reply(article), reply(JSON.stringify({ verdict: 'ready-for-human', comments: ['x'.repeat(201)] }))])
     for (let step = 0; step < 3; step++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
-    expect(state.phase).toBe('writer')
+    expect(state.phase).toBe('needs-editing')
     expect(state.issues.some(issue => issue.message.includes('не вернул завершённую проверку'))).toBe(true)
     expect(state.calls.at(-1)?.response).toContain('x'.repeat(201))
     const schema = model.requests[2]!.outputSchema!
@@ -198,10 +225,10 @@ describe('durable bounded editorial stages', () => {
 
   it('preserves a concrete semantic objection independently from program checks', async () => {
     let state = await start()
-    const model = provider([reply('План'), reply(article), reply(JSON.stringify({ verdict: 'needs-editing', comments: ['В источнике нет обещания здоровья.'] }))])
+    const model = provider([reply('План'), reply(article), reply(JSON.stringify({ verdict: 'needs-editing', comments: [{ quote: 'Посадка', sourceIds: [], correction: 'В источнике нет обещания здоровья.' }] }))])
     for (let i = 0; i < 3; i++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
     expect(state.phase).toBe('writer')
-    expect(state.issues).toEqual([{ code: 'editorial', origin: 'reviewer', message: 'В источнике нет обещания здоровья.' }])
+    expect(state.issues).toEqual([{ code: 'editorial', origin: 'reviewer', message: 'В источнике нет обещания здоровья. Фрагмент: «Посадка». Подтверждение в досье не указано.' }])
   })
 
   it('refuses changed sources and never reissues a call with unknown outcome', async () => {

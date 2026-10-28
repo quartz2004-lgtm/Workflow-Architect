@@ -28,7 +28,7 @@ import { buildContextPacket } from '../../src/knowledge/context'
 import { advanceEditorial, createEditorialState } from '../../src/editorial/engine'
 import { OllamaProvider } from '../../src/ai/ollama'
 import { editorialStateSchema } from '../../src/editorial/engine-schema'
-import { editorialReviewSchema } from '../../src/editorial/schema'
+import { groundedReviewSchema } from '../../src/editorial/review'
 import { contextPacketSchema } from '../../src/knowledge/context'
 import { checkEditorialText } from '../../src/editorial/quality'
 
@@ -86,6 +86,31 @@ test('fresh editorial replay of a saved dossier reaches human review without cha
   expect(state.phase, state.issues.map(issue => issue.message).join('\n')).toBe('awaiting-human')
 })
 
+test('grounded reviewer validates an unchanged saved first draft in an isolated task', async () => {
+  const source = process.env.WORKFLOW_EDITORIAL_GROUNDED_REVIEW
+  test.skip(!source, 'Explicit saved test evidence required; this is not full workflow acceptance.')
+  test.setTimeout(660000)
+  const original = editorialStateSchema.parse(JSON.parse(await readFile(join(source!, 'state.json'), 'utf8')))
+  const packet = contextPacketSchema.parse(JSON.parse(await readFile(join(source!, 'packet.json'), 'utf8')))
+  let state = await createEditorialState(original.task, packet, original.settings, original.budget)
+  state.versions = [{ ...structuredClone(original.versions[0]!), id: crypto.randomUUID(), taskId: state.id }]
+  state.phase = 'reviewer'
+  state.issues = state.versions[0]!.issues.filter(issue => issue.origin === 'program')
+  const folder = resolve('output/verification-0.5.4', `grounded-review-${Date.now()}`)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'seed.json'), JSON.stringify({ source, versionId: original.versions[0]!.id, humanApproved: false }))
+  await writeFile(join(folder, 'packet.json'), JSON.stringify(packet, null, 2))
+  console.log(`Grounded review only: ${folder}`)
+  const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model: state.settings.model })
+  state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => {
+    await writeFile(join(folder, 'state.json'), JSON.stringify(value, null, 2))
+  } })
+  expect(state.versions[0]!.text).toBe(original.versions[0]!.text)
+  expect(state.calls).toHaveLength(1)
+  expect(state.calls[0]!.status).toBe('complete')
+  expect(['writer', 'awaiting-human'], state.issues.map(issue => issue.message).join('\n')).toContain(state.phase)
+})
+
 test('real bounded reviewer preserves a correction budget for a saved draft', async () => {
   const folder = process.env.WORKFLOW_EDITORIAL_REVIEW_EVIDENCE
   test.skip(!folder, 'Explicit saved local evidence required.')
@@ -101,7 +126,7 @@ test('real bounded reviewer preserves a correction budget for a saved draft', as
   console.log(`Bounded review: ${output}`)
   state = await advanceEditorial({ state, packet, provider, signal: new AbortController().signal, save: async value => { await writeFile(join(output, 'state.json'), JSON.stringify(value, null, 2)) } })
   expect(state.calls.at(-1)?.status).toBe('complete')
-  const review = editorialReviewSchema.parse(JSON.parse(state.calls.at(-1)!.response!))
+  const review = groundedReviewSchema.parse(JSON.parse(state.calls.at(-1)!.response!))
   expect(review.comments.length).toBeLessThanOrEqual(5)
   // Probe the next prompt's size without spending another generation or
   // modifying the saved real review. A controlled exception stops the probe.

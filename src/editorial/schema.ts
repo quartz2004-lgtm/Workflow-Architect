@@ -61,11 +61,6 @@ export const editorialIssueSchema = z.strictObject({
   origin: z.enum(['program', 'reviewer']),
 })
 export type EditorialIssue = z.infer<typeof editorialIssueSchema>
-export const editorialReviewSchema = z.strictObject({
-  verdict: z.enum(['ready-for-human', 'needs-editing']),
-  comments: z.array(z.string().min(1).max(200)).max(5),
-})
-
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 export const editorialVersionSchema = z.strictObject({
   id: z.uuid(), taskId: z.uuid(), number: z.number().int().min(1),
