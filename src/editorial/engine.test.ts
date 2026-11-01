@@ -21,6 +21,8 @@ import type { ContextPacket } from '../knowledge/context'
 import { advanceEditorial, createEditorialState } from './engine'
 import type { EditorialSettings, EditorialState } from './engine-schema'
 import { reviewIssues } from './review'
+import { editorialDigest } from './versions'
+import { processSnapshotSchema, type ProcessSnapshot } from './process-schema'
 
 const id = '00000000-0000-4000-8000-000000000001'
 const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: id, runId: id, task: 'Тема', query: 'Тема', excerpts: [], gaps: [], budgetBytes: 4000 }
@@ -47,6 +49,32 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it('freezes process settings, preserves seed, and sends accepted style only to the writer', async () => {
+    const createdAt = new Date().toISOString(), exampleId = crypto.randomUUID()
+    const content = { title: 'Test process', instructions: { planner: 'ПЛАН-ПРОЦЕССА', writer: 'ГОЛОС-ПРОЦЕССА', reviewer: 'ПРОВЕРКА-ПРОЦЕССА' }, settings: { contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.4, stageTimeoutMs: 1000 }, voiceExampleIds: [exampleId] }
+    const snapshotBody = { schemaVersion: '0.5.5' as const, profileId: packet.profileId,
+      version: { id: crypto.randomUUID(), number: 1, createdAt, content, digest: await editorialDigest(JSON.stringify(content)) },
+      examples: [{ id: exampleId, text: 'Пример спокойного языка.', digest: await editorialDigest('Пример спокойного языка.'), sourceLabel: 'Synthetic', sourceDigest: 'a'.repeat(64), origin: 'development' as const, createdAt, status: 'accepted' as const, acceptedAt: createdAt }],
+    }
+    const normalized = processSnapshotSchema.parse({ ...snapshotBody, digest: '0'.repeat(64) })
+    const snapshot: ProcessSnapshot = { ...normalized, digest: await editorialDigest(JSON.stringify({ schemaVersion: normalized.schemaVersion, profileId: normalized.profileId, version: normalized.version, examples: normalized.examples })) }
+    let state = await createEditorialState({ text: 'Статья', minimumWords: 100 }, packet, { ...settings, seed: 53 }, undefined, Date.now(), snapshot)
+    snapshot.version.content.title = 'Later external mutation'
+    const model = provider([reply('План'), reply(article), reply(ready)])
+    for (let i = 0; i < 3; i++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('awaiting-human')
+    expect(state.schemaVersion).toBe('0.5.5')
+    expect(state.process!.version.content.title).toBe('Test process')
+    expect(model.requests.map(request => request.seed)).toEqual([53, 53, 53])
+    expect(model.requests[1]!.temperature).toBe(0.4)
+    expect(model.requests[1]!.messages[0]!.content).toContain('ГОЛОС-ПРОЦЕССА')
+    expect(JSON.parse(model.requests[1]!.messages[1]!.content).styleExamples[0].text).toBe('Пример спокойного языка.')
+    expect(JSON.parse(model.requests[2]!.messages[1]!.content)).not.toHaveProperty('styleExamples')
+    expect(state.calls.every(call => call.settings.seed === 53)).toBe(true)
+    const changed = structuredClone(state); changed.process!.examples[0]!.text = 'Altered'
+    await expect(advanceEditorial({ state: changed, packet, provider: model, signal: signal(), save: async () => {} })).rejects.toThrow('повреждён')
+    expect(model.requests).toHaveLength(3)
+  })
   it.each([
     { verdict: 'needs-editing', comments: [{ quote: 'Отсутствующая фраза', sourceIds: [], correction: 'Исправить.' }] },
     { verdict: 'needs-editing', comments: [{ quote: 'Посадка', sourceIds: ['invented'], correction: 'Исправить.' }] },

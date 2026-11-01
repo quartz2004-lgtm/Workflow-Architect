@@ -26,6 +26,7 @@ import { countWords } from '../ai/agent'
 import { createEditorialVersion, editorialDigest } from './versions'
 import { applyEditorialRevision, editorialBlocks, revisionResponseSchema } from './revision'
 import { groundedReviewSchema, reviewIssues } from './review'
+import { verifyProcessSnapshot, type ProcessSnapshot } from './process-schema'
 
 const reviewOutputSchema = z.record(z.string(), z.json()).parse(z.toJSONSchema(groundedReviewSchema))
 
@@ -43,11 +44,15 @@ const responseSchema = z.object({
 })
 const issue = (message: string): EditorialIssue => ({ code: 'editorial', origin: 'program', message: message.slice(0, 4000) || 'Не удалось завершить редакционный этап.' })
 
-export async function createEditorialState(input: unknown, packet: ContextPacket, settings: EditorialSettings, budget = defaultEditorialBudget, now = Date.now()): Promise<EditorialState> {
+export async function createEditorialState(input: unknown, packet: ContextPacket, settings: EditorialSettings, budget = defaultEditorialBudget, now = Date.now(), process?: ProcessSnapshot): Promise<EditorialState> {
   const context = contextPacketSchema.parse(packet)
+  const frozen = process ? await verifyProcessSnapshot(process) : undefined
+  if (frozen && frozen.profileId !== context.profileId) throw new Error('Настройки редакции принадлежат другому профилю.')
+  const configured = frozen?.version.content.settings
+  const effectiveSettings = configured ? { ...settings, contextTokens: configured.contextTokens, maxOutputTokens: configured.maxOutputTokens, temperature: configured.temperature, callTimeoutMs: configured.stageTimeoutMs } : settings
   return editorialStateSchema.parse({
-    schemaVersion: '0.5.4', id: crypto.randomUUID(), task: normalizeEditorialTask(input),
-    contextDigest: await editorialDigest(JSON.stringify(context)), settings, budget,
+    schemaVersion: frozen || settings.seed !== undefined ? '0.5.5' : '0.5.4', ...(frozen ? { process: frozen } : {}), id: crypto.randomUUID(), task: normalizeEditorialTask(input),
+    contextDigest: await editorialDigest(JSON.stringify(context)), settings: effectiveSettings, budget,
     createdAt: new Date(now).toISOString(), deadline: now + budget.timeoutMs,
     phase: 'planner', plan: '', issues: [], calls: [], versions: [], spentTokens: 0,
   })
@@ -60,6 +65,12 @@ export async function advanceEditorial(options: {
 }): Promise<EditorialState> {
   let state = editorialStateSchema.parse(structuredClone(options.state))
   const packet = contextPacketSchema.parse(options.packet)
+  if (state.process) {
+    const process = await verifyProcessSnapshot(state.process)
+    if (process.profileId !== packet.profileId) throw new Error('Настройки редакции принадлежат другому профилю.')
+    const selected = process.version.content.settings
+    if (selected.contextTokens !== state.settings.contextTokens || selected.maxOutputTokens !== state.settings.maxOutputTokens || selected.temperature !== state.settings.temperature || selected.stageTimeoutMs !== state.settings.callTimeoutMs) throw new Error('Параметры запуска отличаются от зафиксированной версии процесса.')
+  }
   if (await editorialDigest(JSON.stringify(packet)) !== state.contextDigest) throw new Error('Досье изменилось. Продолжение требует исходного снимка источников.')
   const persist = async () => { state = editorialStateSchema.parse(state); await options.save(structuredClone(state)); return structuredClone(state) }
   if (state.calls.some(call => call.status === 'pending')) {
@@ -98,6 +109,7 @@ export async function advanceEditorial(options: {
   }
   const prompt = JSON.stringify({
     task: state.task, knowledge,
+    ...(stage === 'writer' && state.process?.examples.length ? { styleExamples: state.process.examples.map(example => ({ text: example.text, purpose: 'Пример языка и ритма, не источник фактов для текущего товара.' })) } : {}),
     ...(stage === 'writer' && !state.versions.length ? { plan: state.plan } : {}),
     ...(state.versions.length ? revising ? { baseVersionId: state.versions.at(-1)!.id, draftBlocks: editorialBlocks(draft!).map(({ id, text }) => ({ id, text })), remarks: state.issues } : { draft } : {}),
     ...(outputSchema ? { responseFormat: outputSchema } : {}),
@@ -110,7 +122,7 @@ export async function advanceEditorial(options: {
   })
   const system = [policy, revising
     ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions вставляет цельный раздел после afterBlockId; null добавляет в конец. Для нового раздела heading={level:2,title:название без #}, для добавления абзацев без заголовка heading=null. paragraphs — непустой список содержательных абзацев без Markdown-заголовков. Заголовок и все его абзацы принадлежат одному добавлению. ID относятся к исходному draftBlocks и не меняются после вставок. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
-    : instructions[stage], packet.handoff?.instructions,
+    : instructions[stage], packet.handoff?.instructions, state.process?.version.content.instructions[stage],
     'Карточки товаров и связанные правила ухода подтверждают только прямо указанные факты. Состав волокон не доказывает посадку, износостойкость или комфорт изделия. Общий текст о материале не подтверждает его применение в выбранном товаре. Не переноси его свойства на товар без явной связи. Не выдумывай размерные соответствия и происхождение волокон.',
     ...(stage === 'writer' && !revising ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
     ...(stage === 'writer' && !revising && state.task.minimumWords >= 600 ? [`Шесть разделов примерно по ${Math.ceil(targetWords / 6)} слов: каждый раскрывает отдельный вопрос читателя через несколько абзацев с примерами и объяснениями. Не добирай объём повторениями. При доработке сохраняй верные детали, но исправляй ошибки и расширяй короткий текст.`] : []),
@@ -154,6 +166,7 @@ export async function advanceEditorial(options: {
       model: settings.model, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt, ...(pictures.length ? { images: pictures } : {}) }],
       tools: [], ...(outputSchema ? { outputSchema } : {}),
       maxOutputTokens: settings.maxOutputTokens, contextTokens: settings.contextTokens, temperature: settings.temperature,
+      ...(settings.seed !== undefined ? { seed: settings.seed } : {}),
     }, signal), abortPromise])
     signal.throwIfAborted()
     const reply = responseSchema.parse(response)
