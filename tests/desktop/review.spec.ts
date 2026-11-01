@@ -49,7 +49,8 @@ test('blind comparison uses real IPC, explicit scores and durable profile-bound 
     id: randomUUID(), suiteId: suite.id, suiteDigest: hash(suite), caseId: suite.cases[3]!.id, profileDigest: 'a'.repeat(64), packetDigest: hash(packet), seed: 17, status: 'complete', resultDigest: hashText(resultText), formalPassed: true,
   } })
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)); delete env.ELECTRON_RUN_AS_NODE
-  const app = await electron.launch({ args: [resolve('.desktop-app'), `--user-data-dir=${directory}`], env })
+  const app = await electron.launch({ ...(process.env.DESKTOP_EXECUTABLE ? { executablePath: process.env.DESKTOP_EXECUTABLE } : {}),
+    args: [...(process.env.DESKTOP_EXECUTABLE ? [] : [resolve('.desktop-app')]), `--user-data-dir=${directory}`], env })
   try {
     const page = await app.firstWindow()
     await page.getByRole('button', { name: 'Пропустить настройку' }).click()
