@@ -50,6 +50,20 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 describe('durable runtime jobs', () => {
+  it('restores an earlier Human wait before fresh queued work takes its slot', async () => {
+    const path = directory(), first = manager(path, { concurrency: 1 })
+    first.start()
+    const waiting = first.submit(request()), queued = first.submit(request())
+    await status(first, waiting.id, 'waiting')
+    first.stop()
+    const restored = manager(path, { concurrency: 1 }); restored.start()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(restored.get(owner, queued.id).status).toBe('queued')
+    await status(restored, waiting.id, 'waiting')
+    expect(restored.get(owner, queued.id).events).toEqual([])
+    restored.cancel(owner, waiting.id)
+    await status(restored, queued.id, 'waiting')
+  })
   it('grants execution time at first dispatch after queue delay, but never again on restart', async () => {
     const path = directory(), processService = new EditorialProcessService(join(directory(), 'process'))
     const first = manager(path, { editorialProcess: processService })

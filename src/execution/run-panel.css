@@ -30,6 +30,12 @@ along with this program.  If not, see <https://gnu.org>.
 .run-start textarea:not(.code-input) { font-family: var(--font); }
 .run-start input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .run-start .check-field { display: flex; align-items: center; gap: 8px; }
+.editorial-batch { display: grid; gap: 12px; }
+.editorial-batch > p, .editorial-batch > h3 { margin: 0; }
+.editorial-batch ol { display: grid; gap: 12px; padding-left: 24px; }
+.editorial-batch li { padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); overflow-wrap: anywhere; }
+.editorial-batch li p { margin: 8px 0; }
+.editorial-batch fieldset { min-width: 0; }
 .run-human form { display: grid; gap: 12px; }
 .run-body select:focus-visible, .run-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .run-body :disabled { opacity: .55; cursor: not-allowed; }

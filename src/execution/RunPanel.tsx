@@ -32,6 +32,7 @@ import { ContextPacketView } from '../knowledge/ContextPacketView'
 import { EditorialRunView } from '../editorial/EditorialRunView'
 import { editorialKnowledgeRequest } from '../editorial/schema'
 import { resultTypes, taskFromForm, type EditorialKind } from '../editorial/task-form'
+import { BatchPanel } from '../editorial/BatchPanel'
 import { useProfile } from '../profiles/context'
 import { knowledgeRequest } from '../knowledge/client'
 import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
@@ -104,6 +105,7 @@ export function RunPanel() {
     <div className="run-body">
       <p className="muted">Локально · без облачного ИИ. Обычные сценарии — до 5 минут; редакция имеет отдельный конечный бюджет и ожидание подтверждения, весь запуск — до двух часов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
       {editor.runtime.native && (editorialNode || latestEditorial ? <details><summary>История запусков и фоновая работа</summary><RuntimeControls runtime={editor.runtime} native={editor.runtime.native} /></details> : <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />)}
+      {editor.runtime.native && editorialNode && profile && <details><summary>Очередь нескольких статей</summary><BatchPanel key={`${profile.id}:${project.project.id}:${selected}`} profileId={profile.id} project={project} entryNodeId={selected} native={editor.runtime.native} /></details>}
       {latestEditorial?.kind === 'editorial' && editor.runtime.native && !active && <div className="inline-actions">
         <button disabled={state.actionPending || !currentProject || !latestEditorial.state.versions.length} onClick={() => {
           const prior = latestEditorial.state.task

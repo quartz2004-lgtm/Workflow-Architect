@@ -223,11 +223,16 @@ export class JobManager {
   }
   private pump() {
     if (!this.available) return
-    for (const job of [...this.jobs.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    for (const job of [...this.jobs.values()].sort((a, b) => Number(!!b.checkpoint) - Number(!!a.checkpoint) || a.createdAt.localeCompare(b.createdAt))) {
       if (job.status !== 'queued' || this.running.has(job.id)) continue
       if (Date.now() >= job.deadline) {
         try { this.commit({ ...job, status: 'failed', message: 'Истёк timeout ожидания в очереди.' }) } catch (error) { this.storageFailed(error); return }
-      } else if (this.running.size < (this.options.concurrency ?? 2) && Date.now() >= job.retryAt) this.launch(job)
+      } else if (this.running.size < (this.options.concurrency ?? 2)) {
+        // Preserve slots for restoring earlier work, especially an existing Human wait.
+        // Otherwise fresh jobs can occupy every slot while recovery is backing off.
+        if (Date.now() < job.retryAt) break
+        this.launch(job)
+      }
     }
     if ([...this.jobs.values()].some(job => job.status === 'queued')) this.schedule(100)
   }

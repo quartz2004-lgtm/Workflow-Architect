@@ -61,6 +61,15 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await page.getByRole('button', { name: 'Пропустить настройку' }).click()
     await expect.poll(() => page.evaluate(async () => (await window.workflowDesktop!.runtime.state() as { status: string }).status)).toBe('ready')
     await page.evaluate(({ profileId, port }) => window.workflowDesktop!.runtime.request({ kind: 'ai', command: { action: 'save', profileId, configuration: { provider: 'ollama', port, model: 'editorial-fixture' }, enabled: true } }), { profileId: profileIds[0], port })
+    await page.getByRole('button', { name: 'ИИ-помощник', exact: true }).click()
+    await page.getByRole('button', { name: '04 · Редакция и голос', exact: true }).click()
+    const processPanel = page.getByRole('region', { name: 'Редакция и голос', exact: true })
+    await expect(processPanel).toContainText('Версий пока нет')
+    await processPanel.getByRole('button', { name: 'Сохранить новую версию', exact: true }).click()
+    await processPanel.getByRole('button', { name: 'Использовать версию 1', exact: true }).click()
+    await expect(processPanel).toContainText('Для новых редакционных задач: Моя редакция, версия 1.')
+    await processPanel.getByRole('button', { name: 'Стандартная редакция', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Закрыть диалог', exact: true }).click()
     await page.getByRole('button', { name: 'Знания SOAR', exact: true }).click()
     const knowledge = page.getByRole('dialog', { name: 'Знания SOAR' })
     await knowledge.getByRole('button', { name: 'Подключить папку', exact: true }).click()
@@ -149,5 +158,44 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await expect(panel.getByRole('region', { name: 'Редакционный процесс' })).toContainText('максимум 130')
     await human.getByRole('button', { name: 'Подтвердить', exact: true }).click()
     await expect(panel.locator('.run-artifact')).toContainText('article.md')
+    const callsBeforeBatch = stages.length
+    await panel.getByText('Очередь нескольких статей', { exact: true }).click()
+    let batch = panel.getByRole('region', { name: 'Очередь материалов', exact: true })
+    for (let i = 0; i < 10; i++) {
+      if (i) await batch.getByRole('button', { name: 'Добавить материал', exact: true }).click()
+      await batch.getByLabel(`Материал ${i + 1}`, { exact: true }).fill(`Комфорт SOAR: материал ${i + 1}, посадка в движении`)
+    }
+    await expect(batch.getByRole('button', { name: 'Добавить материал', exact: true })).toBeDisabled()
+    await batch.getByLabel('Разрешить всей очереди работать после закрытия окна').check()
+    await batch.getByRole('button', { name: 'Поставить в очередь · 10', exact: true }).click()
+    await expect(batch.getByRole('button', { name: 'Открыть материал', exact: true })).toHaveCount(10).catch(async error => {
+      await page.screenshot({ path: 'desktop-results/editorial-batch-failure.png' })
+      throw new Error(`${String(error)}\n${await batch.innerText()}`)
+    })
+    await batch.getByRole('button', { name: 'Открыть материал', exact: true }).first().scrollIntoViewIfNeeded()
+    await page.screenshot({ path: 'desktop-results/editorial-batch.png' })
+    for (let i = 0; i < 10; i++) {
+      if (i === 5) {
+        await expect.poll(() => page.evaluate(async profileId => (await window.workflowDesktop!.runtime.request({ kind: 'list', profileId }) as { status: string }[]).filter(job => job.status === 'running').length, profileIds[0])).toBe(0)
+        await app.close(); app = await launch(); page = await app.firstWindow()
+        await page.getByRole('button', { name: /^Run ·/ }).click()
+        panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
+        human = panel.getByRole('region', { name: 'Ответ человеку' })
+        await panel.getByText('Очередь нескольких статей', { exact: true }).click()
+        batch = panel.getByRole('region', { name: 'Очередь материалов', exact: true })
+        await expect(batch.getByRole('button', { name: 'Открыть материал', exact: true })).toHaveCount(10)
+      }
+      await batch.getByRole('button', { name: 'Открыть материал', exact: true }).nth(i).click()
+      await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
+      await human.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+      await expect(panel.locator('.run-artifact')).toContainText('article.md')
+    }
+    expect(stages.length - callsBeforeBatch).toBe(30)
+    const batches = await page.evaluate(profileId => window.workflowDesktop!.runtime.request({ kind: 'editorial-batch', command: { action: 'list', profileId } }), profileIds[0]) as { items: { id: string }[] }[]
+    expect(batches).toHaveLength(1)
+    const jobs = await page.evaluate(async ({ profileId, ids }) => Promise.all(ids.map(id => window.workflowDesktop!.runtime.request({ kind: 'get', profileId, id }))), { profileId: profileIds[0], ids: batches[0]!.items.map(item => item.id) }) as { id: string; status: string; preparedKnowledge: { packet: { runId: string } }[] }[]
+    expect(jobs.every(job => job.status === 'succeeded' && job.preparedKnowledge.every(entry => entry.packet.runId === job.id))).toBe(true)
+    expect(new Set(jobs.map(job => job.id)).size).toBe(10)
+    expect(await page.evaluate(profileId => window.workflowDesktop!.runtime.request({ kind: 'editorial-batch', command: { action: 'list', profileId } }), profileIds[1])).toEqual([])
   } finally { await app.close(); await new Promise<void>(done => server.close(() => done())) }
 })

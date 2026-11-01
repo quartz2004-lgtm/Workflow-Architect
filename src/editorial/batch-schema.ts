@@ -39,3 +39,12 @@ export const batchCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('cancel'), ...owned }),
 ])
 export type EditorialBatch = z.infer<typeof editorialBatchSchema>
+export const batchViewSchema = z.strictObject({
+  id: z.uuid(), profileId: z.enum(profileIds), createdAt: z.iso.datetime(), cancelled: z.boolean(), background: z.boolean(), projectName: z.string(),
+  items: z.array(z.strictObject({ id: z.uuid(), title: z.string(), submitted: z.boolean(), error: z.string() })).max(10),
+})
+export type BatchView = z.infer<typeof batchViewSchema>
+export function batchView(batch: EditorialBatch): BatchView {
+  return { id: batch.request.id, profileId: batch.request.profileId, createdAt: batch.createdAt, cancelled: batch.cancelled, background: batch.request.background, projectName: batch.request.project.project.name,
+    items: batch.items.map((item, index) => ({ ...item, title: batch.request.items[index]!.task.text })) }
+}

@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto'
 
 export interface RuntimeState { status: 'starting' | 'ready' | 'unavailable' | 'stopped'; message: string; pid?: number; damaged: { id: string; message: string }[] }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
-const rendererCommands = new Set(['submit', 'list', 'get', 'cancel', 'resume', 'remove', 'answer', 'ai', 'integrations'])
+const rendererCommands = new Set(['submit', 'list', 'get', 'cancel', 'resume', 'remove', 'answer', 'ai', 'integrations', 'editorial-process', 'editorial-batch'])
 
 /** The private UtilityProcess channel is not exposed to arbitrary renderer IPC. */
 export class RuntimeHost {

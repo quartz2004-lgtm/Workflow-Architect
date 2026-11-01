@@ -19,7 +19,7 @@ import { createHash } from 'node:crypto'
 import { AtomicStore } from '../runtime/atomic-store'
 import type { JobManager } from '../runtime/job-manager'
 import { compileProject } from '../execution/compiler'
-import { batchCommandSchema, batchRequestSchema, editorialBatchSchema, type EditorialBatch } from './batch-schema'
+import { batchCommandSchema, batchRequestSchema, editorialBatchSchema, batchView, type EditorialBatch } from './batch-schema'
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
@@ -37,8 +37,8 @@ export class EditorialBatchService {
   }
   handle(raw: unknown) {
     const command = batchCommandSchema.parse(raw)
-    if (command.action === 'submit') return this.submit(command.request)
-    if (command.action === 'list') return this.disk.ids().filter(id => this.disk.read(id).request.profileId === command.profileId).map(id => this.read(command.profileId, id))
+    if (command.action === 'submit') return batchView(this.submit(command.request))
+    if (command.action === 'list') return this.disk.ids().filter(id => this.disk.read(id).request.profileId === command.profileId).map(id => batchView(this.read(command.profileId, id)))
     const batch = this.read(command.profileId, command.id)
     if (command.action === 'cancel') {
       batch.cancelled = true
@@ -46,9 +46,9 @@ export class EditorialBatchService {
       // Also reconcile a crash between job submission and manifest update.
       const known = this.jobs.list(command.profileId)
       for (const item of batch.items) if (known.some(job => job.id === item.id) && this.jobs.get(command.profileId, item.id).eventKey === `batch:${batch.request.id}:${item.id}`) this.jobs.cancel(command.profileId, item.id)
-      return batch
+      return batchView(batch)
     }
-    return this.dispatch(batch)
+    return batchView(this.dispatch(batch))
   }
   submit(raw: unknown) {
     const request = batchRequestSchema.parse(raw)
