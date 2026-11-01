@@ -16,8 +16,9 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { z } from 'zod'
+import { editorialKinds } from '../editorial/schema'
 
-export const evaluationKinds = ['knowledge-answer', 'article', 'revision', 'short-block', 'content-plan', 'reels'] as const
+export const evaluationKinds = editorialKinds
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 const id = z.uuid()
 const text = z.string().trim().min(1).max(12000)

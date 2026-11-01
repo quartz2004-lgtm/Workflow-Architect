@@ -51,7 +51,7 @@ export const editorialStateSchema = z.strictObject({
   versions: z.array(editorialVersionSchema).max(3),
   spentTokens: z.number().int().nonnegative(),
 }).superRefine((state, ctx) => {
-  if ((state.process || state.settings.seed !== undefined) && state.schemaVersion !== '0.5.5') ctx.addIssue({ code: 'custom', message: 'Снимок процесса и seed требуют версии состояния 0.5.5.' })
+  if ((state.process || state.settings.seed !== undefined || state.task.schemaVersion === '0.5.5') && state.schemaVersion !== '0.5.5') ctx.addIssue({ code: 'custom', message: 'Снимок процесса, тип результата и seed требуют версии состояния 0.5.5.' })
 })
 export type EditorialState = z.infer<typeof editorialStateSchema>
 export type EditorialSettings = z.infer<typeof editorialSettingsSchema>

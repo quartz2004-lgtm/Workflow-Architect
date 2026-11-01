@@ -23,6 +23,8 @@ import type { EditorialSettings, EditorialState } from './engine-schema'
 import { reviewIssues } from './review'
 import { editorialDigest } from './versions'
 import { processSnapshotSchema, type ProcessSnapshot } from './process-schema'
+import { editorialKinds, normalizeEditorialTask } from './schema'
+import { checkEditorialText } from './quality'
 
 const id = '00000000-0000-4000-8000-000000000001'
 const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: id, runId: id, task: 'Тема', query: 'Тема', excerpts: [], gaps: [], budgetBytes: 4000 }
@@ -49,6 +51,34 @@ const start = () => createEditorialState({ text: 'Статья о посадке
 const signal = () => new AbortController().signal
 
 describe('durable bounded editorial stages', () => {
+  it.each(editorialKinds)('uses the same durable stages with a %s result contract', async kind => {
+    const task = normalizeEditorialTask({ schemaVersion: '0.5.5', kind, text: 'Подготовь результат', audience: 'Общая', language: 'Русский',
+      minimumWords: kind === 'article' ? 600 : kind === 'short-block' ? 100 : 0,
+      minimumSections: kind === 'article' ? 2 : 0,
+      ...(kind === 'short-block' ? { maximumWords: 130 } : {}),
+      ...(kind === 'revision' ? { previousArticle: 'Сохранить этот факт.' } : {}),
+      ...(['content-plan', 'reels'].includes(kind) ? { requiredItems: 2 } : {}),
+    })
+    const text = kind === 'article' ? article.replace('Пример '.repeat(60), 'Пример '.repeat(550)) : kind === 'short-block' ? 'Пример '.repeat(110) : ['content-plan', 'reels'].includes(kind) ? '1. Первый замысел\n\n2. Второй замысел' : 'Сохранить этот факт.'
+    const model = provider([reply('План'), reply(text), reply(ready)])
+    let state = await createEditorialState(task, packet, settings)
+    for (let i = 0; i < 3; i++) state = await advanceEditorial({ state, packet, provider: model, signal: signal(), save: async () => {} })
+    expect(state.phase).toBe('awaiting-human')
+    expect(state.schemaVersion).toBe('0.5.5')
+    expect(state.task).toEqual(task)
+    const request = model.requests[1]!
+    expect(JSON.parse(request.messages[1]!.content).task).toEqual(task)
+    if (kind !== 'article') expect(request.messages[0]!.content).not.toContain('первая строка начинается ровно с одного #')
+    const invalidText = kind === 'short-block' ? 'Пример '.repeat(131) : kind === 'article' ? '# Коротко' : '1. Один\n1. Повтор номера'
+    if (['short-block', 'article', 'content-plan', 'reels'].includes(kind)) expect(checkEditorialText({ task, text: invalidText, finish: 'stop', allowedSourceIds: [], knowledgeGaps: [] }).issues.length).toBeGreaterThan(0)
+  })
+  it('rejects invalid typed contracts instead of silently treating them as legacy articles', () => {
+    const base = { schemaVersion: '0.5.5', text: 'Задание', audience: 'Общая', language: 'Русский', minimumWords: 100, minimumSections: 0 }
+    expect(() => normalizeEditorialTask({ ...base, kind: 'short-block', maximumWords: 99 })).toThrow()
+    expect(() => normalizeEditorialTask({ ...base, kind: 'revision' })).toThrow()
+    expect(() => normalizeEditorialTask({ ...base, kind: 'unsupported' })).toThrow()
+    expect(normalizeEditorialTask('Обычный текст').schemaVersion).toBe('0.5.4')
+  })
   it('freezes process settings, preserves seed, and sends accepted style only to the writer', async () => {
     const createdAt = new Date().toISOString(), exampleId = crypto.randomUUID()
     const content = { title: 'Test process', instructions: { planner: 'ПЛАН-ПРОЦЕССА', writer: 'ГОЛОС-ПРОЦЕССА', reviewer: 'ПРОВЕРКА-ПРОЦЕССА' }, settings: { contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.4, stageTimeoutMs: 1000 }, voiceExampleIds: [exampleId] }

@@ -50,8 +50,9 @@ export async function createEditorialState(input: unknown, packet: ContextPacket
   if (frozen && frozen.profileId !== context.profileId) throw new Error('Настройки редакции принадлежат другому профилю.')
   const configured = frozen?.version.content.settings
   const effectiveSettings = configured ? { ...settings, contextTokens: configured.contextTokens, maxOutputTokens: configured.maxOutputTokens, temperature: configured.temperature, callTimeoutMs: configured.stageTimeoutMs } : settings
+  const task = normalizeEditorialTask(input)
   return editorialStateSchema.parse({
-    schemaVersion: frozen || settings.seed !== undefined ? '0.5.5' : '0.5.4', ...(frozen ? { process: frozen } : {}), id: crypto.randomUUID(), task: normalizeEditorialTask(input),
+    schemaVersion: frozen || settings.seed !== undefined || task.schemaVersion === '0.5.5' ? '0.5.5' : '0.5.4', ...(frozen ? { process: frozen } : {}), id: crypto.randomUUID(), task,
     contextDigest: await editorialDigest(JSON.stringify(context)), settings: effectiveSettings, budget,
     createdAt: new Date(now).toISOString(), deadline: now + budget.timeoutMs,
     phase: 'planner', plan: '', issues: [], calls: [], versions: [], spentTokens: 0,
@@ -92,7 +93,10 @@ export async function advanceEditorial(options: {
   const revising = stage === 'writer' && draft !== undefined
   const outputSchema = stage === 'reviewer' ? reviewOutputSchema : revising
     ? z.record(z.string(), z.json()).parse(z.toJSONSchema(revisionResponseSchema(draft!, state.versions.at(-1)!.id))) : undefined
-  const targetWords = Math.ceil(state.task.minimumWords * 1.5)
+  const typed = state.task.schemaVersion === '0.5.5' ? state.task : undefined
+  const targetWords = Math.min(Math.ceil(state.task.minimumWords * 1.5), typed?.maximumWords ?? Infinity)
+  const article = !typed || typed.kind === 'article'
+  const contract = typed ? `Тип результата: ${typed.kind}. Минимум ${typed.minimumWords} слов${typed.maximumWords !== undefined ? `, максимум ${typed.maximumWords}` : ''}. Разделов с ##: минимум ${typed.minimumSections}.${typed.requiredItems !== undefined ? ` Ровно ${typed.requiredItems} пунктов нумерованного списка: строки «1. ...», «2. ...», по порядку без повторного начала нумерации. Подробности пункта помещай в его абзацы, не создавай вложенные нумерованные списки.` : ''}` : ''
   if (stage === 'writer' && state.versions.length >= state.budget.maxRevisions) {
     state.phase = 'needs-editing'; return persist()
   }
@@ -113,7 +117,12 @@ export async function advanceEditorial(options: {
     ...(stage === 'writer' && !state.versions.length ? { plan: state.plan } : {}),
     ...(state.versions.length ? revising ? { baseVersionId: state.versions.at(-1)!.id, draftBlocks: editorialBlocks(draft!).map(({ id, text }) => ({ id, text })), remarks: state.issues } : { draft } : {}),
     ...(outputSchema ? { responseFormat: outputSchema } : {}),
-    action: revising
+    action: typed && !article
+      ? revising ? `Верни JSON точечных правок по responseFormat. Исправь remarks, сохрани остальной текст. ${contract} Не расширяй текст сверх максимального объёма.`
+        : stage === 'writer' ? `Верни только готовый результат по заданию и досье. ${contract} При правке previousArticle сохрани факты и детали, не затронутые просьбой. Не превращай короткий ответ, план или сценарий в статью.`
+          : stage === 'planner' ? `Кратко спланируй результат заданного типа, факты и ограничения. ${contract} Не пиши сам результат.`
+            : `Проверь факты текущего draft, верни JSON по responseFormat. ${contract} Не требуй формат статьи от других типов результатов.`
+      : revising
       ? `Верни только JSON правок по responseFormat. Сейчас ${countWords(draft!)} слов, минимум ${state.task.minimumWords}. Добавь не менее ${Math.max(0, Math.ceil(state.task.minimumWords * 1.2) - countWords(draft!))} содержательных слов для запаса объёма. Исправь ошибки из remarks заменами блоков. Не переписывай статью целиком; остальные блоки приложение сохранит точно.`
       : stage === 'writer'
       ? `${draft ? `Исправь draft по remarks. Сейчас ${countWords(draft)} слов.` : 'Напиши статью по заданию и досье.'} Цель — ${targetWords} слов, обязательный минимум — ${state.task.minimumWords}. Верни полный текст. Развивай полезные объяснения и примеры выбора, не повторяй черновик дословно и не добавляй неподтверждённые свойства.`
@@ -122,10 +131,11 @@ export async function advanceEditorial(options: {
   })
   const system = [policy, revising
     ? 'Доработай последнюю версию статьи точечными правками. draftBlocks содержит блоки и их ID. replacements заменяет целый блок по blockId (пустой text удаляет его). additions вставляет цельный раздел после afterBlockId; null добавляет в конец. Для нового раздела heading={level:2,title:название без #}, для добавления абзацев без заголовка heading=null. paragraphs — непустой список содержательных абзацев без Markdown-заголовков. Заголовок и все его абзацы принадлежат одному добавлению. ID относятся к исходному draftBlocks и не меняются после вставок. Не копируй всю статью. Для расширения добавляй полезные ситуации выбора и объяснения без выдуманных свойств товара. Каждый блок заменяется не более одного раза. Верни только JSON, привязанный к указанному baseVersionId.'
-    : instructions[stage], packet.handoff?.instructions, state.process?.version.content.instructions[stage],
+    : stage === 'writer' && !article ? 'Подготовь живой русский текст заданного типа. Строго соблюдай границы объёма и структуру task. Источники при явном цитировании обозначай [source:ID] только из досье. Верни только результат.' : instructions[stage], packet.handoff?.instructions, state.process?.version.content.instructions[stage],
+    contract,
     'Карточки товаров и связанные правила ухода подтверждают только прямо указанные факты. Состав волокон не доказывает посадку, износостойкость или комфорт изделия. Общий текст о материале не подтверждает его применение в выбранном товаре. Не переноси его свойства на товар без явной связи. Не выдумывай размерные соответствия и происхождение волокон.',
-    ...(stage === 'writer' && !revising ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
-    ...(stage === 'writer' && !revising && state.task.minimumWords >= 600 ? [`Шесть разделов примерно по ${Math.ceil(targetWords / 6)} слов: каждый раскрывает отдельный вопрос читателя через несколько абзацев с примерами и объяснениями. Не добирай объём повторениями. При доработке сохраняй верные детали, но исправляй ошибки и расширяй короткий текст.`] : []),
+    ...(stage === 'writer' && !revising && article ? ['Обязательный формат: первая строка начинается ровно с одного # и пробела (например, «# Как выбрать бельё»). Основные разделы начинаются ровно с ## и пробела. Не начинай статью с ## или ###.'] : []),
+    ...(stage === 'writer' && !revising && article && state.task.minimumWords >= 600 ? [`Шесть разделов примерно по ${Math.ceil(targetWords / 6)} слов: каждый раскрывает отдельный вопрос читателя через несколько абзацев с примерами и объяснениями. Не добирай объём повторениями. При доработке сохраняй верные детали, но исправляй ошибки и расширяй короткий текст.`] : []),
     ...(stage === 'reviewer' ? ['Блокируют: неверные артикулы, состав, размеры, количество, правила ухода и неподтверждённые измеримые свойства изделия. Не блокируют: общие советы по выбору/упаковке, вкусовые оценки, образные фразы без обещания свойств. Не требуй добавить сведения о материале без связи с товаром. quote копируй именно из текущего draft, не из источника. Объём проверяет программа. verdict=ready-for-human разрешает показать текст человеку, но не доказывает истинность всех утверждений.'] : []),
   ].filter(Boolean).join('\n\n')
   const settings = { ...state.settings, maxOutputTokens: stage === 'writer' ? state.settings.maxOutputTokens : Math.min(state.settings.maxOutputTokens, 1536), temperature: stage === 'reviewer' ? Math.min(state.settings.temperature, 0.2) : state.settings.temperature }

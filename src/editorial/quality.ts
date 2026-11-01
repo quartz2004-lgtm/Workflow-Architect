@@ -38,7 +38,18 @@ export function checkEditorialText(options: {
   if (options.finish === 'length') issue('incomplete', 'Модель остановилась по лимиту ответа. Сохранённый текст может быть незавершённым.')
   if (!text.trim()) issue('empty', 'Модель не вернула текст.')
   if (words < task.minimumWords) issue('volume', `Получено ${words} слов; требуется минимум ${task.minimumWords}.`)
-  if (!/^#\s+\S.*$/m.test(text) || sections < 2) issue('structure', 'Нужны заголовок статьи (#) и хотя бы два тематических раздела (##).')
+  const article = task.schemaVersion === '0.5.4' || task.kind === 'article'
+  const minimumSections = task.schemaVersion === '0.5.4' ? 2 : task.minimumSections
+  if (article && (!/^#\s+\S.*$/m.test(text) || sections < minimumSections)) issue('structure', `Нужны заголовок статьи (#) и хотя бы ${minimumSections} тематических разделов (##).`)
+  if (!article && sections < minimumSections) issue('structure', `Нужно хотя бы ${minimumSections} тематических разделов (##).`)
+  if (task.schemaVersion === '0.5.5') {
+    if (task.maximumWords !== undefined && words > task.maximumWords) issue('volume', `Получено ${words} слов; допускается максимум ${task.maximumWords}.`)
+    if (task.requiredItems !== undefined) {
+      // A countable representation, not a claim that every idea is useful or unique.
+      const items = [...text.matchAll(/^(\d+)\.[ \t]+\S.*$/gm)].map(match => Number(match[1]))
+      if (items.length !== task.requiredItems || items.some((number, index) => number !== index + 1)) issue('structure', `Нужен нумерованный список из ${task.requiredItems} пунктов по порядку от 1, без повторов нумерации.`)
+    }
+  }
   const headings = [...text.matchAll(/^(#{1,6})[ \t]+[^\r\n]+/gm)]
   for (let index = 0; index < headings.length; index++) {
     const heading = headings[index]!
