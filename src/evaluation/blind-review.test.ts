@@ -52,6 +52,20 @@ const answer = {
 }
 
 describe('durable blind human review', () => {
+  it('resumes pair preparation without rerandomizing sides or replacing submitted evidence', () => {
+    const { store, input, folder } = setup()
+    const id = store.ensure(input), view = store.open(id, input.raterId)
+    expect(store.ensure(input)).toBe(id)
+    expect(store.open(id, input.raterId)).toEqual(view)
+    store.submit(id, input.raterId, view.digest, answer)
+    const restarted = new BlindReviewStore(folder), ratings = restarted.ratings()
+    expect(restarted.ensure(input)).toBe(id)
+    expect(restarted.ratings()).toEqual(ratings)
+    const changed = { ...input, resultText: 'Different validly hashed text',
+      run: { ...input.run, resultDigest: hashText('Different validly hashed text') } }
+    expect(() => restarted.ensure(changed)).toThrow('замена запрещена')
+    expect(restarted.open(id, input.raterId)).toEqual({ ...view, submitted: true })
+  })
   it('keeps origins private, maps either randomized side correctly and survives restart', () => {
     const { store, input, folder } = setup(), id = store.create(input)
     const view = store.open(id, input.raterId)

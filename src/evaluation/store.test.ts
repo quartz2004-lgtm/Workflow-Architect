@@ -21,6 +21,8 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { EvaluationStore } from './store'
 import { runEvaluationSeries } from './runner'
+import { prepareEvaluationReviews } from './prepare-reviews'
+import { BlindReviewStore } from './blind-review'
 import { AtomicStore } from '../runtime/atomic-store'
 import { evaluationKinds, evaluationSuiteSchema } from './schema'
 import { editorialDigest } from '../editorial/versions'
@@ -41,10 +43,11 @@ async function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'wa-evaluation-')); roots.push(root)
   const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: profileIds[0], runId: crypto.randomUUID(), task: 'Тест', query: 'Тест', excerpts: [], gaps: [], budgetBytes: 16000 }
   const packetDigest = await editorialDigest(JSON.stringify(packet))
+  const referenceDigest = await editorialDigest('Synthetic reference')
   const suite = evaluationSuiteSchema.parse({ schemaVersion: '0.5.5', id: crypto.randomUUID(), createdAt: new Date().toISOString(), seeds: [17, 53], raters: [crypto.randomUUID(), crypto.randomUUID()],
     cases: evaluationKinds.flatMap(kind => Array.from({ length: 5 }, (_, i) => ({ id: crypto.randomUUID(), kind, split: i < 3 ? 'development' : 'holdout', prompt: `${kind} задача ${i}`, ...(kind === 'revision' ? { previousText: 'Факт.' } : {}),
       contract: { minimumWords: kind === 'article' ? 600 : kind === 'short-block' ? 100 : 0, minimumSections: kind === 'article' ? 2 : 0, ...(kind === 'short-block' ? { maximumWords: 130 } : {}) },
-      packetDigest, reference: { digest: 'b'.repeat(64), packetDigest, verifiedBy: 'Synthetic test', verifiedAt: new Date().toISOString() },
+      packetDigest, reference: { digest: referenceDigest, packetDigest, verifiedBy: 'Synthetic test', verifiedAt: new Date().toISOString() },
     }))),
   })
   const options = { suite, packet, caseId: suite.cases[0]!.id, phase: 'development' as const, seed: 17, settings: { model: 'fixture', modelDigest: 'a'.repeat(64), contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, callTimeoutMs: 1000 } }
@@ -119,8 +122,22 @@ describe('durable evaluation evidence', () => {
     await expect(restored.advance(first.id, f.provider, f.signal)).rejects.toThrow('новый эксперимент')
     const control = await restored.create({ ...f.options, caseId: holdout.id, phase: 'holdout' })
     expect(control.attempt.profileDigest).toBe(first.attempt.profileDigest)
+    const reviewOptions = { attempts: restored, reviews: new BlindReviewStore(join(f.root, 'reviews')),
+      suiteId: f.options.suite.id, profileDigest: first.attempt.profileDigest, references: new Map<string, string>() }
+    expect(prepareEvaluationReviews(reviewOptions)).toMatchObject({ expectedAttempts: 24, missingAttempts: 23,
+      unfinished: 1, failed: 0, expectedPairs: 48, pairs: [] })
+    await restored.advance(control.id, f.provider, aborted)
+    expect(prepareEvaluationReviews(reviewOptions)).toMatchObject({ missingAttempts: 23, unfinished: 0, failed: 1, pairs: [] })
     await expect(restored.create({ ...f.options, caseId: holdout.id, phase: 'holdout', settings: { ...f.options.settings, temperature: 0.4 } })).rejects.toThrow('Контроль закрыт')
     expect(restored.results().every(result => result.status === 'cancelled' && !result.formalPassed)).toBe(true)
+    const second = await restored.create({ ...f.options, caseId: holdout.id, phase: 'holdout', seed: 53 })
+    for (let i = 0; i < 3; i++) await restored.advance(second.id, f.provider, f.signal)
+    reviewOptions.references.set(holdout.id, 'Synthetic reference')
+    const prepared = prepareEvaluationReviews(reviewOptions)
+    expect(prepared).toMatchObject({ missingAttempts: 22, unfinished: 0, failed: 1, expectedPairs: 48 })
+    expect(prepared.pairs).toHaveLength(2)
+    expect(prepareEvaluationReviews(reviewOptions)).toEqual(prepared)
+    expect(reviewOptions.reviews.ratings()).toEqual([])
   })
   it('caps process candidates and rejects a different suite behind an existing identity', async () => {
     const f = await fixture()

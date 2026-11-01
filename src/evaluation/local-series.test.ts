@@ -27,6 +27,8 @@ import { EvaluationStore } from './store'
 import { runEvaluationSeries } from './runner'
 import { captureLocalEnvironment } from './telemetry'
 import { OllamaProvider } from '../ai/ollama'
+import { BlindReviewStore } from './blind-review'
+import { prepareEvaluationReviews } from './prepare-reviews'
 
 const configurationSchema = z.strictObject({
   sourcesPath: z.string().min(1), suitePath: z.string().min(1), referencesDirectory: z.string().min(1),
@@ -45,6 +47,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SERIES_CONFIG)('runs or resumes a fro
   const sources = verifyEvaluationSources(read(config.sourcesPath))
   const suite = evaluationSuiteSchema.parse(read(config.suitePath))
   expect(sources.tasks).toHaveLength(suite.cases.length)
+  const references = new Map<string, string>()
   // Read-only reference verification: these texts are never passed to the runner/provider.
   for (const task of suite.cases) {
     const source = sources.tasks.find(item => item.brief.id === task.id)
@@ -56,6 +59,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SERIES_CONFIG)('runs or resumes a fro
     expect(saved).toMatchObject({ caseId: task.id, sourceBundleId: sources.id, packetDigest,
       referenceDigest: reference.digest, factCheckedBy: reference.verifiedBy, checkedAt: reference.verifiedAt })
     expect(digest(saved.text)).toBe(reference.digest)
+    references.set(task.id, saved.text)
   }
   const processSnapshot = config.processPath ? await verifyProcessSnapshot(read(config.processPath)) : undefined
   if (process.env.WORKFLOW_EVALUATION_PREFLIGHT_ONLY === '1') {
@@ -82,6 +86,11 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SERIES_CONFIG)('runs or resumes a fro
   })
   writeFileSync(join(invocation, 'summary.json'), JSON.stringify({ ...summary,
     completedAt: new Date().toISOString(), after: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
+  if (config.phase === 'holdout') {
+    const reviewIndex = prepareEvaluationReviews({ attempts: store, reviews: new BlindReviewStore(join(directory, 'reviews')),
+      suiteId: suite.id, profileDigest: summary.profileDigest, references })
+    writeFileSync(join(invocation, 'review-index.json'), JSON.stringify(reviewIndex, null, 2), { flag: 'wx' })
+  }
   // A successful harness does not imply quality acceptance; failures remain in summary.results.
   expect(summary.results.length).toBeLessThanOrEqual(summary.expected)
 }, deadline + 60000)

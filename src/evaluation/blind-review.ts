@@ -90,6 +90,19 @@ export class BlindReviewStore {
     }
   }
   /** Administrative entry point; do not expose to the rating renderer. */
+  ensure(input: Omit<Pair, 'id' | 'modelSide'>) {
+    const candidate = pairSchema.parse({ ...input, id: randomUUID(), modelSide: 'A' })
+    validatePair(candidate)
+    for (const id of this.disk.ids()) {
+      const old = this.read(id)
+      if (old.pair.run.id !== candidate.run.id || old.pair.raterId !== candidate.raterId) continue
+      const expected = { ...candidate, id: old.pair.id, modelSide: old.pair.modelSide }
+      if (hash(expected) !== old.digest) throw new Error('Ранее созданная пара отличается от переданных данных; замена запрещена.')
+      return id
+    }
+    return this.create(input)
+  }
+  /** Strict create is retained for callers that must detect an accidental duplicate. */
   create(input: Omit<Pair, 'id' | 'modelSide'>) {
     const pair = pairSchema.parse({ ...input, id: randomUUID(), modelSide: randomInt(2) === 0 ? 'A' : 'B' })
     validatePair(pair)
