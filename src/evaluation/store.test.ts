@@ -54,6 +54,33 @@ async function fixture() {
   return { root, options, provider, service: new EvaluationStore(root), signal: new AbortController().signal }
 }
 describe('durable evaluation evidence', () => {
+  it('locks control until all development attempts finish and never reopens tuning after selection', async () => {
+    const f = await fixture(), holdout = f.options.suite.cases.find(task => task.split === 'holdout')!
+    await expect(f.service.create({ ...f.options, caseId: holdout.id, phase: 'holdout' })).rejects.toThrow('Контроль закрыт')
+    const first = await f.service.create(f.options)
+    expect(() => f.service.sealForHoldout(f.options.suite.id, first.attempt.profileDigest)).toThrow('матрицу')
+    const aborted = AbortSignal.abort()
+    for (const task of f.options.suite.cases.filter(item => item.split === 'development')) for (const seed of f.options.suite.seeds) {
+      const record = task.id === f.options.caseId && seed === 17 ? first : await f.service.create({ ...f.options, caseId: task.id, seed })
+      await f.service.advance(record.id, f.provider, aborted)
+    }
+    expect(f.provider.chat).not.toHaveBeenCalled()
+    f.service.sealForHoldout(f.options.suite.id, first.attempt.profileDigest)
+    const restored = new EvaluationStore(f.root)
+    expect(() => restored.sealForHoldout(f.options.suite.id, first.attempt.profileDigest)).toThrow('зафиксирован')
+    await expect(restored.advance(first.id, f.provider, f.signal)).rejects.toThrow('новый эксперимент')
+    const control = await restored.create({ ...f.options, caseId: holdout.id, phase: 'holdout' })
+    expect(control.attempt.profileDigest).toBe(first.attempt.profileDigest)
+    await expect(restored.create({ ...f.options, caseId: holdout.id, phase: 'holdout', settings: { ...f.options.settings, temperature: 0.4 } })).rejects.toThrow('Контроль закрыт')
+    expect(restored.results().every(result => result.status === 'cancelled' && !result.formalPassed)).toBe(true)
+  })
+  it('caps process candidates and rejects a different suite behind an existing identity', async () => {
+    const f = await fixture()
+    for (const temperature of [0.1, 0.2, 0.3, 0.4]) await f.service.create({ ...f.options, settings: { ...f.options.settings, temperature } })
+    await expect(f.service.create({ ...f.options, settings: { ...f.options.settings, temperature: 0.5 } })).rejects.toThrow('трёх кандидатов')
+    const suite = structuredClone(f.options.suite); suite.cases[0]!.prompt += ' changed'
+    await expect(f.service.create({ ...f.options, suite })).rejects.toThrow('эксперимент изменён')
+  })
   it('restores each stage and rejects duplicate attempts before and after completion', async () => {
     const f = await fixture(), record = await f.service.create(f.options)
     const duplicates = await Promise.allSettled([f.service.create(f.options), f.service.create(f.options)])
