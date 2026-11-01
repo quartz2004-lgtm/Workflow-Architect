@@ -50,6 +50,31 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 describe('durable runtime jobs', () => {
+  it('grants execution time at first dispatch after queue delay, but never again on restart', async () => {
+    const path = directory(), processService = new EditorialProcessService(join(directory(), 'process'))
+    const first = manager(path, { editorialProcess: processService })
+    const job = first.submit(request()), initialTime = Date.now()
+    expect(job.executionStartedAt).toBeNull()
+    expect(job.deadline).toBe(job.queueExpiresAt)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(initialTime + 3600000)
+    first.start(); await status(first, job.id, 'waiting')
+    const started = first.get(owner, job.id)
+    expect(started.executionStartedAt).toBe(initialTime + 3600000)
+    expect(started.deadline).toBe(initialTime + 3600000 + job.plan.limits.timeoutMs)
+    first.stop()
+    clock.mockReturnValue(started.deadline + 1)
+    const restored = manager(path, { editorialProcess: processService }); restored.start()
+    expect(restored.get(owner, job.id).status).toBe('failed')
+    expect(restored.get(owner, job.id).deadline).toBe(started.deadline)
+  })
+  it('expires an unstarted task after its finite queue allowance', async () => {
+    const processService = new EditorialProcessService(join(directory(), 'process'))
+    const service = manager(undefined, { editorialProcess: processService }), job = service.submit(request())
+    vi.spyOn(Date, 'now').mockReturnValue(job.queueExpiresAt! + 1)
+    service.start(); await status(service, job.id, 'failed')
+    expect(service.get(owner, job.id).executionStartedAt).toBeNull()
+    expect(service.get(owner, job.id).events).toEqual([])
+  })
   it.each([false, true])('pins process selection across restart and enforces example revocation=%s', async revoke => {
     const path = directory(), processService = new EditorialProcessService(join(directory(), 'process'))
     const content = { title: 'First', instructions: { planner: 'FROZEN FIRST', writer: '', reviewer: '' }, settings: { contextTokens: 32768, maxOutputTokens: 4096, temperature: 0.4, stageTimeoutMs: 10000 }, voiceExampleIds: [] }

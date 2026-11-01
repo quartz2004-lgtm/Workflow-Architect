@@ -71,6 +71,12 @@ export class JobManager {
   }
   private verify(job: RuntimeJob, id: string) {
     if (job.id !== id || fingerprint(requestData(job)) !== job.fingerprint) throw new Error('Нарушена целостность задания.')
+    if (job.queueExpiresAt !== undefined || job.executionStartedAt !== undefined) {
+      if (job.recordVersion !== '0.5.5' || job.queueExpiresAt === undefined || job.executionStartedAt === undefined) throw new Error('Раздельные сроки очереди требуют записи 0.5.5.')
+      if (job.executionStartedAt === null) {
+        if (job.checkpoint || job.attempts || job.deadline !== job.queueExpiresAt) throw new Error('Задание без первого старта содержит состояние выполнения.')
+      } else if (job.deadline !== job.executionStartedAt + job.plan.limits.timeoutMs) throw new Error('Срок выполнения не соответствует первому старту.')
+    }
     if (job.recordVersion === '0.5.5') {
       if (job.preparedProcess === undefined || createHash('sha256').update(canonical(job.preparedProcess)).digest('hex') !== job.processDigest) throw new Error('Нарушена целостность редакционных настроек.')
       if (job.preparedProcess && job.preparedProcess.profileId !== job.profileId) throw new Error('Редакционные настройки принадлежат другому профилю.')
@@ -143,9 +149,11 @@ export class JobManager {
     const preparedProcess = editorial && this.options.editorialProcess ? this.options.editorialProcess.capture(request.profileId) : null
     const processRecord = this.options.editorialProcess ? { preparedProcess, processDigest: createHash('sha256').update(canonical(preparedProcess)).digest('hex') } : {}
     const timestamp = nowISO()
+    const queueExpiresAt = Date.now() + 24 * 60 * 60 * 1000
+    const timing = this.options.editorialProcess ? { queueExpiresAt, executionStartedAt: null, deadline: queueExpiresAt } : { deadline: Date.now() + compiled.plan.limits.timeoutMs }
     const job = jobSchema.parse({ recordVersion: this.options.editorialProcess ? '0.5.5' : '0.5.4', ...processRecord, preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
       createdAt: timestamp, updatedAt: timestamp, background: request.background, plan: compiled.plan, input: request.input,
-      status: 'queued', cancelRequested: false, attempts: 0, deadline: Date.now() + compiled.plan.limits.timeoutMs, retryAt: 0,
+      status: 'queued', cancelRequested: false, attempts: 0, ...timing, retryAt: 0,
       message: '', checkpoint: null, events: [], outcome: null })
     this.commit(job, true); this.schedule()
     return structuredClone(job)
@@ -224,6 +232,10 @@ export class JobManager {
     if ([...this.jobs.values()].some(job => job.status === 'queued')) this.schedule(100)
   }
   private launch(job: RuntimeJob) {
+    if (job.executionStartedAt === null) {
+      const executionStartedAt = Date.now()
+      job = { ...job, executionStartedAt, deadline: executionStartedAt + job.plan.limits.timeoutMs }
+    }
     let events = [...job.events]
     try {
       const run = new ExecutionRun(job.plan, event => { events.push(event) }, { runId: job.recordVersion !== '0.3.1' ? job.id : undefined,

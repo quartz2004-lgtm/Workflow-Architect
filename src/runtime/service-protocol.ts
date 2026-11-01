@@ -21,9 +21,11 @@ import { assertValueBudget } from '../execution/values'
 import { aiCommandSchema } from '../ai/protocol'
 import { integrationCommandSchema } from '../integrations/protocol'
 import { processCommandSchema } from '../editorial/process-protocol'
+import { batchCommandSchema } from '../editorial/batch-schema'
 
 const owned = { profileId: runtimeProfileSchema, id: z.uuid() }
 export const runtimeCommandSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('editorial-batch'), command: batchCommandSchema }),
   z.strictObject({ kind: z.literal('editorial-process'), command: processCommandSchema }),
   z.strictObject({ kind: z.literal('integrations'), command: integrationCommandSchema }),
   z.strictObject({ kind: z.literal('ai'), command: aiCommandSchema }),

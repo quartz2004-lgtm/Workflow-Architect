@@ -27,6 +27,7 @@ import { KnowledgeService } from '../knowledge/service'
 import { KnowledgeRuntime } from '../knowledge/runtime'
 import { MediaStore } from '../knowledge/media-store'
 import { EditorialProcessService } from '../editorial/process-service'
+import { EditorialBatchService } from '../editorial/batch-service'
 
 const port = process.parentPort
 if (!port || !process.argv[2]) throw new Error('Runtime must be started by its desktop parent.')
@@ -44,6 +45,7 @@ const manager: JobManager = new JobManager(process.argv[2], {
   unavailable: message => send({ version: '0.3.1', kind: 'unavailable', message }),
 })
 const integrations: IntegrationService = new IntegrationService(join(process.argv[2], '..', 'integrations'), join(__dirname, 'filesystem.cjs'), credentials.resolve, manager, connections)
+const editorialBatches = new EditorialBatchService(join(process.argv[2], '..', 'editorial-batches'), manager)
 port.on('message', async event => {
   if (credentials.receive(event.data)) return
   let requestId: string | undefined
@@ -55,6 +57,7 @@ port.on('message', async event => {
     const command = request.command
     let result: unknown
     switch (command.kind) {
+      case 'editorial-batch': result = editorialBatches.handle(command.command); break
       case 'editorial-process': result = editorialProcess.handle(command.command); break
       case 'integrations': result = await integrations.handle(command.command); break
       case 'ai': result = await assistant.handle(command.command); break
