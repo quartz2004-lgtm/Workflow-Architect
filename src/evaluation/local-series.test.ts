@@ -58,6 +58,11 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SERIES_CONFIG)('runs or resumes a fro
     expect(digest(saved.text)).toBe(reference.digest)
   }
   const processSnapshot = config.processPath ? await verifyProcessSnapshot(read(config.processPath)) : undefined
+  if (process.env.WORKFLOW_EVALUATION_PREFLIGHT_ONLY === '1') {
+    console.log(JSON.stringify({ purpose: 'preflight-only-no-model-calls', suiteId: suite.id,
+      cases: suite.cases.length, sourceBundleId: sources.id, processDigest: processSnapshot?.digest ?? null }))
+    return
+  }
   const directory = resolve('output/evaluation-0.5.5', `series-${suite.id}`)
   const invocation = join(directory, randomUUID())
   mkdirSync(invocation, { recursive: true })
