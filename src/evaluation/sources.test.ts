@@ -39,6 +39,16 @@ async function fixture() {
   return { root, input: { sourcePath: root, selectedPaths: ['source/current/products-editorial.json'], tasks: [task], maxBytes: 16000, maxExcerpts: 12 } }
 }
 describe('evaluation source snapshots', () => {
+  it('freezes explicit evidence requirements and reports an absent record', async () => {
+    const { input, root } = await fixture()
+    await writeFile(join(root, 'source/current/claims.json'), JSON.stringify({ claims: [{ id: 'REQUIRED-CLAIM', text: 'Unrelated vocabulary with essential scope restriction.' }] }))
+    const captured = await captureEvaluationSources({ ...input, selectedPaths: [...input.selectedPaths, 'source/current/claims.json'], tasks: [{ ...input.tasks[0], sourceIds: ['REQUIRED-CLAIM', 'MISSING-CLAIM'] }] })
+    expect(captured.tasks[0]!.packet.excerpts.some(item => item.sourceIds.includes('REQUIRED-CLAIM'))).toBe(true)
+    expect(captured.tasks[0]!.packet.gaps).toContainEqual({ kind: 'missing-source', detail: 'MISSING-CLAIM' })
+    expect(verifyEvaluationSources(captured).tasks[0]!.brief.sourceIds).toEqual(['REQUIRED-CLAIM', 'MISSING-CLAIM'])
+    captured.tasks[0]!.brief.sourceIds = []
+    expect(() => verifyEvaluationSources(captured)).toThrow('frozen task and snapshot')
+  })
   it('reuses frozen bytes offline after the source changes without modifying the source', async () => {
     const { root, input } = await fixture()
     const path = join(root, input.selectedPaths[0]!), before = await readFile(path, 'utf8')
@@ -79,9 +89,12 @@ describe('evaluation source snapshots', () => {
 
 it.skipIf(!process.env.WORKFLOW_EVALUATION_SOURCE)('captures the real SOAR draft without calling a model or claiming reference approval', async () => {
   const root = process.env.WORKFLOW_EVALUATION_SOURCE!
-  const bundle = await captureEvaluationSources({ sourcePath: root, tasks: draft.cases, maxBytes: 16000, maxExcerpts: 12,
+  const configuration: Parameters<typeof captureEvaluationSources>[0] = process.env.WORKFLOW_EVALUATION_SOURCE_CONFIG
+    ? JSON.parse(await readFile(process.env.WORKFLOW_EVALUATION_SOURCE_CONFIG, 'utf8'))
+    : { sourcePath: root, tasks: draft.cases, maxBytes: 16000, maxExcerpts: 12,
     selectedPaths: ['KNOWLEDGE-VERSION.json', 'source/current/products-editorial.json', 'source/current/claims.json', 'source/current/care-rules-v1.json', 'source/current/product-sizing-owner-facts.json', 'source/current/CONTENT-RULES.md', 'source/current/material-description-approved-v2.md', 'docs/SMM-EDITORIAL-v2.md', 'docs/CONTENT-DEPTH-v1.md', 'docs/CHANNELS-v1.md'],
-  })
+  }
+  const bundle = await captureEvaluationSources(configuration)
   const output = resolve('output/evaluation-0.5.5', `sources-${bundle.id}`)
   await mkdir(output, { recursive: true })
   await writeFile(join(output, 'sources.json'), JSON.stringify(bundle, null, 2))
@@ -90,6 +103,6 @@ it.skipIf(!process.env.WORKFLOW_EVALUATION_SOURCE)('captures the real SOAR draft
     referenceApproval: 'not-performed', modelCalls: 0,
   }
   await writeFile(join(output, 'summary.json'), JSON.stringify(summary, null, 2))
-  expect(verifyEvaluationSources(bundle).tasks).toHaveLength(30)
+  expect(verifyEvaluationSources(bundle).tasks).toHaveLength(bundle.tasks.length)
   console.log(JSON.stringify({ output, documents: summary.documents, tasks: summary.tasks.length, tasksWithGaps: summary.tasks.filter(task => task.gaps.length).length }))
 })

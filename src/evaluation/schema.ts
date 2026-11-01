@@ -27,6 +27,7 @@ const evaluationBriefObject = z.strictObject({
   id, kind: z.enum(evaluationKinds), split: z.enum(['development', 'holdout']),
   prompt: text, previousText: z.string().min(1).max(100000).optional(),
   sourceQuery: z.string().trim().min(1).max(4000).optional(),
+  sourceIds: z.array(z.string().trim().min(1).max(200)).max(30).optional(),
   contract: z.strictObject({
     minimumWords: z.number().int().nonnegative().max(5000),
     maximumWords: z.number().int().positive().max(10000).optional(),

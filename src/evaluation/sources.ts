@@ -50,6 +50,7 @@ export async function captureEvaluationSources(input: {
   const packets = tasks.map(brief => {
     const packet = buildContextPacket({
       profileId: profileIds[0], runId: randomUUID(), task: brief.prompt, query: brief.sourceQuery ?? brief.prompt,
+      sourceIds: brief.sourceIds,
       maxBytes: input.maxBytes, maxExcerpts: input.maxExcerpts,
     }, [{ collectionId, snapshot }])
     return { brief, packet, packetDigest: digest(JSON.stringify(packet)) }
@@ -72,6 +73,7 @@ export function verifyEvaluationSources(input: unknown): EvaluationSources {
     if (digest(JSON.stringify(task.packet)) !== task.packetDigest) throw new Error('Source packet digest mismatch.')
     const expected = buildContextPacket({
       profileId: task.packet.profileId, runId: task.packet.runId, task: task.brief.prompt, query: task.brief.sourceQuery ?? task.brief.prompt,
+      sourceIds: task.brief.sourceIds,
       maxBytes: bundle.retrieval.maxBytes, maxExcerpts: bundle.retrieval.maxExcerpts,
     }, [{ collectionId: bundle.collectionId, snapshot: bundle.snapshot }])
     if (digest(JSON.stringify(expected)) !== task.packetDigest) throw new Error('Source packet does not match the frozen task and snapshot.')

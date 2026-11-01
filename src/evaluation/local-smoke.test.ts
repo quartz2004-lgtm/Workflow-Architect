@@ -29,14 +29,15 @@ import { OllamaProvider } from '../ai/ollama'
 it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local development chain against an existing frozen source packet', async () => {
   const sourcePath = process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE!
   const bundle = verifyEvaluationSources(JSON.parse(readFileSync(sourcePath, 'utf8')))
-  const selected = bundle.tasks.find(item => item.brief.split === 'development' && item.brief.kind === 'knowledge-answer')!
+  const requestedCase = process.env.WORKFLOW_EVALUATION_SMOKE_CASE
+  const selected = bundle.tasks.find(item => item.brief.split === 'development' && (requestedCase ? item.brief.id === requestedCase : item.brief.kind === 'knowledge-answer'))!
   expect(selected).toBeDefined()
   const model = 'mistral-small3.2:24b'
   const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model })
   const signal = AbortSignal.timeout(600000)
   const modelDigest = await provider.identity(model, signal)
   const { brief, packet } = selected
-  let state = await createEditorialState({ schemaVersion: '0.5.5', kind: brief.kind, text: brief.prompt, audience: 'Общая аудитория', language: 'Русский', ...brief.contract }, packet,
+  let state = await createEditorialState({ schemaVersion: '0.5.5', kind: brief.kind, text: brief.prompt, audience: 'Общая аудитория', language: 'Русский', ...brief.contract, ...(brief.previousText ? { previousArticle: brief.previousText } : {}) }, packet,
     { model, modelDigest, contextTokens: 32768, maxOutputTokens: 4096, temperature: 0.3, seed: 17, callTimeoutMs: 300000 })
   const output = resolve('output/evaluation-0.5.5', `development-smoke-${state.id}`)
   mkdirSync(output, { recursive: true })
