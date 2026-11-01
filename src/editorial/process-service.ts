@@ -20,12 +20,24 @@ import { AtomicStore } from '../runtime/atomic-store'
 import { profileIds } from '../profiles/schema'
 import { z } from 'zod'
 import { processContentSchema, processLibrarySchema, processSnapshotSchema, voiceDraftSchema, type ProcessLibrary, type ProcessSnapshot } from './process-schema'
+import { processCommandSchema } from './process-protocol'
 
 const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
 const ownerSchema = z.enum(profileIds)
 
 /** Native single-writer library. No implicit learning or adoption of user edits. */
 export class EditorialProcessService {
+  handle(input: unknown) {
+    const command = processCommandSchema.parse(input)
+    switch (command.action) {
+      case 'read': return this.read(command.profileId)
+      case 'add-example': return this.addExample(command.profileId, command.revision, command.example)
+      case 'accept-example': return this.acceptExample(command.profileId, command.revision, command.exampleId, command.digest)
+      case 'revoke-example': return this.revokeExample(command.profileId, command.revision, command.exampleId)
+      case 'save-version': return this.saveVersion(command.profileId, command.revision, command.content)
+      case 'select-version': return this.selectVersion(command.profileId, command.revision, command.versionId)
+    }
+  }
   private readonly store: AtomicStore<ProcessLibrary>
   constructor(directory: string) {
     this.store = new AtomicStore(directory, processLibrarySchema, { maxRecords: 2, maxRecordBytes: 2 * 1024 * 1024, maxTotalBytes: 8 * 1024 * 1024 })

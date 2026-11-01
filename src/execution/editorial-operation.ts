@@ -24,17 +24,20 @@ import { advanceEditorial, createEditorialState } from '../editorial/engine'
 import { normalizeEditorialTask } from '../editorial/schema'
 import type { EditorialResult } from '../editorial/result'
 import { abortable } from '../shared/abortable'
+import type { ProcessSnapshot } from '../editorial/process-schema'
 
 /** Same durable editorial route for a manual task and a Telegram message. */
 export async function executeEditorialOperation(options: {
   node: WorkflowNode; input: JsonValue; packet: ContextPacket; provider: ModelProvider
   state?: EditorialState; signal: AbortSignal; deadline: number; tokenBudget: number
+  process?: ProcessSnapshot | null
   save: (state: EditorialState) => Promise<void>; beforeModel: () => void
 }): Promise<EditorialResult> {
   const { node, provider, packet } = options
   if (node.type !== 'agent' || node.operation?.kind !== 'agent' || !node.operation.editorial || !node.config.model) throw new Error('Редакционный Agent не настроен.')
   const operation = node.operation, budget = operation.editorial!
   let state = options.state
+  if (state && JSON.stringify(state.process ?? null) !== JSON.stringify(options.process ?? null)) throw new Error('Версия редакционных настроек отличается от сохранённого запуска.')
   const task = normalizeEditorialTask(options.input, operation.minimumWords || 600)
   if (state && JSON.stringify(state.task) !== JSON.stringify(task)) throw new Error('Задание изменилось после сохранённой контрольной точки.')
   if (!state) {
@@ -47,7 +50,7 @@ export async function executeEditorialOperation(options: {
       maxOutputTokens: operation.limits.maxOutputTokens,
       temperature: typeof node.config.model.parameters?.temperature === 'number' ? node.config.model.parameters.temperature : 0.3,
       callTimeoutMs: budget.stageTimeoutMs ?? operation.limits.timeoutMs,
-    }, { ...budget, maxTotalTokens: Math.min(budget.maxTotalTokens, options.tokenBudget) })
+    }, { ...budget, maxTotalTokens: Math.min(budget.maxTotalTokens, options.tokenBudget) }, Date.now(), options.process ?? undefined)
     state.deadline = Math.min(state.deadline, options.deadline)
     await options.save(state)
   }

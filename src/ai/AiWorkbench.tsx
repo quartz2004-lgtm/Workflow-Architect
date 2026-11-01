@@ -23,18 +23,20 @@ import { DesignPanel } from './DesignPanel'
 import { PersonalizationPanel } from './PersonalizationPanel'
 import { aiRequest } from './client'
 import { connectionStateSchema } from './protocol'
+import { ProcessPanel } from '../editorial/ProcessPanel'
 import './ai.css'
 
 export function AiWorkbench({ close }: { close: () => void }) {
   const profile = useProfile()!.profile
-  const [tab, setTab] = useState<'connection' | 'design' | 'personal'>('connection'), [model, setModel] = useState('qwen3:8b')
+  const [tab, setTab] = useState<'connection' | 'design' | 'personal' | 'editorial'>('connection'), [model, setModel] = useState('qwen3:8b')
   useEffect(() => { let active = true; if (window.workflowDesktop?.runtime) void aiRequest({ action: 'state', profileId: profile.id }).then(value => { const parsed = connectionStateSchema.parse(value); if (active && parsed.connection) setModel(parsed.connection.configuration.model) }).catch(() => {}); return () => { active = false } }, [profile.id])
   return <Modal wide className="ai-workbench" title={`ИИ · ${profile.name}`} close={close}>
     {!window.workflowDesktop?.runtime ? <div className="ai-intro"><h3>Локальный ИИ — в Windows-приложении</h3><p>Windows-runtime подключается к Ollama на вашем компьютере. В браузере остаются доступны проектирование, экспорт и не-ИИ операции.</p></div> : <>
-      <nav className="ai-tabs" aria-label="Разделы ИИ-помощника">{([{ id: 'connection', title: '01 · Подключение' }, { id: 'design', title: '02 · Проектирование' }, { id: 'personal', title: '03 · Для меня' }] as const).map(item => <button key={item.id} aria-pressed={tab === item.id} onClick={() => setTab(item.id)}>{item.title}</button>)}</nav>
+      <nav className="ai-tabs" aria-label="Разделы ИИ-помощника">{([{ id: 'connection', title: '01 · Подключение' }, { id: 'design', title: '02 · Проектирование' }, { id: 'personal', title: '03 · Для меня' }, { id: 'editorial', title: '04 · Редакция и голос' }] as const).map(item => <button key={item.id} aria-pressed={tab === item.id} onClick={() => setTab(item.id)}>{item.title}</button>)}</nav>
       {tab === 'connection' && <ConnectionPanel profileId={profile.id} changed={setModel} />}
       {tab === 'design' && <DesignPanel profileId={profile.id} model={model} />}
       {tab === 'personal' && <PersonalizationPanel />}
+      {tab === 'editorial' && <ProcessPanel key={profile.id} profileId={profile.id} />}
     </>}
   </Modal>
 }

@@ -24,6 +24,11 @@ import { createExecutionExample } from '../execution/example'
 import { profileIds } from '../profiles/schema'
 import { JobManager } from './job-manager'
 import { type RuntimeJob, type SubmitJob } from './job-schema'
+import { EditorialProcessService } from '../editorial/process-service'
+import { createEditorialExample } from '../execution/editorial-example'
+import { defaultAgentKnowledge } from '../domain/knowledge-config'
+import type { ModelProvider, ModelRequest } from '../ai/types'
+import type { RuntimeKnowledge } from '../knowledge/runtime'
 
 const directories: string[] = [], managers: JobManager[] = []
 const owner = profileIds[0], other = profileIds[1]
@@ -45,6 +50,67 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 describe('durable runtime jobs', () => {
+  it.each([false, true])('pins process selection across restart and enforces example revocation=%s', async revoke => {
+    const path = directory(), processService = new EditorialProcessService(join(directory(), 'process'))
+    const content = { title: 'First', instructions: { planner: 'FROZEN FIRST', writer: '', reviewer: '' }, settings: { contextTokens: 32768, maxOutputTokens: 4096, temperature: 0.4, stageTimeoutMs: 10000 }, voiceExampleIds: [] }
+    let library = processService.addExample(owner, 0, { text: 'Спокойный пример стиля.', sourceLabel: 'Тест', sourceDigest: 'a'.repeat(64), origin: 'development' })
+    const example = library.examples[0]!
+    library = processService.acceptExample(owner, library.revision, example.id, example.digest)
+    library = processService.saveVersion(owner, library.revision, { ...content, voiceExampleIds: [example.id] })
+    const firstId = library.versions[0]!.id
+    library = processService.selectVersion(owner, library.revision, firstId)
+    const project = createEditorialExample('test-local', { ...defaultAgentKnowledge, collections: [{ collectionId: createId() }] })
+    const submission = { ...request(), project, entryNodeId: project.nodes.find(node => node.operation?.kind === 'manual')!.id, input: 'Статья' }
+    const calls: ModelRequest[] = []
+    const provider: ModelProvider = { id: 'ollama', costPerMillionInput: 0, costPerMillionOutput: 0,
+      list: async () => ['test-local'], identity: async () => 'a'.repeat(64), inspect: async () => ({ tools: false, thinking: false, contextTokens: 32768 }),
+      chat: async input => { calls.push(input)
+        if (revoke && calls.length === 1) processService.revokeExample(owner, processService.read(owner).revision, example.id)
+        const body = calls.length === 1 ? 'План' : calls.length === 2 ? `# Текст\n\n## Один\n${'Пример '.repeat(310)}\n\n## Два\n${'Движение '.repeat(310)}` : '{"verdict":"ready-for-human","comments":[]}'
+        return { content: body, finish: 'stop', toolCalls: [], inputTokens: 100, outputTokens: 100 }
+      },
+    }
+    const knowledge: RuntimeKnowledge = {
+      prepare: (profileId, runId, snapshot) => snapshot.nodes.filter(node => node.operation?.kind === 'agent').map(node => ({ nodeId: node.id, collectionIds: [], packet: { schemaVersion: '0.5.3', profileId: profileId as typeof owner, runId, task: 'Статья', query: 'Статья', excerpts: [], gaps: [], budgetBytes: 16000 } })),
+      resolve: (_profileId, _runId, packets, nodeId) => packets.find(packet => packet.nodeId === nodeId)!.packet,
+    }
+    const initial = manager(path, { editorialProcess: processService, knowledge, provider: () => () => provider })
+    const queued = initial.submit(submission)
+    expect(queued.recordVersion).toBe('0.5.5')
+    expect(queued.preparedProcess!.version.id).toBe(firstId)
+    library = processService.saveVersion(owner, library.revision, { ...content, title: 'Second', instructions: { ...content.instructions, planner: 'NEW SECOND' } })
+    processService.selectVersion(owner, library.revision, library.versions[1]!.id)
+    expect(initial.submit(submission).preparedProcess).toEqual(queued.preparedProcess)
+    initial.stop()
+    const restored = manager(path, { editorialProcess: processService, knowledge, provider: () => () => provider })
+    expect(restored.get(owner, queued.id).preparedProcess).toEqual(queued.preparedProcess)
+    restored.start()
+    if (revoke) {
+      await status(restored, queued.id, 'failed')
+      expect(calls).toHaveLength(1)
+      expect(JSON.stringify(restored.get(owner, queued.id))).toContain('отозван')
+      return
+    }
+    await status(restored, queued.id, 'waiting')
+    expect(calls).toHaveLength(3)
+    expect(calls[0]!.messages[0]!.content).toContain('FROZEN FIRST')
+    expect(calls[0]!.messages[0]!.content).not.toContain('NEW SECOND')
+    expect(calls[1]!.temperature).toBe(0.4)
+    const state = Object.values(restored.get(owner, queued.id).checkpoint!.editorial!)[0]!
+    expect(state.process!.version.id).toBe(firstId)
+  })
+  it('detects a tampered queued process and preserves older records without a process', () => {
+    const path = directory(), processService = new EditorialProcessService(join(directory(), 'process'))
+    const service = manager(path, { editorialProcess: processService })
+    const job = service.submit(request())
+    expect(job.preparedProcess).toBeNull()
+    const file = join(path, `${job.id}.json`), raw = JSON.parse(readFileSync(file, 'utf8'))
+    raw.processDigest = 'f'.repeat(64)
+    writeFileSync(file, JSON.stringify(raw)); service.stop()
+    expect(manager(path, { editorialProcess: processService }).damaged).toHaveLength(1)
+    const legacyPath = directory(), legacy = manager(legacyPath), original = legacy.submit(request()); legacy.stop()
+    expect(manager(legacyPath, { editorialProcess: processService }).get(owner, original.id).recordVersion).toBe('0.5.4')
+  })
   it('resumes a Human wait without replaying an already completed connector effect', async () => {
     const path = directory(), effect = vi.fn(async () => ({ approved: true, text: 'saved' }))
     const project = createExecutionExample(), submission = { ...request(), project, entryNodeId: project.nodes[0]!.id }

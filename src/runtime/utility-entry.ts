@@ -26,6 +26,7 @@ import { CredentialChannel } from '../integrations/credential-channel'
 import { KnowledgeService } from '../knowledge/service'
 import { KnowledgeRuntime } from '../knowledge/runtime'
 import { MediaStore } from '../knowledge/media-store'
+import { EditorialProcessService } from '../editorial/process-service'
 
 const port = process.parentPort
 if (!port || !process.argv[2]) throw new Error('Runtime must be started by its desktop parent.')
@@ -33,7 +34,9 @@ const send = (message: unknown) => port.postMessage(message)
 const credentials = new CredentialChannel(send)
 const connections = new ConnectionStore(join(process.argv[2], '..', 'ai-connections'))
 const assistant = new AssistantService(connections)
+const editorialProcess = new EditorialProcessService(join(process.argv[2], '..', 'editorial-process'))
 const manager: JobManager = new JobManager(process.argv[2], {
+  editorialProcess,
   knowledge: new KnowledgeRuntime(new KnowledgeService(join(process.argv[2], '..', '..', 'knowledge')), new MediaStore(join(process.argv[2], '..', '..', 'knowledge-media'))),
   connector: profileId => (connectionId, key, action, args, signal) => integrations.broker.execute(profileId, connectionId, key, action, args, signal),
   provider: profileId => model => connections.resolve(profileId, model),
@@ -52,6 +55,7 @@ port.on('message', async event => {
     const command = request.command
     let result: unknown
     switch (command.kind) {
+      case 'editorial-process': result = editorialProcess.handle(command.command); break
       case 'integrations': result = await integrations.handle(command.command); break
       case 'ai': result = await assistant.handle(command.command); break
       case 'submit': result = manager.submit(command.request); break

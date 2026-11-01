@@ -74,7 +74,7 @@ export class ExecutionRun {
   private aiUsage: AiUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, toolCalls: 0 }
   private reservedTokens = 0
   private editorial: Record<string, EditorialState> = {}
-  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor; runId?: string; knowledge?: import('../knowledge/runtime').KnowledgeResolver } = {}) {
+  constructor(plan: ExecutionPlan, private readonly onEvent: (event: RunEvent) => void = () => {}, private readonly persistence: { checkpoint?: unknown; deadline?: number; save?: (checkpoint: RunCheckpoint) => void; provider?: ProviderResolver; connector?: ConnectorExecutor; runId?: string; editorialProcess?: () => import('../editorial/process-schema').ProcessSnapshot | null; knowledge?: import('../knowledge/runtime').KnowledgeResolver } = {}) {
     if (!['0.3', '0.4', '0.5', '0.6'].includes(plan.planVersion)) throw new Error('Неподдерживаемая версия плана.')
     idSchema.parse(plan.id)
     const verified = compileProject(plan.snapshot, plan.entryNodeId)
@@ -457,8 +457,9 @@ export class ExecutionRun {
     if (!previous && remaining < 1024) throw new Error('Исчерпан общий бюджет ИИ запуска.')
     return executeEditorialOperation({
       node, input, packet, provider: this.persistence.provider(node.config.model.name), state: previous,
+      process: this.persistence.editorialProcess?.() ?? null,
       signal, deadline: this.deadline, tokenBudget: remaining,
-      beforeModel: () => { this.guard(); signal.throwIfAborted(); this.persistence.knowledge!(node.id); if (this.aiUsage.calls > 32) throw new Error('Превышен общий лимит 32 вызовов модели.') },
+      beforeModel: () => { this.guard(); signal.throwIfAborted(); this.persistence.knowledge!(node.id); this.persistence.editorialProcess?.(); if (this.aiUsage.calls > 32) throw new Error('Превышен общий лимит 32 вызовов модели.') },
       save: async state => {
         const before = totals(this.editorial[activation.id]), after = totals(state)
         this.aiUsage.inputTokens += after.input - before.input

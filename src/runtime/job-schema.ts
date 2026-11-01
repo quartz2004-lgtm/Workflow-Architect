@@ -21,6 +21,7 @@ import { checkpointSchema } from '../execution/checkpoint'
 import { runEventSchema, runOutcomeSchema } from '../execution/protocol'
 import { profileIds } from '../profiles/schema'
 import { preparedKnowledgeSchema } from '../knowledge/runtime'
+import { processSnapshotSchema } from '../editorial/process-schema'
 
 export const runtimeProfileSchema = z.enum(profileIds)
 export const submitJobSchema = z.strictObject({
@@ -33,7 +34,8 @@ export const executionPlanSchema = z.strictObject({
   limits: z.strictObject({ maxSteps: z.literal(10000), maxDepth: z.literal(24), timeoutMs: z.number().int().min(300000).max(7200000) }),
 }).refine(plan => plan.planVersion === '0.6' || plan.limits.timeoutMs === 300000, 'Расширенный лимит требует planVersion 0.6.')
 export const jobSchema = z.strictObject({
-  recordVersion: z.enum(['0.3.1', '0.5.3', '0.5.4']), id: z.uuid(), profileId: runtimeProfileSchema,
+  recordVersion: z.enum(['0.3.1', '0.5.3', '0.5.4', '0.5.5']), id: z.uuid(), profileId: runtimeProfileSchema,
+  preparedProcess: processSnapshotSchema.nullable().optional(), processDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   preparedKnowledge: preparedKnowledgeSchema.optional(), knowledgeDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   eventKey: z.string().min(1).max(128), fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), background: z.boolean(),
