@@ -24,6 +24,7 @@ import { createEditorialState, advanceEditorial } from '../editorial/engine'
 import { editorialStateSchema } from '../editorial/engine-schema'
 import { AtomicStore } from '../runtime/atomic-store'
 import { OllamaProvider } from '../ai/ollama'
+import { verifyProcessSnapshot } from '../editorial/process-schema'
 
 /** Opt-in development smoke, never a replacement for a frozen quality comparison. */
 it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local development chain against an existing frozen source packet', async () => {
@@ -37,13 +38,16 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local d
   const signal = AbortSignal.timeout(600000)
   const modelDigest = await provider.identity(model, signal)
   const { brief, packet } = selected
+  const processSnapshot = process.env.WORKFLOW_EVALUATION_SMOKE_PROCESS
+    ? await verifyProcessSnapshot(JSON.parse(readFileSync(process.env.WORKFLOW_EVALUATION_SMOKE_PROCESS, 'utf8')))
+    : undefined
   let state = await createEditorialState({ schemaVersion: '0.5.5', kind: brief.kind, text: brief.prompt, audience: 'Общая аудитория', language: 'Русский', ...brief.contract, ...(brief.previousText ? { previousArticle: brief.previousText } : {}) }, packet,
-    { model, modelDigest, contextTokens: 32768, maxOutputTokens: 4096, temperature: 0.3, seed: 17, callTimeoutMs: 300000 })
+    { model, modelDigest, contextTokens: 32768, maxOutputTokens: 4096, temperature: 0.3, seed: 17, callTimeoutMs: 300000 }, undefined, Date.now(), processSnapshot)
   const output = resolve('output/evaluation-0.5.5', `development-smoke-${state.id}`)
   mkdirSync(output, { recursive: true })
   const store = new AtomicStore(join(output, 'state'), editorialStateSchema)
   const hardware = () => ({ at: new Date().toISOString(), cpu: cpus()[0]?.model ?? null, logicalCores: cpus().length, ramTotalBytes: totalmem(), ramFreeBytes: freemem(), platform: platform(), release: release() })
-  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, before: hardware() }, null, 2), { flag: 'wx' })
+  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, processDigest: processSnapshot?.digest ?? null, before: hardware() }, null, 2), { flag: 'wx' })
   writeFileSync(join(output, 'packet.json'), JSON.stringify(packet, null, 2), { flag: 'wx' })
   store.write(state.id, state, 'create')
   while (['planner', 'writer', 'reviewer'].includes(state.phase)) {
