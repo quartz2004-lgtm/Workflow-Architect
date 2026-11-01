@@ -115,7 +115,8 @@
       "contract": {
         "minimumWords": 0,
         "minimumSections": 0
-      }
+      },
+      "sourceQuery": "B02-DM-1-01 B02-DM-2-01 количество пар размеры наличие"
     },
     {
       "id": "e8542b89-a7ff-442b-ab6f-0b4e3401c3da",
@@ -126,7 +127,8 @@
       "contract": {
         "minimumWords": 0,
         "minimumSections": 0
-      }
+      },
+      "sourceQuery": "B02-DM-1-01 B02-DM-2-01 количество пар размеры наличие"
     },
     {
       "id": "ace2ae82-c96a-48dd-b49c-bc9c7a905621",
@@ -137,7 +139,8 @@
       "contract": {
         "minimumWords": 0,
         "minimumSections": 0
-      }
+      },
+      "sourceQuery": "B02-DM-1-01 B02-DM-2-01 количество пар размеры наличие"
     },
     {
       "id": "f7711559-e413-48e4-afd9-890665daeee9",
@@ -148,7 +151,8 @@
       "contract": {
         "minimumWords": 0,
         "minimumSections": 0
-      }
+      },
+      "sourceQuery": "B02-DM-1-01 B02-DM-2-01 количество пар размеры наличие"
     },
     {
       "id": "b8ece3af-0fb7-4780-9999-f96e152d16db",
@@ -159,7 +163,8 @@
       "contract": {
         "minimumWords": 0,
         "minimumSections": 0
-      }
+      },
+      "sourceQuery": "B02-DM-1-01 B02-DM-2-01 количество пар размеры наличие"
     },
     {
       "id": "358c6bd8-3028-4ad7-b990-ba3f6a03dc71",

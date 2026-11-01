@@ -63,6 +63,14 @@ function lexicalKey(word: string): string {
   return stem.length >= 4 ? stem : word
 }
 const words = (text: string) => [...new Set((normalize(text).match(/[\p{L}\p{N}_-]{3,}/gu) ?? []).map(lexicalKey))]
+// Catalogue identifiers may contain slashes or punctuation. Lexical tokenization
+// is not an identifier parser: match the escaped complete value at boundaries.
+function mentionsArticle(query: string, article: string) {
+  const value = normalize(article).trim()
+  if (!value || value.length > 200) return false
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^\\p{L}\\p{N}_/\\-])${escaped}(?=$|[^\\p{L}\\p{N}_/\\-])`, 'u').test(normalize(query))
+}
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength
 const pointer = (key: string) => key.replaceAll('~', '~0').replaceAll('/', '~1')
 const skuKeys = new Set(['sku', 'canonical_sku', 'product_sku', 'skus', 'applies_to_skus'])
@@ -158,7 +166,7 @@ export function buildContextPacket(input: ContextRequest, sources: readonly Cont
       const lexical = tokens.reduce((total, token) => total + Number(haystack.has(token)), 0)
       const exact = skuMatch || idMatches.length > 0
       const { references = [], article, ...evidence } = fragment
-      const articleMatch = !requestedSku && !!article && tokens.includes(normalize(article))
+      const articleMatch = !requestedSku && !!article && mentionsArticle(request.query, article)
       candidates.push({ score: Number(skuMatch) * 10000 + idMatches.length * 1000 + lexical, exact,
         references, articleMatch, required: exact,
         excerpt: { collectionId: source.collectionId, snapshotId: snapshot.id, snapshotDigest: snapshot.digest, sourceVersion: snapshot.sourceVersion,

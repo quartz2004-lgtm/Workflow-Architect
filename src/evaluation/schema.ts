@@ -22,26 +22,33 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/)
 const id = z.uuid()
 const text = z.string().trim().min(1).max(12000)
 
-export const evaluationCaseSchema = z.strictObject({
+const evaluationBriefObject = z.strictObject({
   id, kind: z.enum(evaluationKinds), split: z.enum(['development', 'holdout']),
   prompt: text, previousText: z.string().min(1).max(100000).optional(),
+  sourceQuery: z.string().trim().min(1).max(4000).optional(),
   contract: z.strictObject({
     minimumWords: z.number().int().nonnegative().max(5000),
     maximumWords: z.number().int().positive().max(10000).optional(),
     minimumSections: z.number().int().nonnegative().max(30),
     requiredItems: z.number().int().positive().max(100).optional(),
   }),
-  packetDigest: digest,
-  reference: z.strictObject({
-    digest, packetDigest: digest, verifiedBy: text, verifiedAt: z.iso.datetime(),
-  }),
-}).superRefine((value, ctx) => {
+})
+function validateBrief(value: z.infer<typeof evaluationBriefObject>, ctx: z.RefinementCtx) {
   const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
   if (value.contract.maximumWords !== undefined && value.contract.maximumWords < value.contract.minimumWords) fail('Maximum words is below minimum.')
   if (value.kind === 'article' && value.contract.minimumWords < 600) fail('Articles require at least 600 words.')
   if (value.kind === 'short-block' && (value.contract.minimumWords !== 100 || value.contract.maximumWords !== 130)) fail('Short blocks require 100–130 words.')
   if (value.kind === 'revision' && !value.previousText) fail('Revision requires the original text.')
-  if (value.packetDigest !== value.reference.packetDigest) fail('Reference must use the same source packet.')
+}
+export const evaluationBriefSchema = evaluationBriefObject.superRefine(validateBrief)
+export type EvaluationBrief = z.infer<typeof evaluationBriefSchema>
+export const evaluationCaseSchema = evaluationBriefObject.extend({
+  packetDigest: digest,
+  reference: z.strictObject({
+    digest, packetDigest: digest, verifiedBy: text, verifiedAt: z.iso.datetime(),
+  }),
+}).superRefine(validateBrief).superRefine((value, ctx) => {
+  if (value.packetDigest !== value.reference.packetDigest) ctx.addIssue({ code: 'custom', message: 'Reference must use the same source packet.' })
 })
 
 /** Frozen before running a holdout. References are never model input. */
