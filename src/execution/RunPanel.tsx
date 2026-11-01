@@ -30,7 +30,8 @@ import './run-panel.css'
 import { articleBrief } from './article-example'
 import { ContextPacketView } from '../knowledge/ContextPacketView'
 import { EditorialRunView } from '../editorial/EditorialRunView'
-import { editorialKnowledgeRequest, normalizeEditorialTask } from '../editorial/schema'
+import { editorialKnowledgeRequest } from '../editorial/schema'
+import { resultTypes, taskFromForm, type EditorialKind } from '../editorial/task-form'
 import { useProfile } from '../profiles/context'
 import { knowledgeRequest } from '../knowledge/client'
 import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
@@ -60,6 +61,7 @@ export function RunPanel() {
   const profile = useProfile()?.profile
   const [task, setTask] = useState(articleBrief.topic), [audience, setAudience] = useState(articleBrief.audience), [minimumWords, setMinimumWords] = useState(600)
   const [previousArticle, setPreviousArticle] = useState('')
+  const [resultKind, setResultKind] = useState<EditorialKind>('article'), [items, setItems] = useState(5)
   const [advancedInput, setAdvancedInput] = useState(false), [dossier, setDossier] = useState<{ key: string; packet: ContextPacket } | null>(null), [previewBusy, setPreviewBusy] = useState(false)
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
@@ -67,20 +69,21 @@ export function RunPanel() {
   const busy = active || state.actionPending
   const selected = entries.some(node => node.id === entryId) ? entryId : entries[0]?.id ?? ''
   const editorialNode = project.nodes.find(node => node.operation?.kind === 'agent' && node.operation.editorial && project.edges.some(edge => edge.type === 'flow' && edge.sourceNode === selected && edge.targetNode === node.id))
-  const dossierKey = JSON.stringify([profile?.id, project.project.id, editorialNode, task, audience, minimumWords, previousArticle])
+  const dossierKey = JSON.stringify([profile?.id, project.project.id, editorialNode, task, audience, minimumWords, previousArticle, resultKind, items])
+  const formTask = () => taskFromForm({ kind: resultKind, text: task, audience, minimumWords, items, previousArticle })
   const latestEditorial = state.events.findLast(event => event.kind === 'editorial')
   const editorialAnswer = state.events.findLast(event => event.kind === 'human-answer')
   const editorialDecision = editorialAnswer?.kind === 'human-answer' ? editorialAnswer.value === true ? 'approved' : 'rejected' : state.status === 'waiting' ? 'waiting' : undefined
   const start = () => {
     if (!editorialNode || advancedInput) { parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) }); return }
-    try { const value = normalizeEditorialTask({ text: task, audience, minimumWords, ...(previousArticle ? { previousArticle } : {}) }); setError(''); setPage(null); editor.runtime.start(project, selected, value) }
+    try { const value = formTask(); setError(''); setPage(null); editor.runtime.start(project, selected, value) }
     catch (error) { setError(error instanceof Error ? error.message : String(error)) }
   }
   const previewDossier = async () => {
     if (!profile || editorialNode?.operation?.kind !== 'agent' || !editorialNode.operation.knowledge) return
     setPreviewBusy(true); setError(''); setDossier(null)
     try {
-      const value = normalizeEditorialTask({ text: task, audience, minimumWords, ...(previousArticle ? { previousArticle } : {}) })
+      const value = formTask()
       const request = editorialKnowledgeRequest(value)
       setDossier({ key: dossierKey, packet: contextPacketSchema.parse(await knowledgeRequest({ kind: 'context-preview', profileId: profile.id, settings: { ...editorialNode.operation.knowledge, query: editorialNode.operation.knowledge.query || request.query }, task: request.task })) })
     } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
@@ -103,15 +106,21 @@ export function RunPanel() {
       {editor.runtime.native && (editorialNode || latestEditorial ? <details><summary>История запусков и фоновая работа</summary><RuntimeControls runtime={editor.runtime} native={editor.runtime.native} /></details> : <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />)}
       {latestEditorial?.kind === 'editorial' && editor.runtime.native && !active && <div className="inline-actions">
         <button disabled={state.actionPending || !currentProject || !latestEditorial.state.versions.length} onClick={() => {
+          const prior = latestEditorial.state.task
+          setResultKind(prior.schemaVersion === '0.5.5' ? prior.kind : 'article'); setItems(prior.schemaVersion === '0.5.5' ? prior.requiredItems ?? 5 : 5)
           setPreviousArticle(latestEditorial.state.versions.at(-1)!.text); setTask(''); setAudience(latestEditorial.state.task.audience); setMinimumWords(latestEditorial.state.task.minimumWords); setDossier(null); setAdvancedInput(false); setError(''); editor.runtime.native!.newRun()
         }}>Доработать этот текст</button>
         <button disabled={state.actionPending} onClick={() => { setPreviousArticle(''); setTask(''); setDossier(null); setAdvancedInput(false); setError(''); editor.runtime.native!.newRun() }}>Новое задание</button>
       </div>}
       {(!editor.runtime.native || !state.jobId) && <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
         {editorialNode && <>
-          <label>Что подготовить?<textarea disabled={busy} value={task} onChange={event => { setTask(event.target.value); setDossier(null) }} rows={4} placeholder="Тема статьи, цель и пожелания к тексту" /></label>
+          <label>Тип результата<select disabled={busy} value={resultKind} onChange={event => { const option = resultTypes.find(item => item.kind === event.target.value)!; setResultKind(option.kind); setMinimumWords(option.minimumWords); setDossier(null) }}>{resultTypes.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label>
+          <p className="muted">{resultTypes.find(item => item.kind === resultKind)?.help}</p>
+          <label>Что подготовить?<textarea disabled={busy} value={task} onChange={event => { setTask(event.target.value); setDossier(null) }} rows={4} placeholder="Тема, цель и пожелания к результату" /></label>
           <label>Для кого текст<input disabled={busy} value={audience} onChange={event => { setAudience(event.target.value); setDossier(null) }} /></label>
-          <label>Минимальный объём, слов<input type="number" min={100} max={5000} disabled={busy} value={minimumWords} onChange={event => { setMinimumWords(Number(event.target.value)); setDossier(null) }} /></label>
+          {resultKind !== 'short-block' && <label>Минимальный объём, слов<input type="number" min={resultKind === 'article' ? 600 : 0} max={5000} disabled={busy} value={minimumWords} onChange={event => { setMinimumWords(Number(event.target.value)); setDossier(null) }} /></label>}
+          {['content-plan', 'reels'].includes(resultKind) && <label>Количество пунктов<input type="number" min={1} max={30} disabled={busy} value={items} onChange={event => { setItems(Number(event.target.value)); setDossier(null) }} /></label>}
+          {resultKind === 'revision' && <label>Исходный текст<textarea rows={6} maxLength={100000} disabled={busy} value={previousArticle} onChange={event => { setPreviousArticle(event.target.value); setDossier(null) }} /></label>}
           {previousArticle && <section aria-label="Текст для доработки"><p className="muted">Эта задача создаст новую версию с новой проверкой. Прежнее одобрение не переносится.</p><details><summary>Исходный текст для правок</summary><pre>{previousArticle}</pre></details><button disabled={busy} onClick={() => { setPreviousArticle(''); setDossier(null) }}>Убрать исходный текст</button></section>}
           <button disabled={busy || previewBusy || !task.trim()} onClick={() => void previewDossier()}>{previewBusy ? 'Собираем досье…' : 'Посмотреть источники и фото для задания'}</button>
           {dossier?.key === dossierKey && <><p className="muted">Предварительный поиск без вызова ИИ. При запуске снимок фиксируется заново; точный пакет будет в истории.</p><ContextPacketView packet={dossier.packet} /></>}

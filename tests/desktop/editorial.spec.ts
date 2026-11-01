@@ -36,7 +36,7 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     const body = JSON.parse(Buffer.concat(chunks).toString()) as { messages: { content: string }[] }
     const system = body.messages[0]!.content
     const prompt = JSON.parse(body.messages[1]!.content)
-    const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') || prompt.baseVersionId ? 'writer' : 'reviewer'
+    const stage = system.includes('Подготовь краткий') ? 'planner' : system.includes('Напиши полный') || system.includes('Подготовь живой') || prompt.baseVersionId ? 'writer' : 'reviewer'
     stages.push(stage)
     prompts.push(body.messages[1]!.content)
     // Exercise the real JSON revision wire contract before Human, including
@@ -45,7 +45,7 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
       baseVersionId: prompt.baseVersionId,
       replacements: [], additions: [{ afterBlockId: 'p1', heading: { level: 2, title: 'Движение' }, paragraphs: [addedParagraph] }],
     }) : stages.length === 2 ? firstDraft : article
-    const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? writerText : '{"verdict":"ready-for-human","comments":[]}'
+    const content = stage === 'planner' ? 'План: посадка и проверка в движении.' : stage === 'writer' ? prompt.task.kind === 'short-block' ? 'Выбор '.repeat(110) : writerText : '{"verdict":"ready-for-human","comments":[]}'
     response.end(JSON.stringify({ model: 'editorial-fixture', done: true, done_reason: 'stop', prompt_eval_count: 100, eval_count: 300, message: { role: 'assistant', content } }))
   })
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
@@ -129,5 +129,25 @@ test('editorial starter, ordinary task, source preview and exact Human file in n
     await human.getByRole('button', { name: 'Отклонить', exact: true }).click()
     await expect(panel.getByRole('region', { name: 'Редакционный процесс' })).toContainText('Вы отклонили эту версию')
     await expect(panel.locator('.run-artifact')).toHaveCount(0)
+    await panel.getByRole('button', { name: 'Новое задание', exact: true }).click()
+    await panel.getByLabel('Тип результата').selectOption('revision')
+    await panel.getByLabel('Что подготовить?').fill('Комфорт SOAR: короткий совет о посадке')
+    await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
+    await expect(panel.getByRole('alert')).toContainText('Вставьте исходный текст')
+    expect(stages).toHaveLength(8)
+    await panel.getByLabel('Тип результата').selectOption('content-plan')
+    await panel.getByLabel('Количество пунктов').fill('7')
+    await expect(panel.getByLabel('Количество пунктов')).toHaveValue('7')
+    await panel.getByLabel('Тип результата').selectOption('short-block')
+    await expect(panel.getByLabel('Минимальный объём, слов')).toHaveCount(0)
+    await panel.getByLabel('Тип результата').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: 'desktop-results/editorial-result-type.png' })
+    await panel.getByRole('button', { name: 'Запустить workflow', exact: true }).click()
+    await expect(human).toContainText('Вы подтверждаете версию 1', { timeout: 20000 })
+    expect(JSON.parse(prompts[8]!).task).toMatchObject({ schemaVersion: '0.5.5', kind: 'short-block', minimumWords: 100, maximumWords: 130 })
+    expect(await human.locator('pre').first().textContent()).toBe('Выбор '.repeat(110))
+    await expect(panel.getByRole('region', { name: 'Редакционный процесс' })).toContainText('максимум 130')
+    await human.getByRole('button', { name: 'Подтвердить', exact: true }).click()
+    await expect(panel.locator('.run-artifact')).toContainText('article.md')
   } finally { await app.close(); await new Promise<void>(done => server.close(() => done())) }
 })
