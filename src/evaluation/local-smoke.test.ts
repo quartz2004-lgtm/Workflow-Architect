@@ -16,15 +16,16 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { expect, it } from 'vitest'
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { cpus, totalmem, freemem, platform, release } from 'node:os'
 import { verifyEvaluationSources } from './sources'
 import { createEditorialState, advanceEditorial } from '../editorial/engine'
 import { editorialStateSchema } from '../editorial/engine-schema'
 import { AtomicStore } from '../runtime/atomic-store'
 import { OllamaProvider } from '../ai/ollama'
 import { verifyProcessSnapshot } from '../editorial/process-schema'
+import { captureLocalEnvironment } from './telemetry'
+import { countWords } from '../ai/agent'
 
 /** Opt-in development smoke, never a replacement for a frozen quality comparison. */
 it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local development chain against an existing frozen source packet', async () => {
@@ -46,14 +47,16 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local d
   const output = resolve('output/evaluation-0.5.5', `development-smoke-${state.id}`)
   mkdirSync(output, { recursive: true })
   const store = new AtomicStore(join(output, 'state'), editorialStateSchema)
-  const hardware = () => ({ at: new Date().toISOString(), cpu: cpus()[0]?.model ?? null, logicalCores: cpus().length, ramTotalBytes: totalmem(), ramFreeBytes: freemem(), platform: platform(), release: release() })
-  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, processDigest: processSnapshot?.digest ?? null, before: hardware() }, null, 2), { flag: 'wx' })
+  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, processDigest: processSnapshot?.digest ?? null, before: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
   writeFileSync(join(output, 'packet.json'), JSON.stringify(packet, null, 2), { flag: 'wx' })
   store.write(state.id, state, 'create')
   while (['planner', 'writer', 'reviewer'].includes(state.phase)) {
-    state = await advanceEditorial({ state, packet, provider, signal, save: async value => { store.write(value.id, value, 'replace') } })
+    state = await advanceEditorial({ state, packet, provider, signal, save: async value => {
+      store.write(value.id, value, 'replace')
+      appendFileSync(join(output, 'environment.jsonl'), JSON.stringify({ phase: value.phase, callId: value.calls.at(-1)?.id, callStatus: value.calls.at(-1)?.status, environment: await captureLocalEnvironment() }) + '\n')
+    } })
   }
-  writeFileSync(join(output, 'summary.json'), JSON.stringify({ phase: state.phase, calls: state.calls.map(call => ({ stage: call.stage, status: call.status, metrics: call.metrics, error: call.error })), issues: state.issues, after: hardware() }, null, 2), { flag: 'wx' })
+  writeFileSync(join(output, 'summary.json'), JSON.stringify({ phase: state.phase, calls: state.calls.map(call => ({ stage: call.stage, status: call.status, metrics: call.metrics, error: call.error })), versions: state.versions.map(version => ({ number: version.number, digest: version.digest, words: countWords(version.text), issues: version.issues })), issues: state.issues, after: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
   expect(store.read(state.id)).toEqual(state)
   expect(state.phase).toBe('awaiting-human')
 }, 650000)
