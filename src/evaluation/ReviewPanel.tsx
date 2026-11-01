@@ -19,6 +19,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { Profile } from '../profiles/schema'
 import { blindReviewAnswerSchema, reviewCommandSchema, reviewListSchema, reviewViewSchema, type ReviewCommand, type ReviewView } from './review-protocol'
 import { resultTypes } from '../editorial/task-form'
+import { SourceContent } from '../knowledge/SourceContent'
 import './review.css'
 
 async function request(command: ReviewCommand) {
@@ -77,9 +78,9 @@ export function ReviewPanel({ profileId }: { profileId: Profile['id'] }) {
     <ul className="review-list">{items.map((item, index) => <li key={item.id}><button disabled={busy} aria-pressed={view?.id === item.id} onClick={() => void perform(() => open(item.id))}>Пара {index + 1} · {resultTypes.find(type => type.kind === item.kind)?.label} · {item.submitted ? 'Оценена' : 'Ждёт оценки'}</button></li>)}</ul>
     {view && <div key={view.id}>
       <h4>Задание</h4><pre className="review-text">{view.prompt}</pre>
-      <p>Объём: от {view.contract.minimumWords} слов{view.contract.maximumWords !== undefined && ` до ${view.contract.maximumWords}`}. Разделов: не меньше {view.contract.minimumSections}.{view.contract.requiredItems && ` Пунктов: ${view.contract.requiredItems}.`}</p>
+      <p>{view.contract.minimumWords > 0 ? `Объём: от ${view.contract.minimumWords} слов` : 'Минимальный объём не задан'}{view.contract.maximumWords !== undefined && `, не больше ${view.contract.maximumWords}`}.{view.contract.minimumSections > 0 && ` Разделов: не меньше ${view.contract.minimumSections}.`}{view.contract.requiredItems && ` Пунктов: ${view.contract.requiredItems}.`}</p>
       {view.previousText && <details><summary>Исходный текст для правки</summary><pre className="review-text">{view.previousText}</pre></details>}
-      <details><summary>Источники · {view.sources.length}</summary>{view.sources.map((source, index) => <article key={index}><h4>{source.path} · {source.locator}</h4><p className="muted">Версия {source.sourceVersion}</p><pre className="review-text">{source.content}</pre></article>)}{view.gaps.map((gap, index) => <p key={index} className="field-error">{gap.detail}</p>)}</details>
+      <details><summary>Источники · {view.sources.length}</summary>{view.sources.map((source, index) => <article key={index}><h4>{source.path} · {source.locator}</h4><p className="muted">Версия {source.sourceVersion}</p><SourceContent content={source.content} /></article>)}{view.gaps.map((gap, index) => <p key={index} className="field-error">{gap.detail}</p>)}</details>
       {view.submitted && <p role="status">Эта пара уже оценена. Тексты доступны для чтения, изменение оценки закрыто.</p>}
       <form onSubmit={event => { event.preventDefault(); const form = event.currentTarget; void perform(() => submit(form)) }}>
         <fieldset disabled={busy || view.submitted} className="review-fieldset"><legend>Оценка вариантов · 1 — плохо, 10 — отлично</legend>

@@ -31,6 +31,11 @@ test('blind comparison uses real IPC, explicit scores and durable profile-bound 
   const hashText = (text: string) => createHash('sha256').update(text).digest('hex')
   const hash = (value: unknown) => hashText(JSON.stringify(value))
   const packet = contextPacketSchema.parse({ schemaVersion: '0.5.3', profileId: profileIds[0], runId: randomUUID(), task: 'Сравните тексты', query: 'Подарок', excerpts: [], gaps: [], budgetBytes: 16000 })
+  packet.excerpts.push({ collectionId: randomUUID(), snapshotId: randomUUID(), snapshotDigest: 'a'.repeat(64),
+    sourceVersion: 'Synthetic fixture', documentId: randomUUID(), documentHash: 'b'.repeat(64),
+    path: 'source/current/products-editorial.json', locator: '/models/0', sourceIds: ['TEST-SOURCE'], skus: [],
+    content: JSON.stringify({ sourceContext: [{ scope: 'Только тестовая модель, не весь ассортимент.' }],
+      record: { article: 'TEST-01', availability: 'Наличие уточняется', unexpected_field: false, description: '<script>unsafe()</script>' } }) })
   const resultText = '# Выбор подарка\n\nУчитывайте привычки получателя. Это синтетический текст проверки интерфейса.', referenceText = '# Практичный подарок\n\nНачните с размера и привычек. Это синтетический эталон проверки интерфейса.'
   const suite = evaluationSuiteSchema.parse({ schemaVersion: '0.5.5', id: randomUUID(), createdAt: new Date().toISOString(), seeds: [17, 53], raters: profileIds,
     cases: evaluationKinds.flatMap(kind => Array.from({ length: 5 }, (_, i) => ({
@@ -53,6 +58,18 @@ test('blind comparison uses real IPC, explicit scores and durable profile-bound 
     await page.getByRole('button', { name: '05 · Сравнение текстов' }).click()
     await page.getByRole('button', { name: /Пара 1/ }).click()
     await expect(page.getByRole('heading', { name: 'Вариант A' })).toBeVisible()
+    await page.getByText('Источники · 1', { exact: true }).click()
+    await expect(page.locator('.source-content dt').filter({ hasText: /^Наличие$/ })).toBeVisible()
+    await expect(page.locator('.source-content dd').filter({ hasText: /^Наличие уточняется$/ })).toBeVisible()
+    await expect(page.locator('.source-content').getByText('<script>unsafe()</script>', { exact: true })).toBeVisible()
+    await expect(page.locator('.source-content script')).toHaveCount(0)
+    await page.screenshot({ path: 'desktop-results/blind-review-sources.png' })
+    await page.getByText('Источники · 1', { exact: true }).click()
+    await page.setViewportSize({ width: 760, height: 700 })
+    expect(await page.locator('.review-columns').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(1)
+    await page.getByRole('heading', { name: 'Вариант A' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: 'desktop-results/blind-review-compact.png' })
+    await page.setViewportSize({ width: 1280, height: 900 })
     expect(await page.locator('.blind-review select').evaluateAll(elements => elements.every(element => (element as HTMLSelectElement).value === ''))).toBe(true)
     await page.screenshot({ path: 'desktop-results/blind-review.png' })
     for (const side of ['A', 'B']) {
