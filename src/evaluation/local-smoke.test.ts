@@ -26,6 +26,7 @@ import { OllamaProvider } from '../ai/ollama'
 import { verifyProcessSnapshot } from '../editorial/process-schema'
 import { captureLocalEnvironment } from './telemetry'
 import { countWords } from '../ai/agent'
+import { defaultEditorialBudget } from '../domain/editorial-config'
 
 /** Opt-in development smoke, never a replacement for a frozen quality comparison. */
 it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local development chain against an existing frozen source packet', async () => {
@@ -36,7 +37,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local d
   expect(selected).toBeDefined()
   const model = 'mistral-small3.2:24b'
   const provider = new OllamaProvider({ provider: 'ollama', port: 11434, model })
-  const signal = AbortSignal.timeout(600000)
+  const signal = AbortSignal.timeout(defaultEditorialBudget.timeoutMs)
   const modelDigest = await provider.identity(model, signal)
   const { brief, packet } = selected
   const processSnapshot = process.env.WORKFLOW_EVALUATION_SMOKE_PROCESS
@@ -47,7 +48,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local d
   const output = resolve('output/evaluation-0.5.5', `development-smoke-${state.id}`)
   mkdirSync(output, { recursive: true })
   const store = new AtomicStore(join(output, 'state'), editorialStateSchema)
-  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, processDigest: processSnapshot?.digest ?? null, before: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
+  writeFileSync(join(output, 'manifest.json'), JSON.stringify({ purpose: 'development-smoke-not-release-evaluation', sourceBundleId: bundle.id, packetDigest: selected.packetDigest, brief, model, modelDigest, seed: 17, harnessTimeoutMs: defaultEditorialBudget.timeoutMs, processDigest: processSnapshot?.digest ?? null, before: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
   writeFileSync(join(output, 'packet.json'), JSON.stringify(packet, null, 2), { flag: 'wx' })
   store.write(state.id, state, 'create')
   while (['planner', 'writer', 'reviewer'].includes(state.phase)) {
@@ -59,4 +60,4 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SMOKE_SOURCE)('records a real local d
   writeFileSync(join(output, 'summary.json'), JSON.stringify({ phase: state.phase, calls: state.calls.map(call => ({ stage: call.stage, status: call.status, metrics: call.metrics, error: call.error })), versions: state.versions.map(version => ({ number: version.number, digest: version.digest, words: countWords(version.text), issues: version.issues })), issues: state.issues, after: await captureLocalEnvironment() }, null, 2), { flag: 'wx' })
   expect(store.read(state.id)).toEqual(state)
   expect(state.phase).toBe('awaiting-human')
-}, 650000)
+}, defaultEditorialBudget.timeoutMs + 60000)
