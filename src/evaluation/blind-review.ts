@@ -20,19 +20,11 @@ import { z } from 'zod'
 import { AtomicStore } from '../runtime/atomic-store'
 import { contextPacketSchema } from '../knowledge/context'
 import { evaluationRatingSchema, evaluationRunSchema, evaluationSuiteSchema } from './schema'
+import { blindReviewAnswerSchema, reviewCommandSchema, type ReviewCommand } from './review-protocol'
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/)
 const textHash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex')
 const hash = (value: unknown) => textHash(JSON.stringify(value))
-const sideSchema = z.strictObject({
-  scores: evaluationRatingSchema.shape.scores,
-  unsupportedProductOrMedicalClaim: z.boolean(), acceptedWithMinorEdits: z.boolean(),
-})
-export const blindReviewAnswerSchema = z.strictObject({
-  A: sideSchema, B: sideSchema,
-  accuracyPreference: z.enum(['A', 'B', 'equal']), overallPreference: z.enum(['A', 'B', 'equal']),
-  notes: z.string().max(12000),
-})
 const pairSchema = z.strictObject({
   id: z.uuid(), raterId: z.uuid(), suite: evaluationSuiteSchema, run: evaluationRunSchema,
   packet: contextPacketSchema, resultText: z.string().min(1).max(100000),
@@ -83,6 +75,19 @@ export class BlindReviewStore {
       throw new Error('Сохранённая оценка повреждена.')
     }
     return record
+  }
+  handle(input: ReviewCommand) {
+    const command = reviewCommandSchema.parse(input)
+    switch (command.action) {
+      case 'list': return this.disk.ids().flatMap(id => {
+        const record = this.read(id)
+        if (record.pair.raterId !== command.profileId) return []
+        const task = validatePair(record.pair)
+        return [{ id, submitted: Boolean(record.rating), kind: task.kind, prompt: task.prompt }]
+      })
+      case 'open': return this.open(command.id, command.profileId)
+      case 'submit': return this.submit(command.id, command.profileId, command.digest, command.answer)
+    }
   }
   /** Administrative entry point; do not expose to the rating renderer. */
   create(input: Omit<Pair, 'id' | 'modelSide'>) {
