@@ -24,6 +24,7 @@ import { EvaluationStore } from './store'
 import { BlindReviewStore } from './blind-review'
 import { assessEvaluation } from './report'
 import { evaluationAttemptResult } from './execution'
+import { measureSentenceRepetition } from './repetition'
 
 /** Read-only with respect to all model attempts, reviews and experiment selection. */
 it.runIf(!!process.env.WORKFLOW_EVALUATION_REPORT_SUITE)('exports current evidence without generating or rating text', async () => {
@@ -48,6 +49,11 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_REPORT_SUITE)('exports current eviden
       failures: results.filter(result => result.status !== 'complete').map(result => ({ id: result.id, caseId: result.caseId, seed: result.seed, status: result.status })),
       representativeSettings: selected[0]!.attempt.state.settings, declaredSeeds: suite.seeds,
       processDigest: selected[0]!.attempt.state.process?.digest ?? null,
+      // All saved versions, including failed/unfinished attempts. No acceptance threshold.
+      repetitionDiagnostics: selected.flatMap(record => record.attempt.state.versions.map(version => ({
+        recordId: record.id, versionId: version.id, digest: version.digest,
+        ...measureSentenceRepetition(version.text),
+      }))),
       calls: { total: calls.length, withMetrics: calls.filter(call => call.metrics).length,
         completedDurationMs: calls.reduce((sum, call) => sum + (call.metrics?.durationMs ?? 0), 0),
         inputTokens: calls.reduce((sum, call) => sum + (call.metrics?.inputTokens ?? 0), 0),
