@@ -45,12 +45,21 @@ async function profileDigest(state: EvaluationAttempt['state']) {
   return editorialDigest(JSON.stringify({ implementation: 'editorial-0.5.5-v1', settings, process: state.process ?? null, budget: state.budget }))
 }
 
+/** A style sample must not recycle an answer from the frozen evaluation set. */
+function assertNoReferenceExamples(suite: EvaluationSuite, process?: ProcessSnapshot) {
+  const references = new Set(suite.cases.map(task => task.reference.digest))
+  if (process?.examples.some(example => references.has(example.digest) || references.has(example.sourceDigest))) {
+    throw new Error('Эталон оценки нельзя использовать как пример стиля в этом эксперименте.')
+  }
+}
+
 /** No reference text is accepted here. The same engine and checks serve runtime and evaluation. */
 export async function createEvaluationAttempt(options: {
   suite: EvaluationSuite; caseId: string; phase: EvaluationAttempt['phase']; seed: number
   packet: ContextPacket; settings: EditorialSettings; process?: ProcessSnapshot
 }): Promise<EvaluationAttempt> {
   const suite = evaluationSuiteSchema.parse(options.suite)
+  assertNoReferenceExamples(suite, options.process)
   if (!suite.seeds.includes(options.seed)) throw new Error('Seed is outside the frozen experiment.')
   const input = evaluationInput(suite, options.caseId, options.phase)
   const packet = contextPacketSchema.parse(options.packet)
@@ -66,6 +75,7 @@ export async function advanceEvaluationAttempt(options: {
 }): Promise<EvaluationAttempt> {
   const attempt = evaluationAttemptSchema.parse(structuredClone(options.attempt))
   const suite = evaluationSuiteSchema.parse(options.suite)
+  assertNoReferenceExamples(suite, attempt.state.process)
   if (attempt.suiteId !== suite.id || attempt.suiteDigest !== await evaluationSuiteDigest(suite)) throw new Error('Evaluation suite has changed.')
   const input = evaluationInput(suite, attempt.caseId, attempt.phase)
   if (attempt.state.contextDigest !== input.packetDigest || JSON.stringify(attempt.state.task) !== JSON.stringify(taskInput(suite, attempt.caseId, attempt.phase))) throw new Error('Evaluation task has changed.')

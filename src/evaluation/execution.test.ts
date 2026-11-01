@@ -22,6 +22,7 @@ import { editorialDigest } from '../editorial/versions'
 import type { ContextPacket } from '../knowledge/context'
 import type { ModelProvider, ModelRequest } from '../ai/types'
 import { profileIds } from '../profiles/schema'
+import { processSnapshotSchema } from '../editorial/process-schema'
 
 async function fixture() {
   const packet: ContextPacket = { schemaVersion: '0.5.3', profileId: profileIds[0], runId: crypto.randomUUID(), task: 'Тест', query: 'Тест', excerpts: [], gaps: [], budgetBytes: 16000 }
@@ -45,6 +46,27 @@ async function fixture() {
 }
 
 describe('evaluation through the production editorial engine', () => {
+  it.each(['text', 'source'] as const)('blocks a frozen reference reused through style %s before generation', async field => {
+    const f = await fixture(), createdAt = new Date().toISOString(), exampleId = crypto.randomUUID()
+    const text = 'Пример из контрольной выборки.', textDigest = await editorialDigest(text)
+    const content = { title: 'Synthetic process', instructions: { planner: '', writer: '', reviewer: '' },
+      settings: { contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, stageTimeoutMs: 1000 }, voiceExampleIds: [exampleId] }
+    const normalized = processSnapshotSchema.parse({ schemaVersion: '0.5.5', profileId: profileIds[0],
+      version: { id: crypto.randomUUID(), number: 1, createdAt, content, digest: await editorialDigest(JSON.stringify(content)) },
+      examples: [{ id: exampleId, text, digest: textDigest, sourceLabel: 'Synthetic only', sourceDigest: 'c'.repeat(64),
+        origin: 'owner-approved', createdAt, status: 'accepted', acceptedAt: createdAt }], digest: '0'.repeat(64) })
+    const { digest: _digest, ...body } = normalized
+    void _digest
+    const process = { ...body, digest: await editorialDigest(JSON.stringify(body)) }
+    // Valid unrelated accepted style can be used, but user acceptance does not permit test leakage.
+    const attempt = await createEvaluationAttempt({ ...f.options, process })
+    const suite = structuredClone(f.options.suite)
+    suite.cases.find(item => item.split === 'holdout')!.reference.digest = field === 'text' ? textDigest : 'c'.repeat(64)
+    await expect(createEvaluationAttempt({ ...f.options, suite, process })).rejects.toThrow('Эталон оценки')
+    await expect(advanceEvaluationAttempt({ attempt, suite, packet: f.options.packet, provider: f.provider,
+      signal: new AbortController().signal, save: async () => {} })).rejects.toThrow('Эталон оценки')
+    expect(f.provider.chat).not.toHaveBeenCalled()
+  })
   it('records pending calls and exact responses without reference data in prompts', async () => {
     const f = await fixture()
     let attempt = await createEvaluationAttempt(f.options)
