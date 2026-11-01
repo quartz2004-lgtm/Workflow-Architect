@@ -20,6 +20,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { EvaluationStore } from './store'
+import { runEvaluationSeries } from './runner'
 import { AtomicStore } from '../runtime/atomic-store'
 import { evaluationKinds, evaluationSuiteSchema } from './schema'
 import { editorialDigest } from '../editorial/versions'
@@ -54,6 +55,53 @@ async function fixture() {
   return { root, options, provider, service: new EvaluationStore(root), signal: new AbortController().signal }
 }
 describe('durable evaluation evidence', () => {
+  it('runs the whole development matrix and preserves failed attempts on resume', async () => {
+    const f = await fixture()
+    vi.mocked(f.provider.chat).mockRejectedValue(new Error('Synthetic provider failure'))
+    const options = { store: f.service, suite: f.options.suite, phase: 'development' as const,
+      packets: new Map(f.options.suite.cases.map(task => [task.id, f.options.packet])),
+      settings: f.options.settings, provider: f.provider, signal: f.signal }
+    const first = await runEvaluationSeries(options)
+    expect(first.expected).toBe(36)
+    expect(first.results).toHaveLength(36)
+    expect(first.results.every(result => result.status === 'failed' && !result.formalPassed)).toBe(true)
+    expect(f.provider.chat).toHaveBeenCalledTimes(36)
+    const restored = await runEvaluationSeries({ ...options, store: new EvaluationStore(f.root) })
+    expect(restored).toEqual(first)
+    expect(f.provider.chat).toHaveBeenCalledTimes(36)
+  })
+  it('preflights every source and keeps cancellation gaps in the expected matrix', async () => {
+    const f = await fixture(), controller = new AbortController()
+    const packets = new Map(f.options.suite.cases.map(task => [task.id, f.options.packet]))
+    const options = { store: f.service, suite: f.options.suite, phase: 'development' as const,
+      packets, settings: f.options.settings, provider: f.provider, signal: controller.signal }
+    const last = f.options.suite.cases.filter(task => task.split === 'development').at(-1)!
+    packets.delete(last.id)
+    await expect(runEvaluationSeries(options)).rejects.toThrow('Отсутствует пакет')
+    expect(f.service.list()).toHaveLength(0)
+    expect(f.provider.chat).not.toHaveBeenCalled()
+    packets.set(last.id, f.options.packet)
+    vi.mocked(f.provider.chat).mockImplementation(async () => { controller.abort(); throw new Error('Stopped') })
+    const stopped = await runEvaluationSeries(options)
+    expect(stopped.expected).toBe(36)
+    expect(stopped.results).toHaveLength(1)
+    expect(stopped.results[0]).toMatchObject({ status: 'cancelled', formalPassed: false })
+    expect(f.provider.chat).toHaveBeenCalledTimes(1)
+    vi.mocked(f.provider.chat).mockRejectedValue(new Error('Synthetic failure'))
+    const resumed = await runEvaluationSeries({ ...options, signal: new AbortController().signal })
+    expect(resumed.results).toHaveLength(36)
+    expect(resumed.results[0]).toEqual(stopped.results[0])
+    expect(f.provider.chat).toHaveBeenCalledTimes(36)
+  })
+  it('rejects model drift before recording or generating an attempt', async () => {
+    const f = await fixture()
+    f.provider.identity = async () => 'f'.repeat(64)
+    await expect(runEvaluationSeries({ store: f.service, suite: f.options.suite, phase: 'development',
+      packets: new Map(f.options.suite.cases.map(task => [task.id, f.options.packet])),
+      settings: f.options.settings, provider: f.provider, signal: f.signal })).rejects.toThrow('Модель отличается')
+    expect(f.service.list()).toHaveLength(0)
+    expect(f.provider.chat).not.toHaveBeenCalled()
+  })
   it('locks control until all development attempts finish and never reopens tuning after selection', async () => {
     const f = await fixture(), holdout = f.options.suite.cases.find(task => task.split === 'holdout')!
     await expect(f.service.create({ ...f.options, caseId: holdout.id, phase: 'holdout' })).rejects.toThrow('Контроль закрыт')
