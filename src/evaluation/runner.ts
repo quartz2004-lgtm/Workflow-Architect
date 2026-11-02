@@ -22,6 +22,7 @@ import type { ProcessSnapshot } from '../editorial/process-schema'
 import { createEvaluationAttempt, evaluationAttemptResult } from './execution'
 import { evaluationSuiteSchema, type EvaluationSuite } from './schema'
 import { EvaluationStore } from './store'
+import { assertReadableEvaluationInstructions } from './instruction-integrity'
 
 const active = new WeakSet<EvaluationStore>()
 const running = (phase: string) => ['planner', 'writer', 'reviewer'].includes(phase)
@@ -37,6 +38,7 @@ export async function runEvaluationSeries(options: {
   if (active.has(options.store)) throw new Error('Серия испытаний уже выполняется.')
   active.add(options.store)
   try {
+    assertReadableEvaluationInstructions(options.process)
     const suite = evaluationSuiteSchema.parse(options.suite)
     const tasks = suite.cases.filter(task => task.split === options.phase)
     // Validate every selected packet before starting a costly model request.

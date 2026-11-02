@@ -22,6 +22,7 @@ import { AtomicStore } from '../runtime/atomic-store'
 import { contextPacketSchema } from '../knowledge/context'
 import type { ModelProvider } from '../ai/types'
 import { evaluationSuiteSchema } from './schema'
+import { instructionEncodingProblems } from './instruction-integrity'
 import { advanceEvaluationAttempt, createEvaluationAttempt, evaluationAttemptResult, evaluationAttemptSchema, type EvaluationAttempt } from './execution'
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex')
@@ -36,10 +37,17 @@ const experimentBodySchema = z.strictObject({
   suiteId: z.uuid(), suiteDigest: digestSchema, candidates: z.array(digestSchema).min(1).max(4),
   selected: digestSchema.nullable(), lockedAt: z.iso.datetime().nullable(),
   developmentEvidence: z.array(z.strictObject({ id: z.uuid(), digest: digestSchema })).max(5000),
+  invalidations: z.array(z.strictObject({ profileDigest: digestSchema, reason: z.literal('instruction-encoding'),
+    recordedAt: z.iso.datetime(), evidence: z.array(z.strictObject({ id: z.uuid(), digest: digestSchema })).min(1).max(5000),
+  })).max(4).optional(),
 }).superRefine((value, ctx) => {
   if (new Set(value.candidates).size !== value.candidates.length || (value.selected !== null && !value.candidates.includes(value.selected))
     || Boolean(value.selected) !== Boolean(value.lockedAt) || (value.selected === null && value.developmentEvidence.length)) {
     ctx.addIssue({ code: 'custom', message: 'Invalid experiment selection.' })
+  }
+  const invalid = value.invalidations?.map(item => item.profileDigest) ?? []
+  if (new Set(invalid).size !== invalid.length || invalid.some(id => !value.candidates.includes(id)) || (value.selected && invalid.includes(value.selected))) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid candidate invalidation.' })
   }
 })
 const experimentSchema = experimentBodySchema.safeExtend({ digest: digestSchema })
@@ -68,6 +76,7 @@ export class EvaluationStore {
   }
   private admit(attempt: EvaluationAttempt, register: boolean) {
     const current = this.experiment(attempt.suiteId, attempt.suiteDigest)
+    if (current?.invalidations?.some(item => item.profileDigest === attempt.profileDigest)) throw new Error('Кандидат признан недействительным: повреждена кодировка инструкции.')
     if (attempt.phase === 'holdout') {
       if (!current?.selected || current.selected !== attempt.profileDigest) throw new Error('Контроль закрыт: сначала зафиксируйте выбранный процесс.')
       for (const item of current.developmentEvidence) if (this.read(item.id).digest !== item.digest) throw new Error('Разработочные результаты изменились после фиксации.')
@@ -78,8 +87,32 @@ export class EvaluationStore {
     if (!register) throw new Error('Процесс не зарегистрирован в эксперименте.')
     if (current && current.candidates.length >= 4) throw new Error('Разрешены исходный процесс и не более трёх кандидатов.')
     const body = experimentBodySchema.parse({ suiteId: attempt.suiteId, suiteDigest: attempt.suiteDigest,
-      candidates: [...(current?.candidates ?? []), attempt.profileDigest], selected: null, lockedAt: null, developmentEvidence: [] })
+      candidates: [...(current?.candidates ?? []), attempt.profileDigest], selected: null, lockedAt: null, developmentEvidence: [],
+      ...(current?.invalidations ? { invalidations: current.invalidations } : {}) })
     this.experiments.write(body.suiteId, { ...body, digest: hash(body) }, current ? 'replace' : 'create')
+  }
+  /** Administrative evidence action; cannot exclude a candidate merely for poor results. */
+  invalidateMalformedInstructions(suiteId: string, profileDigest: string) {
+    const records = this.list().filter(record => record.suite.id === suiteId && record.attempt.profileDigest === profileDigest)
+    const first = records[0]
+    if (!first) throw new Error('Нет записей кандидата.')
+    const current = this.experiment(suiteId, first.attempt.suiteDigest)
+    if (!current || current.selected) throw new Error('После фиксации контроля исключение кандидата запрещено.')
+    if (records.some(record => this.busy.has(record.id))) throw new Error('Сначала остановите выполняемый эксперимент.')
+    if (records.some(record => !instructionEncodingProblems(record.attempt.state.process).length)) throw new Error('Повреждение кодировки не подтверждено; качество не является причиной исключения.')
+    const existing = current.invalidations?.find(item => item.profileDigest === profileDigest)
+    if (existing) return existing
+    const entry = { profileDigest, reason: 'instruction-encoding' as const, recordedAt: new Date().toISOString(),
+      evidence: records.map(record => ({ id: record.id, digest: record.digest })) }
+    const { digest: _digest, ...previous } = current
+    void _digest
+    const body = experimentBodySchema.parse({ ...previous, invalidations: [...(current.invalidations ?? []), entry] })
+    this.experiments.write(suiteId, { ...body, digest: hash(body) }, 'replace')
+    return entry
+  }
+  invalidations(suiteId: string) {
+    const first = this.list().find(record => record.suite.id === suiteId)
+    return first ? this.experiment(suiteId, first.attempt.suiteDigest)?.invalidations ?? [] : []
   }
   sealForHoldout(suiteId: string, profileDigest: string) {
     const records = this.list().filter(record => record.suite.id === suiteId)
@@ -87,12 +120,18 @@ export class EvaluationStore {
     if (!first) throw new Error('Нет разработочных результатов.')
     const current = this.experiment(suiteId, first.attempt.suiteDigest)
     if (!current || current.selected || !current.candidates.includes(profileDigest)) throw new Error('Выбор отсутствует или уже зафиксирован.')
+    const invalid = new Set(current.invalidations?.map(item => item.profileDigest) ?? [])
+    if (invalid.has(profileDigest)) throw new Error('Недействительный кандидат нельзя выбрать для контроля.')
+    for (const entry of current.invalidations ?? []) for (const item of entry.evidence) {
+      if (this.read(item.id).digest !== item.digest) throw new Error('Свидетельства исключения кандидата изменились.')
+    }
     const expected = first.suite.cases.filter(task => task.split === 'development').flatMap(task => first.suite.seeds.map(seed => ({ caseId: task.id, seed })))
-    for (const candidate of current.candidates) for (const item of expected) {
+    for (const candidate of current.candidates.filter(id => !invalid.has(id))) for (const item of expected) {
       const record = records.find(value => value.attempt.profileDigest === candidate && value.attempt.caseId === item.caseId && value.attempt.state.settings.seed === item.seed)
       if (!record || this.busy.has(record.id) || ['planner', 'writer', 'reviewer'].includes(record.attempt.state.phase)) throw new Error('Сначала завершите всю разработочную матрицу каждого кандидата; ошибки и отмены сохраняются.')
     }
     const body = experimentBodySchema.parse({ suiteId, suiteDigest: current.suiteDigest, candidates: current.candidates, selected: profileDigest, lockedAt: new Date().toISOString(),
+      ...(current.invalidations ? { invalidations: current.invalidations } : {}),
       developmentEvidence: records.map(record => ({ id: record.id, digest: record.digest })) })
     this.experiments.write(suiteId, { ...body, digest: hash(body) }, 'replace')
   }

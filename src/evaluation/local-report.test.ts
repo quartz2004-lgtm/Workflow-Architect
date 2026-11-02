@@ -44,6 +44,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_REPORT_SUITE)('exports current eviden
     const assessment = await assessEvaluation({ suite, profileDigest, runs: results, ratings: ratings.filter(rating => ids.has(rating.runId)) })
     const calls = selected.flatMap(record => record.attempt.state.calls)
     reports.push({ profileDigest, assessment,
+      invalidation: store.invalidations(suite.id).find(item => item.profileDigest === profileDigest) ?? null,
       started: selected.length, unfinished: selected.length - results.length,
       notStarted: assessment.expected - selected.length,
       failures: results.filter(result => result.status !== 'complete').map(result => ({ id: result.id, caseId: result.caseId, seed: result.seed, status: result.status })),

@@ -29,6 +29,8 @@ import { editorialDigest } from '../editorial/versions'
 import { profileIds } from '../profiles/schema'
 import type { ContextPacket } from '../knowledge/context'
 import type { ModelProvider } from '../ai/types'
+import { verifyProcessSnapshot } from '../editorial/process-schema'
+import { assertReadableEvaluationInstructions } from './instruction-integrity'
 
 const roots: string[] = []
 afterEach(() => {
@@ -58,6 +60,53 @@ async function fixture() {
   return { root, options, provider, service: new EvaluationStore(root), signal: new AbortController().signal }
 }
 describe('durable evaluation evidence', () => {
+  it('rejects lossy instructions before dispatch while permitting readable multilingual questions', async () => {
+    const f = await fixture()
+    const content = { title: 'Encoding fixture', instructions: { planner: '', writer: '????? ?????? '.repeat(20).trim(), reviewer: '' },
+      settings: { contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, stageTimeoutMs: 1000 }, voiceExampleIds: [] }
+    const body = { schemaVersion: '0.5.5', profileId: profileIds[0], version: { id: crypto.randomUUID(), number: 1,
+      createdAt: new Date().toISOString(), content, digest: await editorialDigest(JSON.stringify(content)) }, examples: [] }
+    const process = await verifyProcessSnapshot({ ...body, digest: await editorialDigest(JSON.stringify(body)) })
+    await expect(runEvaluationSeries({ store: f.service, suite: f.options.suite, phase: 'development',
+      packets: new Map(f.options.suite.cases.map(task => [task.id, f.options.packet])), settings: f.options.settings,
+      provider: f.provider, signal: f.signal, process })).rejects.toThrow('кодировка')
+    expect(f.service.list()).toHaveLength(0)
+    expect(f.provider.chat).not.toHaveBeenCalled()
+    process.version.content.instructions.writer = 'Кто читатель? What is known? Что неизвестно? Сохрани факты.'
+    expect(() => assertReadableEvaluationInstructions(process)).not.toThrow()
+    process.version.content.instructions.writer = 'Broken \uFFFD text'
+    expect(() => assertReadableEvaluationInstructions(process)).toThrow('кодировка')
+  })
+  it('retains invalid encoding evidence, blocks its reuse and cannot exclude poor quality', async () => {
+    const f = await fixture()
+    const valid = await f.service.create(f.options)
+    const content = { title: 'Legacy lossy input', instructions: { planner: '', writer: '????? ?????? '.repeat(20).trim(), reviewer: '' },
+      settings: { contextTokens: 32768, maxOutputTokens: 2048, temperature: 0.3, stageTimeoutMs: 1000 }, voiceExampleIds: [] }
+    const body = { schemaVersion: '0.5.5', profileId: profileIds[0], version: { id: crypto.randomUUID(), number: 1,
+      createdAt: new Date().toISOString(), content, digest: await editorialDigest(JSON.stringify(content)) }, examples: [] }
+    const process = await verifyProcessSnapshot({ ...body, digest: await editorialDigest(JSON.stringify(body)) })
+    // Legacy evidence predating the runner's encoding preflight remains readable.
+    const invalid = await f.service.create({ ...f.options, process })
+    expect(() => f.service.invalidateMalformedInstructions(f.options.suite.id, valid.attempt.profileDigest)).toThrow('не подтверждено')
+    const entry = f.service.invalidateMalformedInstructions(f.options.suite.id, invalid.attempt.profileDigest)
+    expect(f.service.read(invalid.id)).toEqual(invalid)
+    const restored = new EvaluationStore(f.root)
+    expect(restored.invalidations(f.options.suite.id)).toEqual([entry])
+    expect(restored.invalidateMalformedInstructions(f.options.suite.id, invalid.attempt.profileDigest)).toEqual(entry)
+    await expect(restored.advance(invalid.id, f.provider, f.signal)).rejects.toThrow('недействительным')
+    await expect(restored.create({ ...f.options, process, seed: 53 })).rejects.toThrow('недействительным')
+    expect(() => restored.sealForHoldout(f.options.suite.id, invalid.attempt.profileDigest)).toThrow('Недействительный')
+    expect(() => restored.sealForHoldout(f.options.suite.id, valid.attempt.profileDigest)).toThrow('матрицу')
+    for (const task of f.options.suite.cases.filter(item => item.split === 'development')) for (const seed of f.options.suite.seeds) {
+      const record = task.id === f.options.caseId && seed === 17 ? valid : await restored.create({ ...f.options, caseId: task.id, seed })
+      await restored.advance(record.id, f.provider, AbortSignal.abort())
+    }
+    restored.sealForHoldout(f.options.suite.id, valid.attempt.profileDigest)
+    expect(restored.read(invalid.id)).toEqual(invalid)
+    expect(restored.invalidations(f.options.suite.id)).toEqual([entry])
+    expect(() => restored.invalidateMalformedInstructions(f.options.suite.id, valid.attempt.profileDigest)).toThrow('После фиксации')
+    expect(f.provider.chat).not.toHaveBeenCalled()
+  })
   it('runs the whole development matrix and preserves failed attempts on resume', async () => {
     const f = await fixture()
     vi.mocked(f.provider.chat).mockRejectedValue(new Error('Synthetic provider failure'))

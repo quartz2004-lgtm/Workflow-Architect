@@ -29,6 +29,7 @@ import { captureLocalEnvironment } from './telemetry'
 import { OllamaProvider } from '../ai/ollama'
 import { BlindReviewStore } from './blind-review'
 import { prepareEvaluationReviews } from './prepare-reviews'
+import { assertReadableEvaluationInstructions } from './instruction-integrity'
 
 const configurationSchema = z.strictObject({
   sourcesPath: z.string().min(1), suitePath: z.string().min(1), referencesDirectory: z.string().min(1),
@@ -62,6 +63,7 @@ it.runIf(!!process.env.WORKFLOW_EVALUATION_SERIES_CONFIG)('runs or resumes a fro
     references.set(task.id, saved.text)
   }
   const processSnapshot = config.processPath ? await verifyProcessSnapshot(read(config.processPath)) : undefined
+  assertReadableEvaluationInstructions(processSnapshot)
   if (process.env.WORKFLOW_EVALUATION_PREFLIGHT_ONLY === '1') {
     console.log(JSON.stringify({ purpose: 'preflight-only-no-model-calls', suiteId: suite.id,
       cases: suite.cases.length, sourceBundleId: sources.id, processDigest: processSnapshot?.digest ?? null }))
