@@ -49,7 +49,7 @@ const definitions = [
   ['0.5.2', 'База знаний SOAR', 'Локальные документы, версии, происхождение и обновление без облака.', 'done'],
   ['0.5.3', 'Источники и фотографии', 'Проверяемые выдержки SOAR и реальные пиксели в локальном Agent.', 'done'],
   ['0.5.4', 'Автономная редакция', 'Локальный замысел → текст → проверки → Human → файл.', 'current'],
-  ['0.5.5', 'Качество локального ИИ', 'В разработке: голос SOAR, очередь материалов и измерение качества на 30 задачах.', 'development'],
+  ['0.5.5', 'Качество локального ИИ', 'Пауза по лимиту времени: код проверен, качество и выпуск не приняты. Остаток распределён по существующим этапам.', 'paused'],
   ['0.5.6', 'Понятное рабочее пространство', 'Задачи, подключения, помощь и восстановление без переноса ID.', 'planned'],
   ['0.6.0', 'Codex и репозиторий', 'Рабочая ветка → код → тесты → diff → принятие.', 'planned'],
   ['0.6.1', 'Общий локальный и онлайн-путь', 'Codex подключается к готовому пакету знаний и проверкам.', 'planned'],
@@ -93,7 +93,7 @@ ${notice}
 <footer><span>Источник: <a href="../../docs/ROADMAP.md">docs/ROADMAP.md</a> · <a href="../../docs/decisions/0014-hybrid-editorial-and-ai-modes.md">ADR 0014</a><br>Снимок ${hash}. Пересборка: npm run docs:roadmap</span><span>Будущие этапы — план, а не работающие функции.<br>Без календарных обещаний и искусственного процента готовности.</span></footer></main>
 <script>
 const stages=${JSON.stringify(stages).replace(/</g, '\\u003c')};
-const labels={done:'Выпущено',accepted:'Принято',current:'Текущий выпуск',next:'Следующий этап',development:'В разработке',planned:'Запланировано',milestone:'Целевой рубеж'};
+const labels={done:'Выпущено',accepted:'Принято',current:'Текущий выпуск',next:'Следующий этап',development:'В разработке',paused:'Приостановлено',planned:'Запланировано',milestone:'Целевой рубеж'};
 let selected=stages.findIndex(s=>s.version==='0.5.4'),filter='all';
 const byId=id=>document.getElementById(id),completed=s=>['done','accepted','current'].includes(s.status);
 function renderList(){const query=byId('search').value.toLocaleLowerCase('ru');const shown=stages.map((s,i)=>({s,i})).filter(({s})=>(filter==='all'||(filter==='done'?completed(s):!completed(s)))&&(s.version+' '+s.title+' '+s.summary+' '+s.html.replace(/<[^>]*>/g,' ')).toLocaleLowerCase('ru').includes(query));byId('steps').replaceChildren();if(!shown.length){const p=document.createElement('p');p.className='empty';p.textContent='Ничего не найдено. Попробуйте другую версию или слово.';byId('steps').append(p);}for(const {s,i} of shown){const button=document.createElement('button');button.className='step';button.dataset.status=s.status;if(i===selected)button.setAttribute('aria-current','step');button.innerHTML='<span class="dot" aria-hidden="true">'+(completed(s)?'✓':['next','development'].includes(s.status)?'◉':'○')+'</span><span><small>'+s.version+'<span class="step-label">'+labels[s.status]+'</span></small><strong>'+s.title+'</strong></span>';button.addEventListener('click',()=>select(i,true));byId('steps').append(button);}}
