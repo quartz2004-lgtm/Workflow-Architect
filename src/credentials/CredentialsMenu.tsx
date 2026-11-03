@@ -15,13 +15,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
+import { useServiceDialog } from '../app/service-dialog'
 import { createPortal } from 'react-dom'
 import { useProfile } from '../profiles/context'
 
 const Dialog = lazy(() => import('./CredentialsDialog').then(module => ({ default: module.CredentialsDialog })))
 export function CredentialsMenu() {
-  const [open, setOpen] = useState(false), profile = useProfile()
+  const [open, setOpen] = useServiceDialog('credentials'), profile = useProfile()
   if (!window.workflowDesktop?.credentials || !profile) return null
   return <><button onClick={() => setOpen(true)}>Подключения</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем подключения…</div>}><Dialog close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }

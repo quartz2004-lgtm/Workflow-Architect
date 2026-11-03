@@ -64,7 +64,7 @@ kbd { font: 9px var(--mono); border: 1px solid var(--border); padding: 3px 5px; 
 .react-flow__edge:hover .react-flow__edge-path { stroke: var(--accent); }
 .canvas-label { position: absolute; top: 20px; left: 22px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; color: var(--muted); font: 9px var(--mono); letter-spacing: 1px; }
 .canvas-label span:last-child { font: 11px var(--font); letter-spacing: 0; }
-.empty-state { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: min(90%, 410px); }
+.empty-state { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: min(90%, 410px); max-height: 85%; overflow: auto; }
 .empty-symbol { color: var(--neutral); font-size: 57px; font-weight: 200; margin-bottom: 20px; }
 .empty-state h1 { font-size: clamp(23px, 2.3vw, 34px); font-weight: 450; line-height: 1.35; letter-spacing: -.8px; margin: 16px 0; }
 .empty-state p { color: var(--muted); font-size: 12px; line-height: 1.9; margin-bottom: 26px; }

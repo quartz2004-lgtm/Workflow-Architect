@@ -40,6 +40,7 @@ import { Modal } from '../shared/Modal'
 import { RecoveryDetails } from '../persistence/RecoveryDetails'
 import { PreviewPanel } from '../preview/PreviewPanel'
 import { RunPanel, runStatusLabels } from '../execution/RunPanel'
+import { TaskWorkspace } from './TaskWorkspace'
 import { Learning } from '../learning/Learning'
 
 const Canvas = lazy(() => import('../canvas/Canvas').then(module => ({ default: module.Canvas })))
@@ -94,6 +95,7 @@ function Workspace({ autosave, repository }: { autosave: Autosave; repository: M
     <Learning key={profile?.id ?? 'local'} autosave={autosave} repository={repository} />
     {recovery.report && <div className="recovery-banner" role="status"><span>Recovery mode · {recovery.report.issues.length} замечаний · оригинал сохранён</span><button onClick={() => editor.recoveryStore.setState({ open: true })}>Отчёт восстановления</button><button onClick={() => editor.recoveryStore.setState({ report: null, open: false })}>Завершить восстановление</button></div>}
     {(error || save.error) && <div className="error-banner" role="alert"><span>{error || save.error}</span>{save.error ? <>{save.conflict && <button onClick={() => { void autosave.saveAsCopy().catch(error => editor.uiStore.setState({ error: error instanceof Error ? error.message : String(error) })) }}>Сохранить мои правки отдельной копией</button>}<button onClick={() => { void autosave.flush() }}>Повторить сохранение</button></> : <button aria-label="Закрыть ошибку" onClick={() => editor.uiStore.setState({ error: null })}>×</button>}</div>}
+    <TaskWorkspace autosave={autosave} />
     <Breadcrumbs />
     <main className="workspace"><Library /><Suspense fallback={<div className="boot-screen" role="status">Загрузка Canvas…</div>}><Canvas key={`${projectId}:${graphId}`} /></Suspense><Inspector /></main>
     <ValidationPanel />

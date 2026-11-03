@@ -31,12 +31,14 @@ import { initialRunDraft, updateRunDraft, type RunDraft } from './draft-store'
 import { contractForm, readContractForm } from './contract-fields'
 import { ContractFields } from './ContractFields'
 import { compileContract } from './contracts'
+import { contractExample } from './contract-example'
 import type { JsonValue } from '../domain/execution-config'
 import { ContextPacketView } from '../knowledge/ContextPacketView'
 import { EditorialRunView } from '../editorial/EditorialRunView'
 import { editorialKnowledgeRequest } from '../editorial/schema'
 import { resultTypes, taskFromForm } from '../editorial/task-form'
 import { BatchPanel } from '../editorial/BatchPanel'
+import { ModelReadiness } from '../ai/ModelReadiness'
 import { useProfile } from '../profiles/context'
 import { knowledgeRequest } from '../knowledge/client'
 import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
@@ -83,6 +85,7 @@ export function RunPanel() {
   try { if (trigger?.type === 'trigger' && trigger.config.payload) inputSchema = resolveContract(trigger.config.payload, project) }
   catch (error) { schemaError = error instanceof Error ? error.message : String(error) }
   const inputForm = inputSchema === undefined ? undefined : contractForm(inputSchema)
+  const example = contractExample(inputSchema)
   const contractKey = JSON.stringify([selected, inputSchema])
   const contractValues = draft.contractValues[contractKey] ?? {}
   const editorialNode = project.nodes.find(node => node.operation?.kind === 'agent' && node.operation.editorial && project.edges.some(edge => edge.type === 'flow' && edge.sourceNode === selected && edge.targetNode === node.id))
@@ -129,6 +132,7 @@ export function RunPanel() {
   return <section className="run-panel" aria-label="Локальное выполнение">
     <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.5.5</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
     <div className="run-body">
+      {project.nodes.some(node => node.operation?.kind === 'agent') && <ModelReadiness />}
       <p className="muted">Локально · без облачного ИИ. Обычные сценарии — до 5 минут; редакция имеет отдельный конечный бюджет и ожидание подтверждения, весь запуск — до двух часов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
       {editor.runtime.native && (editorialNode || latestEditorial ? <details><summary>История запусков и фоновая работа</summary><RuntimeControls runtime={editor.runtime} native={editor.runtime.native} /></details> : <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />)}
       {editor.runtime.native && editorialNode && profile && <details><summary>Очередь нескольких статей</summary><BatchPanel key={`${profile.id}:${project.project.id}:${selected}`} profileId={profile.id} project={project} entryNodeId={selected} native={editor.runtime.native} /></details>}
@@ -149,6 +153,7 @@ export function RunPanel() {
         </>}
         {!editorialNode && !inputForm && <p className="muted">{schemaError || (inputSchema === undefined ? 'У входа не задана форма. Используйте JSON по примеру автора сценария; форму можно настроить в контракте Trigger.' : 'Этот контракт содержит сложную структуру. Используйте технический ввод JSON и сверьтесь со схемой ниже.')} Ошибка ввода не удаляет черновик.</p>}
         {!editorialNode && inputSchema !== undefined && <details><summary>Схема входных данных</summary><pre>{JSON.stringify(inputSchema, null, 2)}</pre></details>}
+        {!editorialNode && inputSchema !== undefined && (!inputForm || advancedInput) && <details><summary>Пример технического ввода</summary>{example !== undefined ? <><p className="muted">Пример проходит контракт. Замените значения своими; это не готовое задание и он не подставляется автоматически.</p><pre>{example}</pre></> : <p className="muted">Для этого контракта не удалось безопасно построить подходящий пример. Добавьте валидный examples в схему входа Trigger или уточните схему. Проверка введённого JSON выполнится до запуска.</p>}</details>}
         {editorialNode && <>
           <label>Тип результата<select disabled={busy} value={resultKind} onChange={event => { const option = resultTypes.find(item => item.kind === event.target.value)!; setResultKind(option.kind); setMinimumWords(option.minimumWords); setDossier(null) }}>{resultTypes.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label>
           <p className="muted">{resultTypes.find(item => item.kind === resultKind)?.help}</p>

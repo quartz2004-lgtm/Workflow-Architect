@@ -62,6 +62,13 @@ export function Setup({ initial, complete, cancel }: { initial: Profile; complet
           <h2>Выберите удобный вариант</h2><p className="muted">Рекомендации рассчитаны локально по вашим ответам и практике. Любое поле можно изменить вручную.</p>
           <div className="setup-recommendations">{recommendPreferences(profile.answers).map(item => <button type="button" key={item.id} onClick={() => setProfile(p => ({ ...p, preferences: item.preferences }))}><strong>{item.title}</strong><span>{item.reason}</span></button>)}</div>
           <PreferencesForm value={profile.preferences} change={preferences => setProfile(p => ({ ...p, preferences }))} />
+          <section aria-label="Что применится после сохранения"><h3>Что изменится после сохранения</h3><ul>
+            <li>Профиль будет называться «{profile.name}».</li>
+            <li>Inspector: {profile.preferences.detail === 'guided' ? 'сначала основные поля' : 'все технические разделы'}.</li>
+            <li>Плотность: {profile.preferences.density === 'compact' ? 'компактная' : 'комфортная'}; движение: {profile.preferences.motion === 'reduced' ? 'минимальное' : 'по настройке системы'}.</li>
+            <li>Новые пустые проекты начнутся в режиме {profile.preferences.defaultMode === 'concept' ? 'Concept — идея' : 'Engineering — инженерная схема'}. Существующие проекты сохранят свой режим.</li>
+            <li>Избранных примеров: {profile.preferences.favoriteTemplates.length}; они появятся первыми в выборе шаблона.</li>
+          </ul><p className="muted">Это настройки интерфейса. Модель не обучается, сервисы не подключаются, задачи не запускаются. Рекомендуемые будущие лимиты не меняют ограничения текущего исполнителя.</p></section>
         </>}
         {error && <p role="alert" className="field-error">{error}</p>}
         <div className="setup-actions">{step > 0 && <button type="button" onClick={() => setStep(s => s - 1)}>Назад</button>}<button className="primary">{step === 2 ? 'Сохранить и открыть редактор' : step === 1 ? 'К рекомендациям' : 'Далее'}</button>{cancel ? <button type="button" onClick={cancel}>Отменить</button> : <button type="button" onClick={() => { void save(true) }}>Пропустить настройку</button>}</div>
