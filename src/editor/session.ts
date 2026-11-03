@@ -29,6 +29,7 @@ import { createPreviewController } from '../preview/controller'
 import { createRunController } from '../execution/controller'
 import { createDesktopRunController } from '../execution/desktop-controller'
 import { profileIds } from '../profiles/schema'
+import { createRunDraftStore } from '../execution/draft-store'
 
 enablePatches()
 type HistoryEntry = { label: string; patches: Patch[]; inverse: Patch[]; graphId: string | null }
@@ -43,6 +44,7 @@ export function createEditor(initial: Project = createProject(), options: { prof
   const exportStore = createExportStore()
   const recoveryStore = createStore(() => ({ report: null as RecoveryReport | null, open: false }))
   const preview = createPreviewController()
+  const runDraftStore = createRunDraftStore()
   const runtime = typeof window !== 'undefined' && window.workflowDesktop?.runtime
     ? createDesktopRunController(window.workflowDesktop.runtime, options.profileId ?? profileIds[0]) : createRunController()
   const pruneSelection = () => {
@@ -89,7 +91,7 @@ export function createEditor(initial: Project = createProject(), options: { prof
     select()
   }
   return {
-    projectStore, historyStore, selectionStore, canvasStore, uiStore, validationStore, navigationStore, exportStore, recoveryStore, preview, runtime, execute, select, navigate,
+    projectStore, historyStore, selectionStore, canvasStore, uiStore, validationStore, navigationStore, exportStore, recoveryStore, runDraftStore, preview, runtime, execute, select, navigate,
     getActiveGraph: () => getGraph(projectStore.getState().project, navigationStore.getState().graphId),
     focusEntity: (id: string) => {
       const entry = graphEntries(projectStore.getState().project).find(({ graph }) => [...graph.nodes, ...graph.edges, ...graph.groups].some(entity => entity.id === id))
