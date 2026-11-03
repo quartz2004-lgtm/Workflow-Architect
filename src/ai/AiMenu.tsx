@@ -23,5 +23,5 @@ const Workbench = lazy(() => import('./AiWorkbench').then(module => ({ default: 
 export function AiMenu() {
   const [open, setOpen] = useState(false), profile = useProfile()
   if (!profile) return null
-  return <><button onClick={() => setOpen(true)}>ИИ-помощник</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем ИИ-помощника…</div>}><Workbench key={profile.profile.id} close={() => setOpen(false)} /></Suspense>, document.body)}</>
+  return <><button data-tour="ai" onClick={() => setOpen(true)}>ИИ-помощник</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем ИИ-помощника…</div>}><Workbench key={profile.profile.id} close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }

@@ -110,7 +110,7 @@ function CanvasContent() {
     for (const change of changes) if (change.type === 'select') { if (change.selected) selected.add(change.id); else selected.delete(change.id) }
     if (selected.size !== current.length || current.some(id => !selected.has(id))) editor.selectionStore.setState({ edgeIds: [...selected] })
   }, [editor])
-  return <div className="canvas-shell" aria-label="Workflow Canvas" onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={event => {
+  return <div data-tour="canvas" className="canvas-shell" aria-label="Workflow Canvas" onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={event => {
     event.preventDefault()
     const type = event.dataTransfer.getData('application/workflow-node')
     if (!Object.hasOwn(nodeCatalog, type)) return

@@ -22,5 +22,5 @@ const Dialog = lazy(() => import('./KnowledgeDialog').then(module => ({ default:
 export function KnowledgeMenu() {
   const [open, setOpen] = useState(false), session = useProfile()
   if (!session) return null
-  return <><button onClick={() => setOpen(true)}>Знания SOAR</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем знания…</div>}><Dialog key={session.profile.id} profileId={session.profile.id} profileName={session.profile.name} close={() => setOpen(false)} /></Suspense>, document.body)}</>
+  return <><button data-tour="knowledge" onClick={() => setOpen(true)}>Знания SOAR</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем знания…</div>}><Dialog key={session.profile.id} profileId={session.profile.id} profileName={session.profile.name} close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }
