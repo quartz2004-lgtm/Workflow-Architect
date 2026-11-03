@@ -25,6 +25,18 @@ const signal = () => new AbortController().signal
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
 const request: ModelRequest = { model: 'qwen3:8b', messages: [{ role: 'user', content: 'Привет' }], tools: [], maxOutputTokens: 100, contextTokens: 4096, temperature: 0 }
 describe('Ollama boundary', () => {
+  it('preserves an explicit seed including zero and rejects invalid seeds before transport', async () => {
+    const transport = vi.fn<typeof fetch>(async () => json({ model: 'qwen3:8b', done: true, done_reason: 'stop', message: { role: 'assistant', content: 'Текст' }, prompt_eval_count: 12, eval_count: 5 }))
+    const provider = new OllamaProvider(config, transport)
+    await provider.chat(request, signal())
+    expect(JSON.parse(transport.mock.calls[0]![1]!.body as string).options).not.toHaveProperty('seed')
+    for (const seed of [0, 17, 53]) {
+      await provider.chat({ ...request, seed }, signal())
+      expect(JSON.parse(transport.mock.calls.at(-1)![1]!.body as string).options.seed).toBe(seed)
+    }
+    for (const seed of [-1, 0.5, Infinity, NaN, 2147483648]) await expect(provider.chat({ ...request, seed }, signal())).rejects.toThrow()
+    expect(transport).toHaveBeenCalledTimes(4)
+  })
   it('identifies exact installed weights and fails closed on ambiguous or missing identities', async () => {
     const digest = 'a'.repeat(64)
     const provider = new OllamaProvider(config, async () => json({ models: [{ name: 'qwen3:8b', digest }, { name: 'local:latest', digest }] }))

@@ -25,6 +25,7 @@ export function RuntimeControls({ runtime, native }: { runtime: RunController; n
   const state = useStore(runtime.store), local = useStore(native.store)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const ready = local.service.status === 'ready', busy = state.actionPending
+  const selected = local.jobs.find(job => job.id === state.jobId)
   const label = { starting: 'Сервис запускается', ready: 'Фоновый сервис подключён', unavailable: 'Связь с сервисом потеряна', stopped: 'Сервис остановлен' }[local.service.status]
   return <section className="runtime-controls" aria-label="Фоновый сервис и история">
     <div className="runtime-connection"><span className={ready ? 'runtime-ready' : 'runtime-unavailable'} aria-hidden="true">{ready ? '●' : '○'}</span><strong role="status">{label}</strong>
@@ -46,6 +47,7 @@ export function RuntimeControls({ runtime, native }: { runtime: RunController; n
     </div>
     {confirmDelete && <div className="runtime-delete" role="group" aria-label="Удаление записи запуска"><p>Удалятся журнал, результаты и ключ защиты от повторной доставки этого запуска. Сначала сохраните нужные файлы.</p><div className="inline-actions"><button disabled={!ready || busy} onClick={() => { native.remove(); setConfirmDelete(false) }}>Удалить окончательно</button><button onClick={() => setConfirmDelete(false)}>Оставить запись</button></div></div>}
     {state.jobId && <p className="muted">Этот запуск: {state.backgroundAllowed ? 'может работать после закрытия окна' : 'останавливается при закрытии окна'}. Настройка зафиксирована при отправке.</p>}
+    {selected?.queueExpiresAt !== undefined && <p className="muted">{selected.executionStartedAt === null ? `Первый старт должен произойти до ${new Date(selected.queueExpiresAt).toLocaleString('ru-RU')}. Ожидание очереди не расходует время выполнения.` : `Срок выполнения: ${new Date(selected.deadline).toLocaleString('ru-RU')}. Ожидание Human и время после остановки приложения входят в этот срок.`}</p>}
   </section>
 }
 

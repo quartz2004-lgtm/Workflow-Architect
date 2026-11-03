@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { z } from 'zod'
 import { editorialBudgetSchema, editorialIssueSchema, editorialTaskSchema, editorialVersionSchema } from './schema'
+import { processSnapshotSchema } from './process-schema'
 
 const time = z.iso.datetime()
 const metrics = z.strictObject({ inputTokens: z.number().int().nonnegative(), outputTokens: z.number().int().nonnegative(), durationMs: z.number().int().nonnegative() })
@@ -25,6 +26,7 @@ export const editorialSettingsSchema = z.strictObject({
   contextTokens: z.number().int().min(2048).max(32768),
   maxOutputTokens: z.number().int().min(128).max(8192),
   temperature: z.number().min(0).max(2),
+  seed: z.number().int().min(0).max(2147483647).optional(),
   callTimeoutMs: z.number().int().min(1000).max(900000),
 })
 export const editorialCallSchema = z.strictObject({
@@ -38,7 +40,8 @@ export const editorialCallSchema = z.strictObject({
   metrics: metrics.optional(), error: z.string().max(4000).optional(),
 })
 export const editorialStateSchema = z.strictObject({
-  schemaVersion: z.literal('0.5.4'), id: z.uuid(), task: editorialTaskSchema,
+  schemaVersion: z.enum(['0.5.4', '0.5.5']), id: z.uuid(), task: editorialTaskSchema,
+  process: processSnapshotSchema.optional(),
   contextDigest: z.string().regex(/^[a-f0-9]{64}$/),
   settings: editorialSettingsSchema, budget: editorialBudgetSchema,
   createdAt: time, deadline: z.number().int().positive(),
@@ -47,6 +50,8 @@ export const editorialStateSchema = z.strictObject({
   calls: z.array(editorialCallSchema).max(7),
   versions: z.array(editorialVersionSchema).max(3),
   spentTokens: z.number().int().nonnegative(),
+}).superRefine((state, ctx) => {
+  if ((state.process || state.settings.seed !== undefined || state.task.schemaVersion === '0.5.5') && state.schemaVersion !== '0.5.5') ctx.addIssue({ code: 'custom', message: 'Снимок процесса, тип результата и seed требуют версии состояния 0.5.5.' })
 })
 export type EditorialState = z.infer<typeof editorialStateSchema>
 export type EditorialSettings = z.infer<typeof editorialSettingsSchema>

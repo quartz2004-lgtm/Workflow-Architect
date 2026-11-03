@@ -101,6 +101,7 @@ export class OllamaProvider implements ModelProvider {
   }
   async chat(request: ModelRequest, signal: AbortSignal): Promise<ModelResponse> {
     localModelNameSchema.parse(request.model)
+    const seed = z.number().int().min(0).max(2147483647).optional().parse(request.seed)
     const images = modelImagesSchema.parse(request.messages.flatMap(message => message.images ?? []))
     if (images.length && request.messages.some(message => message.images?.length && message.role !== 'user')) throw new Error('Изображения допустимы только в пользовательском сообщении.')
     const data = replySchema.parse(await this.request('/api/chat', {
@@ -112,7 +113,7 @@ export class OllamaProvider implements ModelProvider {
       })),
       ...(request.tools.length ? { tools: request.tools.map(tool => ({ type: 'function', function: tool })) } : {}),
       ...(request.outputSchema ? { format: request.outputSchema } : {}),
-      options: { num_predict: request.maxOutputTokens, num_ctx: request.contextTokens, temperature: request.temperature },
+      options: { num_predict: request.maxOutputTokens, num_ctx: request.contextTokens, temperature: request.temperature, ...(seed !== undefined ? { seed } : {}) },
     }, signal))
     return { content: data.message.content, toolCalls: (data.message.tool_calls ?? []).map(call => call.function),
       inputTokens: data.prompt_eval_count, outputTokens: data.eval_count, finish: data.done_reason }

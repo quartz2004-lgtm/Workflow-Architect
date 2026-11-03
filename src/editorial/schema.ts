@@ -19,21 +19,35 @@ import { z } from 'zod'
 export { editorialBudgetSchema, defaultEditorialBudget } from '../domain/editorial-config'
 
 /** Shared by manual input and delivery adapters; transport metadata stays outside. */
-export const editorialTaskSchema = z.strictObject({
-  schemaVersion: z.literal('0.5.4'),
+export const editorialKinds = ['knowledge-answer', 'article', 'revision', 'short-block', 'content-plan', 'reels'] as const
+const taskFields = {
   text: z.string().trim().min(1, 'Опишите, какой текст нужно подготовить.').max(12000),
   audience: z.string().trim().min(1).max(1000),
-  minimumWords: z.number().int().min(100).max(5000),
   language: z.literal('Русский'),
   previousArticle: z.string().max(100000).optional(),
+}
+const legacyTask = z.strictObject({ ...taskFields, schemaVersion: z.literal('0.5.4'), minimumWords: z.number().int().min(100).max(5000) })
+const typedTask = z.strictObject({
+  ...taskFields, schemaVersion: z.literal('0.5.5'), kind: z.enum(editorialKinds),
+  minimumWords: z.number().int().min(0).max(5000),
+  maximumWords: z.number().int().min(1).max(10000).optional(),
+  minimumSections: z.number().int().min(0).max(30),
+  requiredItems: z.number().int().min(1).max(100).optional(),
+}).superRefine((task, ctx) => {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
+  if (task.maximumWords !== undefined && task.maximumWords < task.minimumWords) fail('Максимальный объём меньше минимального.')
+  if (task.kind === 'article' && (task.minimumWords < 600 || task.minimumSections < 2)) fail('Статья требует минимум 600 слов и два раздела.')
+  if (task.kind === 'short-block' && (task.minimumWords !== 100 || task.maximumWords !== 130)) fail('Короткий блок должен содержать 100–130 слов.')
+  if (task.kind === 'revision' && !task.previousArticle?.trim()) fail('Для правки нужен исходный текст.')
 })
+export const editorialTaskSchema = z.union([legacyTask, typedTask])
 export type EditorialTask = z.infer<typeof editorialTaskSchema>
 
 /** The full previous article is stored in task evidence, not charged again to the source packet. */
 export function editorialKnowledgeRequest(task: EditorialTask) {
   const title = task.previousArticle?.split('\n').find(line => /^#\s+/.test(line))?.replace(/^#\s+/, '').slice(0, 300)
   return {
-    task: JSON.stringify({ schemaVersion: task.schemaVersion, text: task.text, audience: task.audience, minimumWords: task.minimumWords, language: task.language }),
+    task: JSON.stringify({ ...task, previousArticle: undefined }),
     query: [task.text, title].filter(Boolean).join('\n'),
   }
 }
@@ -41,6 +55,7 @@ export function editorialKnowledgeRequest(task: EditorialTask) {
 /** Read only explicitly supported legacy fields, never stringify a Telegram envelope. */
 export function normalizeEditorialTask(input: unknown, minimumWords = 600): EditorialTask {
   if (typeof input === 'string') return editorialTaskSchema.parse({ schemaVersion: '0.5.4', text: input, audience: 'Общая аудитория', minimumWords, language: 'Русский' })
+  if (input && typeof input === 'object' && ('kind' in input || 'schemaVersion' in input && input.schemaVersion === '0.5.5')) return typedTask.parse(input)
   const envelope = z.object({
     text: z.string().optional(), topic: z.string().optional(),
     audience: z.string().optional(), minimumWords: z.number().optional(),

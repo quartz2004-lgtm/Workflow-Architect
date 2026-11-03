@@ -34,6 +34,25 @@ function source(documents: KnowledgeDocument[]): ContextSource {
 const request = { profileId: profileIds[0], runId: randomUUID(), task: 'Подготовить описание товара', query: 'уход', maxBytes: 12000 }
 
 describe('immutable local context selection', () => {
+  it('recognizes a whole slash-containing article without selecting its prefix or suffix neighbours', () => {
+    const input = source([document({ models: [
+      { canonical_sku: 'EXACT', article: 'B01-DM-01-01/02', name: 'Комплект', care_profile_ids: ['care'] },
+      { canonical_sku: 'PREFIX', article: 'B01-DM-01-01', name: 'Комплект' },
+      { canonical_sku: 'SUFFIX', article: 'B01-DM-01-01/020', name: 'Комплект' },
+    ] }), document({ id: 'care', rules: 'Check label' }), document('# Комплект\n' + 'Комплект '.repeat(1000), 'guide.md')])
+    const result = buildContextPacket({ ...request, query: 'Комплект «b01-dm-01-01/02».', maxBytes: 3500 }, [input])
+    expect(result.excerpts.flatMap(item => item.skus)).toEqual(['EXACT'])
+    expect(result.excerpts.some(item => item.sourceIds.includes('care'))).toBe(true)
+    expect(result.gaps).toEqual([])
+  })
+  it('escapes regex punctuation in catalogue identifiers', () => {
+    const input = source([document({ models: [
+      { canonical_sku: 'EXACT', article: 'A.1+(B)/02' },
+      { canonical_sku: 'OTHER', article: 'Ax111B/02' },
+    ] })])
+    const result = buildContextPacket({ ...request, query: 'A.1+(B)/02' }, [input])
+    expect(result.excerpts.flatMap(item => item.skus)).toEqual(['EXACT'])
+  })
   it('prioritizes two exact catalogue articles and shared care over broad lexical matches', () => {
     const input = source([
       document({ models: [

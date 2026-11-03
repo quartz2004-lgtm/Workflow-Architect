@@ -29,6 +29,7 @@ import { recoveryDecision } from './recovery-policy'
 import type { ProviderResolver } from '../execution/agent-operation'
 import type { ConnectorExecutor } from '../execution/connector-operation'
 import type { RuntimeKnowledge } from '../knowledge/runtime'
+import type { EditorialProcessService } from '../editorial/process-service'
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -52,7 +53,7 @@ export class JobManager {
   private stopped = false
   private fault = ''
   readonly damaged: { id: string; message: string }[] = []
-  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver; connector?: (profileId: string) => ConnectorExecutor; knowledge?: RuntimeKnowledge } = {}) {
+  constructor(directory: string, private readonly options: { concurrency?: number; limits?: Partial<StoreLimits>; changed?: (job: RuntimeJob) => void; unavailable?: (message: string) => void; provider?: (profileId: string) => ProviderResolver; connector?: (profileId: string) => ConnectorExecutor; knowledge?: RuntimeKnowledge; editorialProcess?: Pick<EditorialProcessService, 'capture' | 'assertUsable'> } = {}) {
     if (!Number.isInteger(options.concurrency ?? 2) || (options.concurrency ?? 2) < 1 || (options.concurrency ?? 2) > 4) throw new Error('Параллельность должна быть от 1 до 4.')
     this.disk = new AtomicStore(directory, jobSchema, options.limits)
     for (const id of this.disk.ids()) {
@@ -70,6 +71,16 @@ export class JobManager {
   }
   private verify(job: RuntimeJob, id: string) {
     if (job.id !== id || fingerprint(requestData(job)) !== job.fingerprint) throw new Error('Нарушена целостность задания.')
+    if (job.queueExpiresAt !== undefined || job.executionStartedAt !== undefined) {
+      if (job.recordVersion !== '0.5.5' || job.queueExpiresAt === undefined || job.executionStartedAt === undefined) throw new Error('Раздельные сроки очереди требуют записи 0.5.5.')
+      if (job.executionStartedAt === null) {
+        if (job.checkpoint || job.attempts || job.deadline !== job.queueExpiresAt) throw new Error('Задание без первого старта содержит состояние выполнения.')
+      } else if (job.deadline !== job.executionStartedAt + job.plan.limits.timeoutMs) throw new Error('Срок выполнения не соответствует первому старту.')
+    }
+    if (job.recordVersion === '0.5.5') {
+      if (job.preparedProcess === undefined || createHash('sha256').update(canonical(job.preparedProcess)).digest('hex') !== job.processDigest) throw new Error('Нарушена целостность редакционных настроек.')
+      if (job.preparedProcess && job.preparedProcess.profileId !== job.profileId) throw new Error('Редакционные настройки принадлежат другому профилю.')
+    } else if (job.preparedProcess !== undefined || job.processDigest) throw new Error('Редакционные настройки требуют recordVersion 0.5.5.')
     if (job.recordVersion !== '0.3.1') {
       if (!job.preparedKnowledge || createHash('sha256').update(canonical(job.preparedKnowledge)).digest('hex') !== job.knowledgeDigest) throw new Error('Нарушена целостность пакета знаний.')
       if (job.preparedKnowledge.some(entry => entry.packet.runId !== job.id || entry.packet.profileId !== job.profileId)) throw new Error('Пакет знаний относится к другому запуску.')
@@ -134,10 +145,15 @@ export class JobManager {
     if (configuredKnowledge && !this.options.knowledge) throw new Error('Runtime не поддерживает выбранные источники Agent.')
     const preparedKnowledge = this.options.knowledge?.prepare(request.profileId, request.id, compiled.plan.snapshot, request.input) ?? []
     const knowledgeDigest = createHash('sha256').update(canonical(preparedKnowledge)).digest('hex')
+    const editorial = graphEntries(compiled.plan.snapshot).some(({ graph }) => graph.nodes.some(node => node.status !== 'disabled' && node.operation?.kind === 'agent' && node.operation.editorial))
+    const preparedProcess = editorial && this.options.editorialProcess ? this.options.editorialProcess.capture(request.profileId) : null
+    const processRecord = this.options.editorialProcess ? { preparedProcess, processDigest: createHash('sha256').update(canonical(preparedProcess)).digest('hex') } : {}
     const timestamp = nowISO()
-    const job = jobSchema.parse({ recordVersion: '0.5.4', preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
+    const queueExpiresAt = Date.now() + 24 * 60 * 60 * 1000
+    const timing = this.options.editorialProcess ? { queueExpiresAt, executionStartedAt: null, deadline: queueExpiresAt } : { deadline: Date.now() + compiled.plan.limits.timeoutMs }
+    const job = jobSchema.parse({ recordVersion: this.options.editorialProcess ? '0.5.5' : '0.5.4', ...processRecord, preparedKnowledge, knowledgeDigest, id: request.id, profileId: request.profileId, eventKey: request.eventKey, fingerprint: hash,
       createdAt: timestamp, updatedAt: timestamp, background: request.background, plan: compiled.plan, input: request.input,
-      status: 'queued', cancelRequested: false, attempts: 0, deadline: Date.now() + compiled.plan.limits.timeoutMs, retryAt: 0,
+      status: 'queued', cancelRequested: false, attempts: 0, ...timing, retryAt: 0,
       message: '', checkpoint: null, events: [], outcome: null })
     this.commit(job, true); this.schedule()
     return structuredClone(job)
@@ -207,19 +223,33 @@ export class JobManager {
   }
   private pump() {
     if (!this.available) return
-    for (const job of [...this.jobs.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    for (const job of [...this.jobs.values()].sort((a, b) => Number(!!b.checkpoint) - Number(!!a.checkpoint) || a.createdAt.localeCompare(b.createdAt))) {
       if (job.status !== 'queued' || this.running.has(job.id)) continue
       if (Date.now() >= job.deadline) {
         try { this.commit({ ...job, status: 'failed', message: 'Истёк timeout ожидания в очереди.' }) } catch (error) { this.storageFailed(error); return }
-      } else if (this.running.size < (this.options.concurrency ?? 2) && Date.now() >= job.retryAt) this.launch(job)
+      } else if (this.running.size < (this.options.concurrency ?? 2)) {
+        // Preserve slots for restoring earlier work, especially an existing Human wait.
+        // Otherwise fresh jobs can occupy every slot while recovery is backing off.
+        if (Date.now() < job.retryAt) break
+        this.launch(job)
+      }
     }
     if ([...this.jobs.values()].some(job => job.status === 'queued')) this.schedule(100)
   }
   private launch(job: RuntimeJob) {
+    if (job.executionStartedAt === null) {
+      const executionStartedAt = Date.now()
+      job = { ...job, executionStartedAt, deadline: executionStartedAt + job.plan.limits.timeoutMs }
+    }
     let events = [...job.events]
     try {
       const run = new ExecutionRun(job.plan, event => { events.push(event) }, { runId: job.recordVersion !== '0.3.1' ? job.id : undefined,
         knowledge: this.options.knowledge ? nodeId => this.options.knowledge!.resolve(job.profileId, job.id, job.preparedKnowledge ?? [], nodeId) : undefined,
+        editorialProcess: () => {
+          if (!job.preparedProcess) return null
+          if (!this.options.editorialProcess) throw new Error('Хранилище редакционных настроек недоступно.')
+          return this.options.editorialProcess.assertUsable(job.profileId, job.preparedProcess)
+        },
         provider: this.options.provider?.(job.profileId), connector: this.options.connector?.(job.profileId), checkpoint: job.checkpoint ?? undefined, deadline: job.deadline, save: checkpoint => {
         const current = this.jobs.get(job.id)!
         const outcome = this.outcome(checkpoint, events)

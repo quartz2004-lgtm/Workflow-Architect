@@ -18,6 +18,7 @@ along with this program.  If not, see <https://gnu.org>.
 import type { EditorialState } from './engine-schema'
 import { countWords } from '../ai/agent'
 import { downloadText } from '../shared/download'
+import { resultTypes } from './task-form'
 
 const phases: Record<EditorialState['phase'], string> = {
   planner: 'Готовим замысел', writer: 'Пишем текст', reviewer: 'Проверяем текст',
@@ -25,10 +26,12 @@ const phases: Record<EditorialState['phase'], string> = {
   'needs-editing': 'Требуется редактура', interrupted: 'Этап прерван · результат запроса неизвестен', cancelled: 'Редакция отменена',
 }
 export function EditorialRunView({ state, decision }: { state: EditorialState; decision?: 'approved' | 'rejected' | 'waiting' }) {
+  const kind = state.task.schemaVersion === '0.5.5' ? state.task.kind : 'article'
   const readyLabel = decision === 'approved' ? 'Вы подтвердили эту версию' : decision === 'rejected' ? 'Вы отклонили эту версию' : decision === 'waiting' ? 'ожидает вашего решения' : 'подтверждение не получено'
   return <section className="run-editorial" aria-label="Редакционный процесс">
     <h3>{state.phase === 'awaiting-human' && decision !== 'waiting' ? readyLabel : phases[state.phase]}</h3>
     <p className="muted">Замысел → текст → проверка → ваше подтверждение. Локально, без облачного ИИ.</p>
+    <p>{resultTypes.find(item => item.kind === kind)?.label} · минимум {state.task.minimumWords} слов{state.task.schemaVersion === '0.5.5' && state.task.maximumWords !== undefined ? `, максимум ${state.task.maximumWords}` : ''}{state.task.schemaVersion === '0.5.5' && state.task.requiredItems !== undefined ? ` · ${state.task.requiredItems} пунктов` : ''}</p>
     <p>{state.versions.length} из {state.budget.maxRevisions} версий · {state.spentTokens.toLocaleString('ru')} токенов из {state.budget.maxTotalTokens.toLocaleString('ru')}</p>
     {!!state.issues.length && <ul>{state.issues.map((issue, index) => <li key={index}>{issue.origin === 'reviewer' ? 'Замечание модели' : 'Проверка программы'}: {issue.message}</li>)}</ul>}
     {state.plan && <details><summary>Редакционный замысел</summary><pre>{state.plan}</pre></details>}

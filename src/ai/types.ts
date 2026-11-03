@@ -35,6 +35,8 @@ export interface ModelRequest {
   maxOutputTokens: number
   contextTokens: number
   temperature: number
+  /** Optional experiment seed; omission preserves the provider default. */
+  seed?: number
 }
 export interface ModelResponse {
   content: string
