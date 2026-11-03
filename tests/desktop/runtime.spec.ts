@@ -128,6 +128,8 @@ test('Run UI preserves profile history across reconnect, window close and native
     await page.getByRole('button', { name: /^Run ·/ }).click()
     let panel = page.getByRole('region', { name: 'Локальное выполнение', exact: true })
     await expect(panel.getByText('Фоновый сервис подключён', { exact: true })).toBeVisible()
+    await panel.getByRole('combobox', { name: /Обработать текст/ }).selectOption('true')
+    await panel.getByRole('textbox', { name: /Ваш текст/ }).fill('Workflow Architect')
     await panel.getByLabel('Разрешить этому запуску работать после закрытия окна').check()
     await panel.getByRole('button', { name: 'Запустить workflow' }).click()
     await expect(panel.getByRole('heading', { name: 'Нужен ваш ответ', exact: true })).toBeVisible()

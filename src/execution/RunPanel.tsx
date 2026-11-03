@@ -39,6 +39,7 @@ import { editorialKnowledgeRequest } from '../editorial/schema'
 import { resultTypes, taskFromForm } from '../editorial/task-form'
 import { BatchPanel } from '../editorial/BatchPanel'
 import { ModelReadiness } from '../ai/ModelReadiness'
+import { APP_VERSION } from '../shared/version'
 import { useProfile } from '../profiles/context'
 import { knowledgeRequest } from '../knowledge/client'
 import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
@@ -130,7 +131,7 @@ export function RunPanel() {
   const currentProject = state.snapshot?.project.id === project.project.id
   const lastPage = Math.max(0, Math.ceil(state.events.length / 50) - 1), currentPage = Math.min(page ?? lastPage, lastPage)
   return <section className="run-panel" aria-label="Локальное выполнение">
-    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.5.5</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
+    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · {APP_VERSION}</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
     <div className="run-body">
       {project.nodes.some(node => node.operation?.kind === 'agent') && <ModelReadiness />}
       <p className="muted">Локально · без облачного ИИ. Обычные сценарии — до 5 минут; редакция имеет отдельный конечный бюджет и ожидание подтверждения, весь запуск — до двух часов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>

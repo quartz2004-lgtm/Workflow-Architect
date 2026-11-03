@@ -22,10 +22,16 @@ import { configureOperation } from './configure-operation'
 /** A runnable example built from the same public domain configuration as Inspector forms. */
 export function createExecutionExample() {
   const project = createProject('Первый локальный запуск')
-  project.project.description = 'Run: {"approved":true,"text":"Workflow Architect"}. Меняйте approved для проверки двух ветвей. Подтвердите Human и сохраните result.json.'
+  project.project.description = 'Откройте запуск, выберите «Обработать текст — Да» и введите текст. Подтвердите результат и сохраните result.json. Ответ «Нет» проверяет ветвь доработки. Модель и интернет не нужны.'
   project.settings.defaultMode = 'engineering'
   const node = (type: WorkflowNode['type'], kind: string, title: string, x: number, y: number) => ({ ...configureOperation(createNode(type, { x, y }), kind), title })
   const trigger = node('trigger', 'manual', '1. Ручной вход', 80, 240)
+  if (trigger.type === 'trigger') trigger.config.payload = { kind: 'json-schema', schema: {
+    type: 'object', required: ['approved', 'text'], properties: {
+      approved: { type: 'boolean', title: 'Обработать текст', description: 'Да — текст станет прописными буквами. Нет — вернётся сообщение о доработке.' },
+      text: { type: 'string', title: 'Ваш текст', description: 'Введите текст для обработки, например Workflow Architect.' },
+    }, examples: [{ approved: true, text: 'Workflow Architect' }],
+  } }
   const condition = node('logic', 'if', '2. Разрешено?', 420, 240)
   const nested = node('subworkflow', 'subworkflow', '3. Обработать текст', 760, 80)
   const alternate = node('data', 'map', '3. Нужна доработка', 760, 420)

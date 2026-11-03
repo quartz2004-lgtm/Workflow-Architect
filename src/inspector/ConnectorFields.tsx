@@ -16,6 +16,8 @@ along with this program.  If not, see <https://gnu.org>.
 */
 
 import { useEffect, useState } from 'react'
+import { useStore } from 'zustand'
+import { useEditor } from '../app/context'
 import type { WorkflowNode } from '../domain/schema'
 import type { ExecutionConfig } from '../domain/execution-config'
 import { useProfile } from '../profiles/context'
@@ -27,12 +29,13 @@ import { SelectField } from './controls'
 import { SourceField } from './ExecutionFields'
 
 export function ConnectorFields({ node, commit }: { node: WorkflowNode; commit(value: ExecutionConfig): void }) {
+  const editor = useEditor(), dialog = useStore(editor.uiStore, state => state.serviceDialog)
   const profile = useProfile()?.profile, [connections, setConnections] = useState<IntegrationConnection[]>([]), [problem, setProblem] = useState('')
   useEffect(() => {
     let active = true
     if (profile && window.workflowDesktop?.runtime) void integrationRequest({ action: 'list', profileId: profile.id }).then(value => { if (active) setConnections(integrationStateSchema.parse(value).connections) }).catch(error => { if (active) setProblem(String(error)) })
     return () => { active = false }
-  }, [profile])
+  }, [profile, dialog])
   const operation = node.operation
   if (operation?.kind !== 'connector') return null
   const definition = connectorCatalog[operation.action], kind = actionConnectionKinds[operation.action]
@@ -40,7 +43,8 @@ export function ConnectorFields({ node, commit }: { node: WorkflowNode; commit(v
   return <>
     <SelectField label="Действие подключения" helpKey="integrations.action" value={operation.action} empty={false} options={Object.entries(connectorCatalog).map(([value, item]) => ({ value, label: item.title }))} commit={value => { const action = value as ActionName; commit({ ...operation, action, fields: connectorCatalog[action].fields.filter(field => !field.optional).map(field => ({ key: field.key, source: { kind: 'literal', value: field.value }, transform: 'identity' })) }) }} />
     <SelectField label="Подключение профиля" helpKey="integrations.connection" value={operation.connectionId} options={available.map(item => ({ value: item.id, label: `${item.label}${item.enabled ? '' : ' · отключено'}` }))} commit={connectionId => { if (connectionId) commit({ ...operation, connectionId }) }} />
-    {!available.length && <p className="muted">Создайте подключение в разделе «Интеграции» внизу окна.</p>}
+    {!available.length && <p className="muted">Сначала создайте подключение. После закрытия настроек оно появится в списке; копировать ID не нужно.</p>}
+    <button onClick={() => editor.uiStore.setState({ serviceDialog: 'integrations' })}>Настроить или проверить подключения</button>
     {problem && <p role="alert" className="field-error">{problem}</p>}
     <p className="muted">{definition.description}</p>
     {definition.fields.map(field => {
