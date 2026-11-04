@@ -17,6 +17,38 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { test, expect } from './fixtures'
 
+test('two profiles keep separate practical sessions and completion records', async ({ page }) => {
+  await page.getByRole('button', { name: 'Обучение', exact: true }).click()
+  await page.getByRole('button', { name: 'Начать урок · 1.1 · Создать и назвать идею', exact: true }).click()
+  const coach = page.getByRole('complementary', { name: 'Практический урок' })
+  await expect(coach).toContainText('Добавьте Concept Node')
+  await page.locator('.library').getByRole('button', { name: /Concept Node/ }).click()
+  await expect(coach).toContainText('Назовите идею')
+  await page.getByRole('button', { name: /^Профили:/ }).click()
+  await page.getByRole('button', { name: 'Профиль 2 · переключиться', exact: true }).click()
+  await page.getByRole('button', { name: 'Пропустить настройку', exact: true }).click()
+  await expect(coach).toHaveCount(0)
+  await page.getByRole('button', { name: 'Обучение', exact: true }).click()
+  await expect(page.getByText('Выполнено уроков: 0 из 12. Можно повторять уроки и выбирать нужную тему.')).toBeVisible()
+  await page.getByRole('button', { name: 'Начать урок · 1.3 · Отмена и повтор', exact: true }).click()
+  await expect(coach).toContainText('Добавьте Concept Node')
+  await page.locator('.library').getByRole('button', { name: /Concept Node/ }).click()
+  await page.getByRole('button', { name: 'Отменить', exact: true }).click()
+  await page.getByRole('button', { name: 'Повторить', exact: true }).click()
+  await expect(coach.getByRole('heading', { name: 'Урок выполнен' })).toBeVisible()
+  await page.getByRole('button', { name: /^Профили:/ }).click()
+  await page.getByRole('button', { name: 'Профиль 1 · переключиться', exact: true }).click()
+  await expect(coach.getByRole('heading', { name: 'Назовите идею' })).toBeVisible()
+  await page.getByRole('button', { name: 'Обучение', exact: true }).click()
+  await expect(page.getByText('Выполнено уроков: 0 из 12. Можно повторять уроки и выбирать нужную тему.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: /^Профили:/ }).click()
+  await page.getByRole('button', { name: 'Профиль 2 · переключиться', exact: true }).click()
+  await expect(coach.getByRole('heading', { name: 'Урок выполнен' })).toBeVisible()
+  await page.getByRole('button', { name: 'Обучение', exact: true }).click()
+  await expect(page.getByText('Выполнено уроков: 1 из 12. Можно повторять уроки и выбирать нужную тему.')).toBeVisible()
+})
+
 test('connection lesson requires a real directed edge', async ({ page }) => {
   await page.getByRole('button', { name: 'Обучение', exact: true }).click()
   await page.getByRole('button', { name: 'Начать урок · 1.2 · Связать два шага', exact: true }).click()
