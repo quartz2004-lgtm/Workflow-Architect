@@ -15,13 +15,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
+import { useServiceDialog } from '../app/service-dialog'
 import { createPortal } from 'react-dom'
 import { useProfile } from '../profiles/context'
 
 const Workbench = lazy(() => import('./AiWorkbench').then(module => ({ default: module.AiWorkbench })))
 export function AiMenu() {
-  const [open, setOpen] = useState(false), profile = useProfile()
+  const [open, setOpen] = useServiceDialog('ai'), profile = useProfile()
   if (!profile) return null
-  return <><button onClick={() => setOpen(true)}>ИИ-помощник</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем ИИ-помощника…</div>}><Workbench key={profile.profile.id} close={() => setOpen(false)} /></Suspense>, document.body)}</>
+  return <><button data-tour="ai" onClick={() => setOpen(true)}>ИИ-помощник</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем ИИ-помощника…</div>}><Workbench key={profile.profile.id} close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }

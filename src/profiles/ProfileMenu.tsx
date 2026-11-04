@@ -28,7 +28,7 @@ export function ProfileMenu({ autosave }: { autosave: Autosave }) {
   const session = useProfile()
   const [open, setOpen] = useState(false)
   if (!session) return null
-  return <><button className="profile-button" onClick={() => setOpen(true)} aria-label={`Профили: ${session.profile.name}`}>◎ {session.profile.name}</button>{open && createPortal(<ProfileDialog autosave={autosave} close={() => setOpen(false)} />, document.body)}</>
+  return <><button data-tour="profile" className="profile-button" onClick={() => setOpen(true)} aria-label={`Профили: ${session.profile.name}`}>◎ {session.profile.name}</button>{open && createPortal(<ProfileDialog autosave={autosave} close={() => setOpen(false)} />, document.body)}</>
 }
 
 function ProfileDialog({ autosave, close }: { autosave: Autosave; close: () => void }) {

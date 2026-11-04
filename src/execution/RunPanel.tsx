@@ -15,7 +15,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import { useEditor } from '../app/context'
 import { graphEntries } from '../domain/graphs'
@@ -27,12 +27,19 @@ import { resolveContract } from './compiler'
 import { runStatusLabels } from './view-state'
 export { runStatusLabels } from './view-state'
 import './run-panel.css'
-import { articleBrief } from './article-example'
+import { initialRunDraft, updateRunDraft, type RunDraft } from './draft-store'
+import { contractForm, readContractForm } from './contract-fields'
+import { ContractFields } from './ContractFields'
+import { compileContract } from './contracts'
+import { contractExample } from './contract-example'
+import type { JsonValue } from '../domain/execution-config'
 import { ContextPacketView } from '../knowledge/ContextPacketView'
 import { EditorialRunView } from '../editorial/EditorialRunView'
 import { editorialKnowledgeRequest } from '../editorial/schema'
-import { resultTypes, taskFromForm, type EditorialKind } from '../editorial/task-form'
+import { resultTypes, taskFromForm } from '../editorial/task-form'
 import { BatchPanel } from '../editorial/BatchPanel'
+import { ModelReadiness } from '../ai/ModelReadiness'
+import { APP_VERSION } from '../shared/version'
 import { useProfile } from '../profiles/context'
 import { knowledgeRequest } from '../knowledge/client'
 import { contextPacketSchema, type ContextPacket } from '../knowledge/context'
@@ -56,19 +63,32 @@ export function RunPanel() {
   const editor = useEditor(), state = useStore(editor.runtime.store)
   const project = useStore(editor.projectStore, state => state.project)
   const entries = project.nodes.filter(node => node.type === 'trigger' && node.status !== 'disabled')
-  const [entryId, setEntryId] = useState(entries[0]?.id ?? '')
-  const [input, setInput] = useState(project.nodes.some(node => node.operation?.kind === 'agent') ? JSON.stringify(articleBrief, null, 2) : '{\n  "approved": true,\n  "text": "Workflow Architect"\n}'), [error, setError] = useState('')
+  const initialDraft = useMemo(() => initialRunDraft(project), [project])
+  const draft = useStore(editor.runDraftStore, state => state.drafts[project.project.id]) ?? initialDraft
+  const change = <K extends keyof RunDraft>(key: K, value: RunDraft[K]) => updateRunDraft(editor.runDraftStore, project, { [key]: value })
+  const { entryId, input, task, audience, minimumWords, previousArticle, resultKind, items, advancedInput } = draft
+  const setEntryId = (value: string) => change('entryId', value), setInput = (value: string) => change('input', value)
+  const setTask = (value: string) => change('task', value), setAudience = (value: string) => change('audience', value)
+  const setMinimumWords = (value: number) => change('minimumWords', value), setPreviousArticle = (value: string) => change('previousArticle', value)
+  const setResultKind = (value: RunDraft['resultKind']) => change('resultKind', value), setItems = (value: number) => change('items', value)
+  const setAdvancedInput = (value: boolean) => change('advancedInput', value)
+  const [error, setError] = useState('')
   const [page, setPage] = useState<number | null>(null)
   const profile = useProfile()?.profile
-  const [task, setTask] = useState(articleBrief.topic), [audience, setAudience] = useState(articleBrief.audience), [minimumWords, setMinimumWords] = useState(600)
-  const [previousArticle, setPreviousArticle] = useState('')
-  const [resultKind, setResultKind] = useState<EditorialKind>('article'), [items, setItems] = useState(5)
-  const [advancedInput, setAdvancedInput] = useState(false), [dossier, setDossier] = useState<{ key: string; packet: ContextPacket } | null>(null), [previewBusy, setPreviewBusy] = useState(false)
+  const [dossier, setDossier] = useState<{ key: string; packet: ContextPacket } | null>(null), [previewBusy, setPreviewBusy] = useState(false)
   const close = useRef<HTMLButtonElement>(null)
   useEffect(() => { close.current?.focus() }, [])
   const active = ['queued', 'running', 'waiting'].includes(state.status)
   const busy = active || state.actionPending
   const selected = entries.some(node => node.id === entryId) ? entryId : entries[0]?.id ?? ''
+  const trigger = entries.find(node => node.id === selected)
+  let inputSchema: unknown, schemaError = ''
+  try { if (trigger?.type === 'trigger' && trigger.config.payload) inputSchema = resolveContract(trigger.config.payload, project) }
+  catch (error) { schemaError = error instanceof Error ? error.message : String(error) }
+  const inputForm = inputSchema === undefined ? undefined : contractForm(inputSchema)
+  const example = contractExample(inputSchema)
+  const contractKey = JSON.stringify([selected, inputSchema])
+  const contractValues = draft.contractValues[contractKey] ?? {}
   const editorialNode = project.nodes.find(node => node.operation?.kind === 'agent' && node.operation.editorial && project.edges.some(edge => edge.type === 'flow' && edge.sourceNode === selected && edge.targetNode === node.id))
   const dossierKey = JSON.stringify([profile?.id, project.project.id, editorialNode, task, audience, minimumWords, previousArticle, resultKind, items])
   const formTask = () => taskFromForm({ kind: resultKind, text: task, audience, minimumWords, items, previousArticle })
@@ -76,7 +96,18 @@ export function RunPanel() {
   const editorialAnswer = state.events.findLast(event => event.kind === 'human-answer')
   const editorialDecision = editorialAnswer?.kind === 'human-answer' ? editorialAnswer.value === true ? 'approved' : 'rejected' : state.status === 'waiting' ? 'waiting' : undefined
   const start = () => {
-    if (!editorialNode || advancedInput) { parse(input, value => { setPage(null); editor.runtime.start(project, selected, value) }); return }
+    if (!editorialNode || advancedInput) {
+      try {
+        if (schemaError) throw new Error(schemaError)
+        const value = !editorialNode && inputForm && !advancedInput ? readContractForm(inputForm, contractValues) : JSON.parse(input) as JsonValue
+        if (inputSchema !== undefined) {
+          const issues = compileContract(inputSchema)(value)
+          if (issues.length) throw new Error(issues.map(issue => `${issue.path}: ${issue.message}`).join('\n'))
+        }
+        setError(''); setPage(null); editor.runtime.start(project, selected, value)
+      } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
+      return
+    }
     try { const value = formTask(); setError(''); setPage(null); editor.runtime.start(project, selected, value) }
     catch (error) { setError(error instanceof Error ? error.message : String(error)) }
   }
@@ -99,10 +130,10 @@ export function RunPanel() {
   const label = (id: string) => nodes.find(node => node.id === id)?.title ?? id
   const currentProject = state.snapshot?.project.id === project.project.id
   const lastPage = Math.max(0, Math.ceil(state.events.length / 50) - 1), currentPage = Math.min(page ?? lastPage, lastPage)
-  const parse = (text: string, action: (value: unknown) => void) => { try { action(JSON.parse(text)); setError('') } catch (error) { setError(error instanceof Error ? error.message : String(error)) } }
   return <section className="run-panel" aria-label="Локальное выполнение">
-    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · 0.5.5</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
+    <header className="run-heading"><div><span className="eyebrow">LOCAL RUN · {APP_VERSION}</span><h2>{runStatusLabels[state.status]}</h2></div><button ref={close} aria-label="Скрыть Run" onClick={() => editor.runtime.store.setState({ open: false })}>×</button></header>
     <div className="run-body">
+      {project.nodes.some(node => node.operation?.kind === 'agent') && <ModelReadiness />}
       <p className="muted">Локально · без облачного ИИ. Обычные сценарии — до 5 минут; редакция имеет отдельный конечный бюджет и ожидание подтверждения, весь запуск — до двух часов. {editor.runtime.native ? 'История сохраняется на компьютере. Полный выход через tray прерывает выполнение с сохранением контрольной точки.' : 'В браузере закрытие вкладки прервёт запуск; история доступна до перезагрузки.'}</p>
       {editor.runtime.native && (editorialNode || latestEditorial ? <details><summary>История запусков и фоновая работа</summary><RuntimeControls runtime={editor.runtime} native={editor.runtime.native} /></details> : <RuntimeControls runtime={editor.runtime} native={editor.runtime.native} />)}
       {editor.runtime.native && editorialNode && profile && <details><summary>Очередь нескольких статей</summary><BatchPanel key={`${profile.id}:${project.project.id}:${selected}`} profileId={profile.id} project={project} entryNodeId={selected} native={editor.runtime.native} /></details>}
@@ -115,6 +146,15 @@ export function RunPanel() {
         <button disabled={state.actionPending} onClick={() => { setPreviousArticle(''); setTask(''); setDossier(null); setAdvancedInput(false); setError(''); editor.runtime.native!.newRun() }}>Новое задание</button>
       </div>}
       {(!editor.runtime.native || !state.jobId) && <div className="run-start"><label>Ручной Trigger<select aria-label="Ручной Trigger" disabled={busy} value={selected} onChange={event => setEntryId(event.target.value)}>{!entries.length && <option value="">Добавьте Trigger на Canvas</option>}{entries.map(node => <option key={node.id} value={node.id}>{node.title}</option>)}</select></label>
+        <p className="muted">Ввод сохраняется при закрытии этой панели и переходах между проектами до закрытия приложения или смены профиля. Это ещё не запущенная задача.</p>
+        {!editorialNode && inputForm && <>
+          {!advancedInput && <ContractFields form={inputForm} values={contractValues} disabled={busy} change={values => change('contractValues', { ...draft.contractValues, [contractKey]: values })} />}
+          <label className="check-field"><input type="checkbox" disabled={busy} checked={advancedInput} onChange={event => setAdvancedInput(event.target.checked)} />Технический ввод JSON вместо формы</label>
+          <p className="muted">Форма и JSON хранят отдельные черновики. Выполнится выбранный способ ввода.</p>
+        </>}
+        {!editorialNode && !inputForm && <p className="muted">{schemaError || (inputSchema === undefined ? 'У входа не задана форма. Используйте JSON по примеру автора сценария; форму можно настроить в контракте Trigger.' : 'Этот контракт содержит сложную структуру. Используйте технический ввод JSON и сверьтесь со схемой ниже.')} Ошибка ввода не удаляет черновик.</p>}
+        {!editorialNode && inputSchema !== undefined && <details><summary>Схема входных данных</summary><pre>{JSON.stringify(inputSchema, null, 2)}</pre></details>}
+        {!editorialNode && inputSchema !== undefined && (!inputForm || advancedInput) && <details><summary>Пример технического ввода</summary>{example !== undefined ? <><p className="muted">Пример проходит контракт. Замените значения своими; это не готовое задание и он не подставляется автоматически.</p><pre>{example}</pre></> : <p className="muted">Для этого контракта не удалось безопасно построить подходящий пример. Добавьте валидный examples в схему входа Trigger или уточните схему. Проверка введённого JSON выполнится до запуска.</p>}</details>}
         {editorialNode && <>
           <label>Тип результата<select disabled={busy} value={resultKind} onChange={event => { const option = resultTypes.find(item => item.kind === event.target.value)!; setResultKind(option.kind); setMinimumWords(option.minimumWords); setDossier(null) }}>{resultTypes.map(item => <option key={item.kind} value={item.kind}>{item.label}</option>)}</select></label>
           <p className="muted">{resultTypes.find(item => item.kind === resultKind)?.help}</p>
@@ -128,7 +168,7 @@ export function RunPanel() {
           {dossier?.key === dossierKey && <><p className="muted">Предварительный поиск без вызова ИИ. При запуске снимок фиксируется заново; точный пакет будет в истории.</p><ContextPacketView packet={dossier.packet} /></>}
           <label className="check-field"><input type="checkbox" checked={advancedInput} onChange={event => setAdvancedInput(event.target.checked)} disabled={busy} />Технический ввод JSON вместо формы</label>
         </>}
-        {(!editorialNode || advancedInput) && <label>Вход запуска (JSON)<textarea aria-label="Вход запуска (JSON)" className="code-input" disabled={busy} value={input} onChange={event => setInput(event.target.value)} rows={3} spellCheck={false} /></label>}
+        {((!editorialNode && !inputForm) || advancedInput) && <label>Вход запуска (JSON)<textarea aria-label="Вход запуска (JSON)" className="code-input" disabled={busy} value={input} onChange={event => setInput(event.target.value)} rows={3} spellCheck={false} /></label>}
         {editor.runtime.native && <BackgroundConsent native={editor.runtime.native} disabled={busy} runningAllowed={active ? state.backgroundAllowed : undefined} />}
         <div className="inline-actions"><button className="primary" disabled={busy || !selected || !state.available} onClick={start}>Запустить workflow</button><button disabled={!active || state.actionPending || !state.available} onClick={editor.runtime.cancel}>Остановить запуск</button></div>
       </div>}

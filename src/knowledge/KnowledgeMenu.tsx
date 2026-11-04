@@ -15,12 +15,13 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://gnu.org>.
 */
 
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
+import { useServiceDialog } from '../app/service-dialog'
 import { createPortal } from 'react-dom'
 import { useProfile } from '../profiles/context'
 const Dialog = lazy(() => import('./KnowledgeDialog').then(module => ({ default: module.KnowledgeDialog })))
 export function KnowledgeMenu() {
-  const [open, setOpen] = useState(false), session = useProfile()
+  const [open, setOpen] = useServiceDialog('knowledge'), session = useProfile()
   if (!session) return null
-  return <><button onClick={() => setOpen(true)}>Знания SOAR</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем знания…</div>}><Dialog key={session.profile.id} profileId={session.profile.id} profileName={session.profile.name} close={() => setOpen(false)} /></Suspense>, document.body)}</>
+  return <><button data-tour="knowledge" onClick={() => setOpen(true)}>Знания SOAR</button>{open && createPortal(<Suspense fallback={<div role="status" className="dialog-loading">Открываем знания…</div>}><Dialog key={session.profile.id} profileId={session.profile.id} profileName={session.profile.name} close={() => setOpen(false)} /></Suspense>, document.body)}</>
 }

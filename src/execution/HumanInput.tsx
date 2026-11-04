@@ -17,6 +17,7 @@ along with this program.  If not, see <https://gnu.org>.
 
 import { useState } from 'react'
 import { contractForm, readContractForm } from './contract-fields'
+import { ContractFields } from './ContractFields'
 
 export function HumanInput({ schema, disabled, submit }: { schema: unknown; disabled: boolean; submit: (value: unknown) => void }) {
   const form = contractForm(schema)
@@ -28,13 +29,7 @@ export function HumanInput({ schema, disabled, submit }: { schema: unknown; disa
     try { const value = technical ? JSON.parse(json) as unknown : readContractForm(form!, values); setError(''); submit(value) }
     catch (error) { setError(error instanceof Error ? error.message : String(error)) }
   }}>
-    {!technical && form!.fields.map(field => <label key={field.key}>{field.label}{field.required ? ' · обязательно' : ' · необязательно'}
-      {field.choices || field.type === 'boolean' ? <select disabled={disabled} value={values[field.key] ?? ''} onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))}>
-        <option value="">Выберите ответ</option>
-        {field.choices ? field.choices.map((choice, index) => <option key={index} value={index}>{String(choice)}</option>) : <><option value="true">Да</option><option value="false">Нет</option></>}
-      </select> : <input disabled={disabled} type={field.type === 'string' ? 'text' : 'number'} step={field.type === 'integer' ? 1 : 'any'} value={values[field.key] ?? ''} onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))} />}
-      {field.description && <span className="muted">{field.description}</span>}
-    </label>)}
+    {!technical && <ContractFields form={form!} values={values} change={setValues} disabled={disabled} />}
     {!form && <p className="muted">Для этой сложной схемы пока нужен технический ввод. Откройте структуру ниже или попросите автора сценария упростить форму ответа.</p>}
     {form && <label className="check-field"><input type="checkbox" disabled={disabled} checked={advanced} onChange={event => setAdvanced(event.target.checked)} />Технический ответ JSON</label>}
     {technical && <label>Ответ (JSON)<textarea disabled={disabled} value={json} onChange={event => setJson(event.target.value)} rows={4} /></label>}

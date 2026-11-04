@@ -45,7 +45,7 @@ export function Inspector() {
   const node = count === 1 ? graph.nodes.find(n => n.id === selection.nodeIds[0]) : undefined
   const edge = count === 1 ? graph.edges.find(e => e.id === selection.edgeIds[0]) : undefined
   const group = count === 1 ? graph.groups.find(g => g.id === selection.groupIds[0]) : undefined
-  return <aside className="inspector"><div className="panel-heading">INSPECTOR <span>{node ? node.type.toUpperCase() : edge ? 'CONNECTION' : group ? 'GROUP' : count > 1 ? 'SELECTION' : 'PROJECT'}</span></div>
+  return <aside data-tour="inspector" className="inspector"><div className="panel-heading">INSPECTOR <span>{node ? node.type.toUpperCase() : edge ? 'CONNECTION' : group ? 'GROUP' : count > 1 ? 'SELECTION' : 'PROJECT'}</span></div>
     <div className="inspector-content">
       {count > 1 ? <MultiInspector count={count} /> : group ? <GroupInspector group={group} /> : node ? <>
         <div className="inspector-intro"><span className="eyebrow">{nodeCatalog[node.type].label}</span><h2>{node.type === 'concept' ? 'От идеи к структуре' : nodeCatalog[node.type].description}</h2></div>
