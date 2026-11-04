@@ -41,6 +41,18 @@ along with this program.  If not, see <https://gnu.org>.
 .tour-actions button { flex: 1; }
 .tour-later { width: 100%; margin-top: 10px; background: transparent; }
 .help-actions { display: flex; gap: 5px; }
+.practice-coach { flex-shrink: 0; max-height: 28vh; overflow: auto; padding: 14px 22px; background: var(--surface); border-bottom: 2px solid var(--cyan); font-size: 13px; }
+.practice-coach > div:first-child { display: flex; gap: 16px; align-items: center; }
+.practice-coach h2 { margin: 8px 0; font-size: 18px; }
+.practice-coach p { margin: 8px 0; line-height: 1.6; }
+.practice-coach button { margin: 4px 10px 0 0; }
+.practice-hint { border-left: 2px solid var(--cyan); padding-left: 12px; }
+.practice-spotlight { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 45; }
+[data-practice-focus] { outline: 2px solid var(--cyan); outline-offset: -3px; box-shadow: inset 0 0 0 5px var(--canvas); }
+.lesson-catalog section { margin: 20px 0; }
+.lesson-catalog article { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 10px 0; background: var(--surface); }
+.lesson-catalog h4 { margin: 0; font-size: 15px; }
+.lesson-catalog small { display: block; color: var(--muted); margin-top: 8px; }
 .statusbar { height: auto; min-height: 34px; flex-wrap: wrap; row-gap: 4px; column-gap: 14px; }
 @media (max-width: 850px) { .learning-banner { flex-wrap: wrap; padding: 8px 14px; }.learning-banner > div { flex-basis: 100%; }.learning-routes { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .tour-overlay * { scroll-behavior: auto; transition: none; animation: none; } }

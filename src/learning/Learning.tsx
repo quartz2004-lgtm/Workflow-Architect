@@ -27,6 +27,8 @@ import { openStoredProject } from '../persistence/open-project'
 import { createProject } from '../domain/factories'
 import { emptyProgress, parseProgress, tours, type LearningProgress, type TourRoute } from './tours'
 import { TourOverlay } from './TourOverlay'
+import { Practice } from './Practice'
+import { lessons } from './lessons'
 import './learning.css'
 
 export function Learning({ autosave, repository }: { autosave: Autosave; repository: ManagedProjectRepository }) {
@@ -36,7 +38,10 @@ export function Learning({ autosave, repository }: { autosave: Autosave; reposit
   const [route, setRoute] = useState<TourRoute | null>(null), [index, setIndex] = useState(0), [error, setError] = useState('')
   const [busy, setBusy] = useState(false), [practice, setPractice] = useState<{ id: string; origin: string } | null>(null)
   const open = useStore(editor.uiStore, state => state.learning)
+  const practicePending = useStore(editor.uiStore, state => state.practiceLesson)
   const currentId = useStore(editor.projectStore, state => state.project.project.id)
+  let completed: string[] = []
+  try { const value: unknown = JSON.parse(localStorage.getItem(`workflow-architect:practice:1:${profile?.id ?? 'local'}:completed`) ?? '[]'); if (Array.isArray(value)) completed = value.filter((id): id is string => typeof id === 'string' && lessons.some(l => l.id === id)) } catch { /* Progress is optional; lessons remain available. */ }
   const save = (next: LearningProgress) => {
     setProgress(next)
     try { localStorage.setItem(key, JSON.stringify(next)); setError('') }
@@ -71,11 +76,15 @@ export function Learning({ autosave, repository }: { autosave: Autosave; reposit
     finally { setBusy(false) }
   }
   return <>
-    {!progress.dismissed && !route && <aside className="learning-banner" aria-label="Знакомство с приложением"><div><strong>Освоимся вместе?</strong><span>Короткие подсказки покажут, где начать и как получить результат.</span></div><button onClick={() => editor.uiStore.setState({ learning: true })}>Пройти знакомство</button><button onClick={() => save({ ...progress, dismissed: true })}>Пропустить знакомство</button></aside>}
+    <Practice autosave={autosave} repository={repository} />
+    {!progress.dismissed && !route && <aside className="learning-banner" aria-label="Знакомство с приложением"><div><strong>Освоимся вместе?</strong><span>Практические уроки: выполняйте действия на схеме и получайте следующий шаг.</span></div><button onClick={() => editor.uiStore.setState({ learning: true })}>Пройти знакомство</button><button onClick={() => save({ ...progress, dismissed: true })}>Пропустить знакомство</button></aside>}
     {practice?.id === currentId && <aside className="learning-banner" aria-label="Учебный проект"><div><strong>Отдельный учебный проект</strong><span>Добавьте блок, задайте имя, соедините два шага и попробуйте экспорт. Работа сохраняется как обычный проект.</span></div><button disabled={busy} onClick={() => void returnToProject()}>Вернуться к рабочему проекту</button><button onClick={() => start('canvas', true)}>Подсказки по схеме</button></aside>}
     {error && !open && <p className="learning-error" role="alert">{error}</p>}
     {open && !route && <Modal title="Обучение работе с приложением" close={() => { if (!busy) editor.uiStore.setState({ learning: false }) }}>
-      <p>Выберите короткий обзор. Подсказки выделят реальные элементы интерфейса. Обзор не запускает ИИ, не подключает сервисы и не изменяет проекты.</p>
+      <p>Практические уроки проходят в отдельных учебных проектах. Выполняйте задание на настоящем Canvas: следующий шаг появится после нужного действия. Текущий проект сохраняется перед началом.</p>
+      <p>Выполнено уроков: {completed.length} из {lessons.length}. Можно повторять уроки и выбирать нужную тему.</p>
+      <div className="lesson-catalog">{[...new Set(lessons.map(l => l.level))].map((level, i) => <details key={level} open={i === 0}><summary>{level}</summary>{lessons.filter(l => l.level === level).map(lesson => <article key={lesson.id}><h4>{lesson.title}{completed.includes(lesson.id) ? ' · Выполнено' : ''}</h4><p>{lesson.purpose}</p><button disabled={!!practicePending} onClick={() => { save({ ...progress, dismissed: true }); editor.uiStore.setState({ practiceLesson: lesson.id }) }}>Начать урок · {lesson.title}</button><small>Практических шагов: {lesson.steps.length}</small></article>)}</details>)}</div>
+      <h3>Короткие обзоры интерфейса</h3><p>Обзоры объясняют расположение разделов. Практические действия изучаются в уроках выше.</p>
       <div className="learning-routes">{(['result', 'canvas'] as const).map(value => <section key={value}><h3>{tours[value].title}</h3><p>{value === 'result' ? 'Сценарий → задание → проверка → ваш файл.' : 'Блоки → связи → свойства → сохранение и экспорт.'}</p><p className="muted">{progress[value] >= tours[value].steps.length ? 'Обзор завершён. Это не оценка навыков.' : progress[value] ? `Продолжить с шага ${progress[value] + 1} из ${tours[value].steps.length}` : `${tours[value].steps.length} коротких шагов`}</p><button disabled={busy} onClick={() => start(value)}>{progress[value] >= tours[value].steps.length ? 'Повторить' : progress[value] ? 'Продолжить' : 'Начать'} · {tours[value].title}</button>{progress[value] > 0 && progress[value] < tours[value].steps.length && <button disabled={busy} onClick={() => start(value, true)}>Сначала · {tours[value].title}</button>}</section>)}</div>
       <section className="learning-practice"><h3>Практика без изменения рабочего проекта</h3><p>Сначала сохраним текущую работу, затем откроем отдельную пустую учебную схему. Вы сможете вернуться назад; учебный проект останется в списке проектов.</p><button disabled={busy} onClick={() => void beginPractice()}>{busy ? 'Сохраняем и открываем…' : 'Открыть учебный проект'}</button></section>
       {error && <p role="alert" className="field-error">{error}</p>}
